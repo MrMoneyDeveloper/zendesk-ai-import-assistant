@@ -1,0 +1,981 @@
+{
+  "generated_at": "2026-05-06T20:10:14.108215+00:00",
+  "source": "backend/app/models/schemas.py",
+  "routes": {
+    "generate": {
+      "method": "POST",
+      "path": "/api/import-assistant/generate",
+      "request_model": "ImportAssistantGenerateRequest",
+      "response_model": "ImportAssistantGenerateResponse"
+    },
+    "job_status": {
+      "method": "GET",
+      "path": "/api/import-assistant/jobs/{batch_id}",
+      "response_model": "JobStatusResponse"
+    },
+    "preview": {
+      "method": "GET",
+      "path": "/api/import-assistant/preview/{batch_id}",
+      "response_model": "PreviewResponse"
+    },
+    "approve": {
+      "method": "POST",
+      "path": "/api/import-assistant/approve",
+      "request_model": "ApprovalRequest",
+      "response_model": "ApprovalResponse"
+    }
+  },
+  "models": {
+    "GenerateRequest": {
+      "properties": {
+        "prompt": {
+          "maxLength": 4000,
+          "minLength": 5,
+          "title": "Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "title": "GenerateRequest",
+      "type": "object"
+    },
+    "GenerateResponse": {
+      "$defs": {
+        "GeneratedRecord": {
+          "properties": {
+            "title": {
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            },
+            "conditions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Conditions",
+              "type": "array"
+            },
+            "actions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Actions",
+              "type": "array"
+            },
+            "object_type": {
+              "default": "triggers",
+              "title": "Object Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "title": "GeneratedRecord",
+          "type": "object"
+        },
+        "PlannerResult": {
+          "properties": {
+            "object_type": {
+              "default": "trigger",
+              "title": "Object Type",
+              "type": "string"
+            },
+            "intent": {
+              "title": "Intent",
+              "type": "string"
+            },
+            "confidence": {
+              "default": 0.7,
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "title": "Confidence",
+              "type": "number"
+            }
+          },
+          "required": [
+            "intent"
+          ],
+          "title": "PlannerResult",
+          "type": "object"
+        },
+        "ValidationErrorItem": {
+          "properties": {
+            "row": {
+              "title": "Row",
+              "type": "integer"
+            },
+            "error": {
+              "title": "Error",
+              "type": "string"
+            }
+          },
+          "required": [
+            "row",
+            "error"
+          ],
+          "title": "ValidationErrorItem",
+          "type": "object"
+        },
+        "ValidationResult": {
+          "properties": {
+            "status": {
+              "enum": [
+                "passed",
+                "failed"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "errors": {
+              "items": {
+                "$ref": "#/$defs/ValidationErrorItem"
+              },
+              "title": "Errors",
+              "type": "array"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "title": "ValidationResult",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/PlannerResult"
+        },
+        "generated_data": {
+          "items": {
+            "$ref": "#/$defs/GeneratedRecord"
+          },
+          "title": "Generated Data",
+          "type": "array"
+        },
+        "validation": {
+          "$ref": "#/$defs/ValidationResult"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "plan",
+        "generated_data",
+        "validation"
+      ],
+      "title": "GenerateResponse",
+      "type": "object"
+    },
+    "ApiTestResponse": {
+      "properties": {
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "base_url": {
+          "title": "Base Url",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Ms"
+        },
+        "output_preview": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Preview"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "provider",
+        "base_url",
+        "model",
+        "status"
+      ],
+      "title": "ApiTestResponse",
+      "type": "object"
+    },
+    "ImportAssistantGenerateRequest": {
+      "properties": {
+        "prompt": {
+          "maxLength": 4000,
+          "minLength": 5,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "target_environment": {
+          "const": "sandbox",
+          "default": "sandbox",
+          "title": "Target Environment",
+          "type": "string"
+        },
+        "mode": {
+          "default": "generate_validate_preview",
+          "title": "Mode",
+          "type": "string"
+        },
+        "requester": {
+          "default": "local-user",
+          "title": "Requester",
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "title": "ImportAssistantGenerateRequest",
+      "type": "object"
+    },
+    "ImportAssistantGenerateResponse": {
+      "$defs": {
+        "ValidationSummary": {
+          "properties": {
+            "passed": {
+              "default": 0,
+              "title": "Passed",
+              "type": "integer"
+            },
+            "warnings": {
+              "default": 0,
+              "title": "Warnings",
+              "type": "integer"
+            },
+            "blocked": {
+              "default": 0,
+              "title": "Blocked",
+              "type": "integer"
+            }
+          },
+          "title": "ValidationSummary",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "batch_id": {
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "received",
+            "request_validated",
+            "planning",
+            "planned",
+            "schemas_selected",
+            "generating",
+            "generated",
+            "staging",
+            "staged",
+            "validating",
+            "validated_passed",
+            "validated_warning",
+            "validated_failed",
+            "preview_ready",
+            "partially_approved",
+            "approved",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "planning_summary": {
+          "additionalProperties": true,
+          "title": "Planning Summary",
+          "type": "object"
+        },
+        "generated_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Generated Counts",
+          "type": "object"
+        },
+        "validation_summary": {
+          "$ref": "#/$defs/ValidationSummary"
+        },
+        "preview_url": {
+          "title": "Preview Url",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "batch_id",
+        "status",
+        "planning_summary",
+        "generated_counts",
+        "validation_summary",
+        "preview_url"
+      ],
+      "title": "ImportAssistantGenerateResponse",
+      "type": "object"
+    },
+    "JobStatusResponse": {
+      "$defs": {
+        "StatusHistoryItem": {
+          "properties": {
+            "status": {
+              "enum": [
+                "received",
+                "request_validated",
+                "planning",
+                "planned",
+                "schemas_selected",
+                "generating",
+                "generated",
+                "staging",
+                "staged",
+                "validating",
+                "validated_passed",
+                "validated_warning",
+                "validated_failed",
+                "preview_ready",
+                "partially_approved",
+                "approved",
+                "failed"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "message": {
+              "default": "",
+              "title": "Message",
+              "type": "string"
+            },
+            "at": {
+              "title": "At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "at"
+          ],
+          "title": "StatusHistoryItem",
+          "type": "object"
+        },
+        "ValidationSummary": {
+          "properties": {
+            "passed": {
+              "default": 0,
+              "title": "Passed",
+              "type": "integer"
+            },
+            "warnings": {
+              "default": 0,
+              "title": "Warnings",
+              "type": "integer"
+            },
+            "blocked": {
+              "default": 0,
+              "title": "Blocked",
+              "type": "integer"
+            }
+          },
+          "title": "ValidationSummary",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "batch_id": {
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "received",
+            "request_validated",
+            "planning",
+            "planned",
+            "schemas_selected",
+            "generating",
+            "generated",
+            "staging",
+            "staged",
+            "validating",
+            "validated_passed",
+            "validated_warning",
+            "validated_failed",
+            "preview_ready",
+            "partially_approved",
+            "approved",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "requester": {
+          "title": "Requester",
+          "type": "string"
+        },
+        "target_environment": {
+          "title": "Target Environment",
+          "type": "string"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "status_history": {
+          "items": {
+            "$ref": "#/$defs/StatusHistoryItem"
+          },
+          "title": "Status History",
+          "type": "array"
+        },
+        "generated_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Generated Counts",
+          "type": "object"
+        },
+        "validation_summary": {
+          "$ref": "#/$defs/ValidationSummary"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "batch_id",
+        "status",
+        "created_at",
+        "updated_at",
+        "requester",
+        "target_environment",
+        "mode"
+      ],
+      "title": "JobStatusResponse",
+      "type": "object"
+    },
+    "PreviewRecord": {
+      "properties": {
+        "record_id": {
+          "title": "Record Id",
+          "type": "string"
+        },
+        "object_type": {
+          "title": "Object Type",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "preview_summary": {
+          "title": "Preview Summary",
+          "type": "string"
+        },
+        "validation_status": {
+          "enum": [
+            "passed",
+            "warning",
+            "failed"
+          ],
+          "title": "Validation Status",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "blocked_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blocked Reason"
+        },
+        "import_decision": {
+          "default": "pending_review",
+          "enum": [
+            "pending_review",
+            "approved",
+            "skipped",
+            "edit_later",
+            "blocked"
+          ],
+          "title": "Import Decision",
+          "type": "string"
+        },
+        "deployable": {
+          "default": true,
+          "title": "Deployable",
+          "type": "boolean"
+        },
+        "conditions": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Conditions",
+          "type": "array"
+        },
+        "actions": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Actions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "record_id",
+        "object_type",
+        "title",
+        "preview_summary",
+        "validation_status"
+      ],
+      "title": "PreviewRecord",
+      "type": "object"
+    },
+    "PreviewResponse": {
+      "$defs": {
+        "PreviewRecord": {
+          "properties": {
+            "record_id": {
+              "title": "Record Id",
+              "type": "string"
+            },
+            "object_type": {
+              "title": "Object Type",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "preview_summary": {
+              "title": "Preview Summary",
+              "type": "string"
+            },
+            "validation_status": {
+              "enum": [
+                "passed",
+                "warning",
+                "failed"
+              ],
+              "title": "Validation Status",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            },
+            "blocked_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Blocked Reason"
+            },
+            "import_decision": {
+              "default": "pending_review",
+              "enum": [
+                "pending_review",
+                "approved",
+                "skipped",
+                "edit_later",
+                "blocked"
+              ],
+              "title": "Import Decision",
+              "type": "string"
+            },
+            "deployable": {
+              "default": true,
+              "title": "Deployable",
+              "type": "boolean"
+            },
+            "conditions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Conditions",
+              "type": "array"
+            },
+            "actions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Actions",
+              "type": "array"
+            }
+          },
+          "required": [
+            "record_id",
+            "object_type",
+            "title",
+            "preview_summary",
+            "validation_status"
+          ],
+          "title": "PreviewRecord",
+          "type": "object"
+        },
+        "ValidationSummary": {
+          "properties": {
+            "passed": {
+              "default": 0,
+              "title": "Passed",
+              "type": "integer"
+            },
+            "warnings": {
+              "default": 0,
+              "title": "Warnings",
+              "type": "integer"
+            },
+            "blocked": {
+              "default": 0,
+              "title": "Blocked",
+              "type": "integer"
+            }
+          },
+          "title": "ValidationSummary",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "batch_id": {
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "received",
+            "request_validated",
+            "planning",
+            "planned",
+            "schemas_selected",
+            "generating",
+            "generated",
+            "staging",
+            "staged",
+            "validating",
+            "validated_passed",
+            "validated_warning",
+            "validated_failed",
+            "preview_ready",
+            "partially_approved",
+            "approved",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/PreviewRecord"
+          },
+          "title": "Records",
+          "type": "array"
+        },
+        "planning_summary": {
+          "additionalProperties": true,
+          "title": "Planning Summary",
+          "type": "object"
+        },
+        "generated_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Generated Counts",
+          "type": "object"
+        },
+        "validation_summary": {
+          "$ref": "#/$defs/ValidationSummary"
+        }
+      },
+      "required": [
+        "batch_id",
+        "status",
+        "records"
+      ],
+      "title": "PreviewResponse",
+      "type": "object"
+    },
+    "ApprovalRequest": {
+      "$defs": {
+        "ApprovalRecordDecision": {
+          "properties": {
+            "record_id": {
+              "title": "Record Id",
+              "type": "string"
+            },
+            "import_decision": {
+              "enum": [
+                "approved",
+                "skipped",
+                "edit_later"
+              ],
+              "title": "Import Decision",
+              "type": "string"
+            }
+          },
+          "required": [
+            "record_id",
+            "import_decision"
+          ],
+          "title": "ApprovalRecordDecision",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "batch_id": {
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "approved_by": {
+          "default": "local-user",
+          "title": "Approved By",
+          "type": "string"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/ApprovalRecordDecision"
+          },
+          "title": "Records",
+          "type": "array"
+        }
+      },
+      "required": [
+        "batch_id",
+        "records"
+      ],
+      "title": "ApprovalRequest",
+      "type": "object"
+    },
+    "ApprovalResponse": {
+      "$defs": {
+        "ApprovalSummary": {
+          "properties": {
+            "approved": {
+              "default": 0,
+              "title": "Approved",
+              "type": "integer"
+            },
+            "skipped": {
+              "default": 0,
+              "title": "Skipped",
+              "type": "integer"
+            },
+            "edit_later": {
+              "default": 0,
+              "title": "Edit Later",
+              "type": "integer"
+            }
+          },
+          "title": "ApprovalSummary",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "batch_id": {
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "received",
+            "request_validated",
+            "planning",
+            "planned",
+            "schemas_selected",
+            "generating",
+            "generated",
+            "staging",
+            "staged",
+            "validating",
+            "validated_passed",
+            "validated_warning",
+            "validated_failed",
+            "preview_ready",
+            "partially_approved",
+            "approved",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/ApprovalSummary"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "batch_id",
+        "status",
+        "summary",
+        "message"
+      ],
+      "title": "ApprovalResponse",
+      "type": "object"
+    },
+    "AppScriptActionRequest": {
+      "properties": {
+        "action": {
+          "enum": [
+            "setup_once",
+            "sync_schema",
+            "write_batch_to_sheets",
+            "validate_batch",
+            "get_batch_preview",
+            "update_approval_status",
+            "write_execution_log",
+            "get_execution_summary",
+            "schema_info",
+            "health"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "AppScriptActionRequest",
+      "type": "object"
+    },
+    "AppScriptActionResponse": {
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        }
+      },
+      "required": [
+        "action",
+        "status"
+      ],
+      "title": "AppScriptActionResponse",
+      "type": "object"
+    }
+  }
+}

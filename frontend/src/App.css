@@ -1,3 +1,58 @@
+.app-shell {
+  padding: 20px;
+  text-align: left;
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.top-nav h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.api-test-btn {
+  border: 1px solid #c7cad4;
+  background: #0f172a;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.api-test-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.test-result {
+  margin-bottom: 18px;
+  border: 1px solid #e1e4ee;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8f9fc;
+}
+
+.test-result p {
+  margin: 8px 0 0;
+}
+
+.test-result pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #ffffff;
+  border: 1px solid #e1e4ee;
+  border-radius: 8px;
+  padding: 10px;
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;

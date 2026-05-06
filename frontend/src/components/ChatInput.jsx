@@ -12,9 +12,10 @@ export default function ChatInput({ setResult, setLoading }) {
       setResult(data);
     } catch (err) {
       console.error(err);
-      alert("Backend error — check console");
+      alert("Backend error - check console.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
