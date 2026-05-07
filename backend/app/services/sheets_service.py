@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Any
+import requests
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -8,7 +9,20 @@ from googleapiclient.discovery import build
 from app.core.settings import get_settings
 from app.loggers.logger import get_logger
 
+
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbygZR5FH8FzeJ9TBL18Qv0xMQmLlz631EoisFeEQJD8e5O2eQeN1gyByZjCL912Jju5UQ/exec"
+
+def send_to_sheets(data):
+
+    response = requests.post(
+        APPS_SCRIPT_URL,
+        json=data
+    )
+
+    return response.json()
+
 logger = get_logger(__name__)
+
 
 TAB_NAMES = [
     "Requests",

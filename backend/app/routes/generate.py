@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from app.services.sheets_service import send_to_sheets
 
 from app.core.settings import get_settings
 from app.loggers.logger import get_logger
@@ -26,10 +27,21 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
 
         # Step 3: Validation
         validation = validate_output(generated_data)
+
+        # Step 4: Send to Google Sheets
+        sheet_response = send_to_sheets({
+            "prompt": prompt,
+            "plan": plan,
+            "generated_data": generated_data,
+            "validation": validation
+        })
+
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     except Exception as exc:
         logger.exception("Unexpected /generate failure: %s", exc)
+
         raise HTTPException(
             status_code=500,
             detail="Generation failed due to an internal error.",
@@ -42,11 +54,12 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         metadata={
             "provider": settings.llm_provider,
             "model": settings.xai_model,
+            "sheet_response": sheet_response
         },
     )
-
 
 @router.get("/test-apis")
 async def test_apis() -> ApiTestResponse:
     result = await run_api_test()
     return ApiTestResponse(**result)
+
