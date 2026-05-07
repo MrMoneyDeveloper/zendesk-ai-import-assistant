@@ -128,3 +128,4 @@ const OBJECT_TAB_BY_TYPE = Object.freeze({
   recommendations: 'Recommendations'
 });
 
+

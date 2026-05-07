@@ -4,7 +4,7 @@
 
   try {
     const props = getScriptProperties_();
-    const spreadsheet = openManagedSpreadsheet_();
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
     const rootFolderId = String((payload && payload.root_folder_id) || props.getProperty(APP_CONFIG.ROOT_FOLDER_ID_PROPERTY) || '').trim();
     const folderState = ensureProjectFolderTree_(rootFolderId);
@@ -95,3 +95,4 @@ function ensureProjectFolderTree_(rootFolderId) {
     folders: childFolderNames
   };
 }
+

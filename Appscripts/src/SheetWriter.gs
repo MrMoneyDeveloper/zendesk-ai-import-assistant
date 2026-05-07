@@ -86,3 +86,4 @@ function writeBatchToSheets(payload) {
     lock.releaseLock();
   }
 }
+
