@@ -41,6 +41,7 @@ This folder contains the full Google Apps Script and local tooling layer for the
 POST actions:
 - `setup_once`
 - `sync_schema`
+- `generate_api_key`
 - `write_batch_to_sheets`
 - `validate_batch`
 - `get_batch_preview`
@@ -53,6 +54,9 @@ GET actions:
 - `schema_info`
 - `get_batch_preview` (requires `batch_id`)
 - `get_execution_summary` (requires `batch_id`)
+
+Manual editor helper:
+- `rotateApiKeyFromEditor()` generates a fresh key, stores it in Script Properties, and writes it to the `Integration Secrets` sheet.
 
 ## Security
 

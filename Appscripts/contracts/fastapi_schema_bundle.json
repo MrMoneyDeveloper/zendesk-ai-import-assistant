@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-06T20:10:14.108215+00:00",
+  "generated_at": "2026-05-07T20:13:09.084375+00:00",
   "source": "backend/app/models/schemas.py",
   "routes": {
     "generate": {
@@ -901,6 +901,7 @@
           "enum": [
             "setup_once",
             "sync_schema",
+            "generate_api_key",
             "write_batch_to_sheets",
             "validate_batch",
             "get_batch_preview",

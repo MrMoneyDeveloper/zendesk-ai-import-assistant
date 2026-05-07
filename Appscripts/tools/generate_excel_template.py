@@ -152,6 +152,7 @@ TABS = [
     ('Validation Log', ['batch_id', 'record_id', 'object_type', 'title', 'validation_status', 'warnings', 'blocked_reason', 'checked_at']),
     ('Approval Log', ['batch_id', 'record_id', 'import_decision', 'approved_at', 'approved_by']),
     ('Execution Log', ['batch_id', 'record_id', 'object_type', 'title', 'deployment_status', 'zendesk_object_id', 'execution_message', 'executed_at']),
+    ('Integration Secrets', ['key_name', 'key_value', 'generated_at', 'generated_by', 'note', 'is_active']),
     ('Schema Registry', ['schema_name', 'schema_version', 'hash', 'updated_at', 'schema_json']),
 ]
 

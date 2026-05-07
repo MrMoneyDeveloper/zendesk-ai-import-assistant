@@ -24,7 +24,9 @@ function getBatchPreview(payload) {
       const recordId = asString_(row.record_id).trim();
       const validation = validationByRecord[recordId] || {};
       const approval = approvalByRecord[recordId] || {};
-      const warningArray = parseWarnings_(validation.warnings || row.warning_message);
+      const warningArray = uniqueList_(parseWarnings_(validation.warnings || row.warning_message));
+      const validationStatus = asString_(validation.validation_status || row.validation_status || 'warning');
+      const isDeployableType = isDeployableObjectType_(objectType);
 
       generatedCounts[objectType] = (generatedCounts[objectType] || 0) + 1;
       records.push({
@@ -32,11 +34,11 @@ function getBatchPreview(payload) {
         object_type: objectType,
         title: asString_(row.title),
         preview_summary: asString_(row.preview_summary),
-        validation_status: asString_(validation.validation_status || row.validation_status || 'warning'),
+        validation_status: validationStatus,
         warnings: warningArray,
         blocked_reason: asString_(validation.blocked_reason || row.blocked_reason || ''),
         import_decision: asString_(approval.import_decision || row.import_decision || 'pending_review'),
-        deployable: asString_(validation.validation_status || row.validation_status || '') !== 'failed',
+        deployable: isDeployableType && validationStatus !== 'failed',
         conditions: parseJsonCell_(row.conditions_json),
         actions: parseJsonCell_(row.actions_json),
         approved_by: asString_(approval.approved_by || row.approved_by || ''),

@@ -37,14 +37,18 @@ class AppScriptBridgeService:
             }
 
         try:
-            async with httpx.AsyncClient(timeout=self.settings.appscript_timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self.settings.appscript_timeout_seconds,
+                follow_redirects=True,
+            ) as client:
                 if method.upper() == "GET":
+                    params = {"action": action}
+                    # Health endpoint is intentionally public; avoid key in URL logs.
+                    if action != "health":
+                        params["api_key"] = self.settings.appscript_api_key
                     response = await client.get(
                         url,
-                        params={
-                            "action": action,
-                            "api_key": self.settings.appscript_api_key,
-                        },
+                        params=params,
                     )
                 else:
                     response = await client.post(
@@ -56,15 +60,21 @@ class AppScriptBridgeService:
                         },
                     )
 
-            status = "ok" if response.is_success else "error"
             try:
                 data = response.json()
             except ValueError:
                 data = {"raw": response.text}
 
+            status = "ok" if response.is_success else "error"
+            if response.is_success and isinstance(data, dict) and data.get("ok") is False:
+                status = "error"
+
             detail = None
             if status == "error":
-                detail = f"Apps Script returned HTTP {response.status_code}."
+                if isinstance(data, dict) and data.get("error"):
+                    detail = f"Apps Script error: {data.get('error')}"
+                else:
+                    detail = f"Apps Script returned HTTP {response.status_code}."
 
             return {
                 "action": action,

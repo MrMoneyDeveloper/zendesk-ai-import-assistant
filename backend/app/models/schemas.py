@@ -176,6 +176,7 @@ class AppScriptActionRequest(BaseModel):
     action: Literal[
         "setup_once",
         "sync_schema",
+        "generate_api_key",
         "write_batch_to_sheets",
         "validate_batch",
         "get_batch_preview",

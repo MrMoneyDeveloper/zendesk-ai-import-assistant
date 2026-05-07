@@ -8,7 +8,8 @@ const APP_CONFIG = Object.freeze({
   LAST_SCHEMA_SYNC_AT_PROPERTY: 'LAST_SCHEMA_SYNC_AT',
   LAST_SCHEMA_HASH_PROPERTY: 'LAST_SCHEMA_HASH',
   LAST_SETUP_AT_PROPERTY: 'LAST_SETUP_AT',
-  LAST_VALIDATION_AT_PROPERTY: 'LAST_VALIDATION_AT'
+  LAST_VALIDATION_AT_PROPERTY: 'LAST_VALIDATION_AT',
+  SECRETS_TAB_NAME: 'Integration Secrets'
 });
 
 const OBJECT_RECORD_HEADERS = Object.freeze([
@@ -97,6 +98,10 @@ const REQUIRED_TABS = Object.freeze([
     ]
   },
   {
+    name: 'Integration Secrets',
+    headers: ['key_name', 'key_value', 'generated_at', 'generated_by', 'note', 'is_active']
+  },
+  {
     name: 'Schema Registry',
     headers: ['schema_name', 'schema_version', 'hash', 'updated_at', 'schema_json']
   }
@@ -126,6 +131,22 @@ const OBJECT_TAB_BY_TYPE = Object.freeze({
   tag_dictionary: 'Tag Dictionary',
   recommendation: 'Recommendations',
   recommendations: 'Recommendations'
+});
+
+const DEPLOYABLE_OBJECT_TYPES = Object.freeze({
+  ticket_field: true,
+  ticket_fields: true,
+  ticket_form: true,
+  ticket_forms: true,
+  macro: true,
+  macros: true,
+  trigger: true,
+  triggers: true,
+  view: true,
+  views: true,
+  tag_dictionary: false,
+  recommendation: false,
+  recommendations: false
 });
 
 

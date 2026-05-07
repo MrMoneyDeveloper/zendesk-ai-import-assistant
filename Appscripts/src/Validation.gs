@@ -101,16 +101,18 @@ function validateRecordByType_(record) {
   }
 
   let validationStatus = 'passed';
-  if (blocking.length > 0) {
+  const uniqueWarnings = uniqueList_(warnings);
+  const uniqueBlocking = uniqueList_(blocking);
+  if (uniqueBlocking.length > 0) {
     validationStatus = 'failed';
-  } else if (warnings.length > 0) {
+  } else if (uniqueWarnings.length > 0) {
     validationStatus = 'warning';
   }
 
   return {
     validation_status: validationStatus,
-    warnings: warnings,
-    blocked_reason: blocking.join(' | ')
+    warnings: uniqueWarnings,
+    blocked_reason: uniqueBlocking.join(' | ')
   };
 }
 

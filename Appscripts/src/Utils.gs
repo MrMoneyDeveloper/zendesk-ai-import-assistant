@@ -210,3 +210,25 @@ function parseWarnings_(warnings) {
   return [asString_(warnings)];
 }
 
+function uniqueList_(values) {
+  const seen = {};
+  const out = [];
+  (values || []).forEach(function eachValue(item) {
+    const key = asString_(item);
+    if (!key || seen[key]) {
+      return;
+    }
+    seen[key] = true;
+    out.push(key);
+  });
+  return out;
+}
+
+function isDeployableObjectType_(objectType) {
+  const normalized = normalizeObjectType_(objectType);
+  if (DEPLOYABLE_OBJECT_TYPES[normalized] === undefined) {
+    return false;
+  }
+  return Boolean(DEPLOYABLE_OBJECT_TYPES[normalized]);
+}
+

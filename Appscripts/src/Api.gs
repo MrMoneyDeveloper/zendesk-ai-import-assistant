@@ -50,6 +50,14 @@ function doPost(e) {
       return jsonResponse_(syncSchemaBundle(payload));
     }
 
+    if (action === 'schema_info') {
+      return jsonResponse_({ ok: true, action: 'schema_info', data: getSchemaBundleInfo() });
+    }
+
+    if (action === 'generate_api_key') {
+      return jsonResponse_(generateAndStoreApiKeyInSheet(payload));
+    }
+
     if (action === 'write_batch_to_sheets') {
       return jsonResponse_(writeBatchToSheets(payload));
     }
