@@ -27,3 +27,13 @@ export async function approveBatch(payload) {
   const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/approve`, payload);
   return res.data;
 }
+
+export async function getIntegrationsStatus() {
+  const res = await axios.get(`${IMPORT_ASSISTANT_ROOT}/integrations/status`);
+  return res.data;
+}
+
+export async function validateZendeskCredentials(payload) {
+  const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/zendesk/validate`, payload);
+  return res.data;
+}

@@ -15,6 +15,7 @@ from app.models.schemas import (
 from app.services.batch_store import get_batch_store
 from app.services.generator import run_generator
 from app.services.planner import run_planner
+from app.services.appscript_bridge import AppScriptBridgeService
 from app.services.sheets_service import SheetsService
 
 TAB_OBJECT_TYPES = {
@@ -108,6 +109,7 @@ async def generate_import_assistant_batch(
 ) -> ImportAssistantGenerateResponse:
     store = get_batch_store()
     sheets = SheetsService()
+    appscript = AppScriptBridgeService()
 
     batch_id = _new_batch_id()
     created_at = _utc_now()
@@ -143,11 +145,108 @@ async def generate_import_assistant_batch(
     generated_counts = _count_generated(preview_records)
 
     store.append_status(batch_id, "staging", "Staging batch to Google Sheets.")
-    staging_metadata = sheets.stage_batch(batch, plan, preview_records)
+    staging_metadata: dict = {}
+    validation_metadata: dict = {}
+
+    if appscript.enabled:
+        appscript_stage = await appscript.invoke(
+            action="write_batch_to_sheets",
+            payload={
+                "batch_id": batch_id,
+                "prompt": request.prompt,
+                "requester": request.requester,
+                "status": "staging",
+                "target_environment": request.target_environment,
+                "created_at": created_at,
+                "planning_summary": {
+                    "object_type": plan.get("object_type", "triggers"),
+                    "intent": plan.get("intent", request.prompt),
+                    "confidence": plan.get("confidence", 0.7),
+                },
+                "records": preview_records,
+            },
+        )
+        staging_metadata = {
+            "mode": "appscript",
+            "status": appscript_stage.get("status"),
+            "detail": appscript_stage.get("detail"),
+            "http_status": appscript_stage.get("http_status"),
+            "result": appscript_stage.get("data", {}),
+        }
+        if appscript_stage.get("status") != "ok" and sheets.enabled:
+            fallback_result = sheets.stage_batch(batch, plan, preview_records)
+            staging_metadata["fallback"] = {
+                "mode": "google_sheets_service_account",
+                "result": fallback_result,
+            }
+        elif appscript_stage.get("status") != "ok":
+            store.append_status(batch_id, "failed", "Apps Script staging failed.")
+            raise RuntimeError(
+                appscript_stage.get("detail")
+                or "Apps Script staging failed and no backend fallback is configured."
+            )
+    else:
+        staging_metadata = {
+            "mode": "google_sheets_service_account",
+            "result": sheets.stage_batch(batch, plan, preview_records),
+        }
+
     store.append_status(batch_id, "staged", "Batch staged.")
 
     store.append_status(batch_id, "validating", "Running row-level validation.")
-    sheets.write_validation_log(batch_id, preview_records)
+    if appscript.enabled:
+        appscript_validation = await appscript.invoke(
+            action="validate_batch",
+            payload={"batch_id": batch_id},
+        )
+        validation_metadata = {
+            "mode": "appscript",
+            "status": appscript_validation.get("status"),
+            "detail": appscript_validation.get("detail"),
+            "http_status": appscript_validation.get("http_status"),
+            "result": appscript_validation.get("data", {}),
+        }
+        validation_data = appscript_validation.get("data", {})
+        if isinstance(validation_data, dict):
+            summary_data = validation_data.get("summary", {})
+            if isinstance(summary_data, dict):
+                try:
+                    validation_summary = ValidationSummary(**summary_data)
+                except Exception:
+                    pass
+
+        if appscript_validation.get("status") != "ok" and sheets.enabled:
+            sheets.write_validation_log(batch_id, preview_records)
+            validation_metadata["fallback"] = {
+                "mode": "google_sheets_service_account",
+                "result": "validation log written from backend fallback",
+            }
+        elif appscript_validation.get("status") != "ok":
+            store.append_status(batch_id, "failed", "Apps Script validation failed.")
+            raise RuntimeError(
+                appscript_validation.get("detail")
+                or "Apps Script validation failed and no backend fallback is configured."
+            )
+    else:
+        sheets.write_validation_log(batch_id, preview_records)
+        validation_metadata = {
+            "mode": "google_sheets_service_account",
+            "result": "validation log written",
+        }
+
+    appscript_preview_metadata: dict = {}
+    if appscript.enabled:
+        appscript_preview = await appscript.invoke(
+            action="get_batch_preview",
+            payload={"batch_id": batch_id},
+        )
+        appscript_preview_metadata = {
+            "mode": "appscript",
+            "status": appscript_preview.get("status"),
+            "detail": appscript_preview.get("detail"),
+            "http_status": appscript_preview.get("http_status"),
+        }
+
     if validation_summary.blocked > 0:
         store.append_status(batch_id, "validated_failed", "Validation produced blocked records.")
         final_status = "validated_failed"
@@ -174,6 +273,8 @@ async def generate_import_assistant_batch(
             "metadata": {
                 "validation_phase_status": final_status,
                 "staging": staging_metadata,
+                "validation": validation_metadata,
+                "preview_roundtrip": appscript_preview_metadata,
             },
         },
     )
@@ -212,9 +313,10 @@ def get_preview(batch_id: str) -> PreviewResponse:
     )
 
 
-def apply_approval(batch_id: str, approved_by: str, decisions: list[dict]) -> ApprovalResponse:
+async def apply_approval(batch_id: str, approved_by: str, decisions: list[dict]) -> ApprovalResponse:
     store = get_batch_store()
     sheets = SheetsService()
+    appscript = AppScriptBridgeService()
     batch = store.get_batch(batch_id)
     if not batch:
         raise KeyError(batch_id)
@@ -240,11 +342,45 @@ def apply_approval(batch_id: str, approved_by: str, decisions: list[dict]) -> Ap
         },
     )
     store.append_status(batch_id, status, "Record-level approval decisions saved.")
-    sheets.write_approval_log(batch_id, decisions)
+    approval_sync_metadata: dict = {}
+    if appscript.enabled:
+        appscript_result = await appscript.invoke(
+            action="update_approval_status",
+            payload={
+                "batch_id": batch_id,
+                "approved_by": approved_by,
+                "records": decisions,
+            },
+        )
+        approval_sync_metadata = {
+            "mode": "appscript",
+            "status": appscript_result.get("status"),
+            "detail": appscript_result.get("detail"),
+            "http_status": appscript_result.get("http_status"),
+            "result": appscript_result.get("data", {}),
+        }
+        if appscript_result.get("status") != "ok" and sheets.enabled:
+            fallback_rows = sheets.write_approval_log(batch_id, decisions)
+            approval_sync_metadata["fallback"] = {
+                "mode": "google_sheets_service_account",
+                "rows_written": fallback_rows,
+            }
+        elif appscript_result.get("status") != "ok":
+            raise RuntimeError(
+                appscript_result.get("detail")
+                or "Approval sync failed: Apps Script unavailable and no backend fallback configured."
+            )
+    else:
+        rows_written = sheets.write_approval_log(batch_id, decisions)
+        approval_sync_metadata = {
+            "mode": "google_sheets_service_account",
+            "rows_written": rows_written,
+        }
 
     return ApprovalResponse(
         batch_id=batch_id,
         status=status,  # type: ignore[arg-type]
         summary=ApprovalSummary(**counts),
         message="Approval decisions saved.",
+        metadata={"approval_sync": approval_sync_metadata},
     )

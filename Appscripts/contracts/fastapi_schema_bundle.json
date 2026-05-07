@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-07T20:13:09.084375+00:00",
+  "generated_at": "2026-05-07T21:48:56.167617+00:00",
   "source": "backend/app/models/schemas.py",
   "routes": {
     "generate": {
@@ -23,6 +23,17 @@
       "path": "/api/import-assistant/approve",
       "request_model": "ApprovalRequest",
       "response_model": "ApprovalResponse"
+    },
+    "integrations_status": {
+      "method": "GET",
+      "path": "/api/import-assistant/integrations/status",
+      "response_model": "IntegrationStatusResponse"
+    },
+    "zendesk_validate": {
+      "method": "POST",
+      "path": "/api/import-assistant/zendesk/validate",
+      "request_model": "ZendeskCredentialValidationRequest",
+      "response_model": "ZendeskCredentialValidationResponse"
     }
   },
   "models": {
@@ -884,6 +895,11 @@
         "message": {
           "title": "Message",
           "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
         }
       },
       "required": [
@@ -976,6 +992,132 @@
         "status"
       ],
       "title": "AppScriptActionResponse",
+      "type": "object"
+    },
+    "IntegrationStatusResponse": {
+      "properties": {
+        "appscript": {
+          "additionalProperties": true,
+          "title": "Appscript",
+          "type": "object"
+        },
+        "sheets_backend_mode": {
+          "additionalProperties": true,
+          "title": "Sheets Backend Mode",
+          "type": "object"
+        },
+        "zendesk": {
+          "additionalProperties": true,
+          "title": "Zendesk",
+          "type": "object"
+        }
+      },
+      "title": "IntegrationStatusResponse",
+      "type": "object"
+    },
+    "ZendeskCredentialValidationRequest": {
+      "properties": {
+        "subdomain": {
+          "maxLength": 200,
+          "minLength": 2,
+          "title": "Subdomain",
+          "type": "string"
+        },
+        "email": {
+          "maxLength": 254,
+          "minLength": 3,
+          "title": "Email",
+          "type": "string"
+        },
+        "api_token": {
+          "maxLength": 512,
+          "minLength": 6,
+          "title": "Api Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subdomain",
+        "email",
+        "api_token"
+      ],
+      "title": "ZendeskCredentialValidationRequest",
+      "type": "object"
+    },
+    "ZendeskCredentialValidationResponse": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "subdomain": {
+          "title": "Subdomain",
+          "type": "string"
+        },
+        "base_url": {
+          "title": "Base Url",
+          "type": "string"
+        },
+        "account_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Account Name"
+        },
+        "authenticated_user": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authenticated User"
+        },
+        "authenticated_user_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authenticated User Role"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        }
+      },
+      "required": [
+        "ok",
+        "detail",
+        "subdomain",
+        "base_url"
+      ],
+      "title": "ZendeskCredentialValidationResponse",
       "type": "object"
     }
   }

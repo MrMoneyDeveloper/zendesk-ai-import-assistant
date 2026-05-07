@@ -170,6 +170,7 @@ class ApprovalResponse(BaseModel):
     status: BatchStatus
     summary: ApprovalSummary
     message: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AppScriptActionRequest(BaseModel):
@@ -195,3 +196,51 @@ class AppScriptActionResponse(BaseModel):
     detail: str | None = None
     http_status: int | None = None
     data: dict[str, Any] = Field(default_factory=dict)
+
+
+class IntegrationStatusResponse(BaseModel):
+    appscript: dict[str, Any] = Field(default_factory=dict)
+    sheets_backend_mode: dict[str, Any] = Field(default_factory=dict)
+    zendesk: dict[str, Any] = Field(default_factory=dict)
+
+
+class ZendeskCredentialValidationRequest(BaseModel):
+    subdomain: str = Field(..., min_length=2, max_length=200)
+    email: str = Field(..., min_length=3, max_length=254)
+    api_token: str = Field(..., min_length=6, max_length=512)
+
+    @field_validator("subdomain")
+    @classmethod
+    def normalize_subdomain(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if cleaned.startswith("https://"):
+            cleaned = cleaned.removeprefix("https://")
+        if cleaned.startswith("http://"):
+            cleaned = cleaned.removeprefix("http://")
+        if cleaned.endswith(".zendesk.com"):
+            cleaned = cleaned.removesuffix(".zendesk.com")
+        cleaned = cleaned.strip("/")
+        if "." in cleaned:
+            raise ValueError("Provide Zendesk subdomain only (for example: acme), not a full domain.")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("api_token")
+    @classmethod
+    def normalize_token(cls, value: str) -> str:
+        return value.strip()
+
+
+class ZendeskCredentialValidationResponse(BaseModel):
+    ok: bool
+    detail: str
+    subdomain: str
+    base_url: str
+    account_name: str | None = None
+    authenticated_user: str | None = None
+    authenticated_user_role: str | None = None
+    http_status: int | None = None

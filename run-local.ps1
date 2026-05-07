@@ -119,8 +119,8 @@ try {
   Write-Host "Pipeline running. Press Ctrl+C to stop both services."
 
   while ($true) {
-    Receive-Job -Job $backendJob -Keep -ErrorAction SilentlyContinue
-    Receive-Job -Job $frontendJob -Keep -ErrorAction SilentlyContinue
+    Receive-Job -Job $backendJob -ErrorAction SilentlyContinue
+    Receive-Job -Job $frontendJob -ErrorAction SilentlyContinue
 
     if ($backendJob.State -notin @("Running", "NotStarted")) {
       throw "Backend job stopped unexpectedly with state '$($backendJob.State)'."

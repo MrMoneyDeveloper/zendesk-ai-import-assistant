@@ -76,6 +76,10 @@ class Settings:
     appscript_web_app_url: str
     appscript_api_key: str
     appscript_timeout_seconds: float
+    zendesk_subdomain: str
+    zendesk_email: str
+    zendesk_api_token: str
+    zendesk_target_environment: str
 
 
 @lru_cache
@@ -107,4 +111,8 @@ def get_settings() -> Settings:
         appscript_web_app_url=os.getenv("APPS_SCRIPT_WEB_APP_URL", "").strip(),
         appscript_api_key=os.getenv("APPS_SCRIPT_API_KEY", "").strip(),
         appscript_timeout_seconds=float(os.getenv("APPS_SCRIPT_TIMEOUT_SECONDS", "20")),
+        zendesk_subdomain=os.getenv("ZENDESK_SUBDOMAIN", "").strip(),
+        zendesk_email=os.getenv("ZENDESK_EMAIL", "").strip(),
+        zendesk_api_token=os.getenv("ZENDESK_API_TOKEN", "").strip(),
+        zendesk_target_environment=os.getenv("ZENDESK_TARGET_ENVIRONMENT", "sandbox").strip(),
     )

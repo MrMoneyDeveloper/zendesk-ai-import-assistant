@@ -17,6 +17,9 @@ REQUIRED_MODELS = {
     'ApprovalResponse',
     'AppScriptActionRequest',
     'AppScriptActionResponse',
+    'IntegrationStatusResponse',
+    'ZendeskCredentialValidationRequest',
+    'ZendeskCredentialValidationResponse',
 }
 
 

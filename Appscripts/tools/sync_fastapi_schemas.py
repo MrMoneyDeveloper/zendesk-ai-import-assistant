@@ -28,6 +28,9 @@ MODEL_NAMES = [
     'ApprovalResponse',
     'AppScriptActionRequest',
     'AppScriptActionResponse',
+    'IntegrationStatusResponse',
+    'ZendeskCredentialValidationRequest',
+    'ZendeskCredentialValidationResponse',
 ]
 
 ROUTE_CONTRACTS = {
@@ -52,6 +55,17 @@ ROUTE_CONTRACTS = {
         'path': '/api/import-assistant/approve',
         'request_model': 'ApprovalRequest',
         'response_model': 'ApprovalResponse',
+    },
+    'integrations_status': {
+        'method': 'GET',
+        'path': '/api/import-assistant/integrations/status',
+        'response_model': 'IntegrationStatusResponse',
+    },
+    'zendesk_validate': {
+        'method': 'POST',
+        'path': '/api/import-assistant/zendesk/validate',
+        'request_model': 'ZendeskCredentialValidationRequest',
+        'response_model': 'ZendeskCredentialValidationResponse',
     },
 }
 

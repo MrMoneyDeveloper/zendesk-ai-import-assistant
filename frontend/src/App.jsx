@@ -5,9 +5,18 @@ import PromptComposer from "./components/chat/PromptComposer";
 import PreviewWorkspace from "./components/chat/PreviewWorkspace";
 import Sidebar from "./components/chat/Sidebar";
 import StatusRibbon from "./components/chat/StatusRibbon";
+import IntegrationPanel from "./components/chat/IntegrationPanel";
 import { Button } from "./components/ui/button";
 import { Card, CardContent } from "./components/ui/card";
-import { approveBatch, generateBatch, getJob, getPreview, testApis } from "./services/api";
+import {
+  approveBatch,
+  generateBatch,
+  getIntegrationsStatus,
+  getJob,
+  getPreview,
+  testApis,
+  validateZendeskCredentials,
+} from "./services/api";
 import { useImportAssistantStore } from "./store/importAssistantStore";
 
 function App() {
@@ -34,6 +43,12 @@ function App() {
       queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
       queryClient.invalidateQueries({ queryKey: ["preview", data.batch_id] });
     },
+  });
+
+  const integrationsQuery = useQuery({
+    queryKey: ["integrations-status"],
+    queryFn: getIntegrationsStatus,
+    refetchInterval: 15000,
   });
 
   const jobQuery = useQuery({
@@ -67,6 +82,10 @@ function App() {
     },
   });
 
+  const zendeskValidateMutation = useMutation({
+    mutationFn: validateZendeskCredentials,
+  });
+
   const currentStatus = jobQuery.data?.status || generateMutation.data?.status || null;
 
   const saveApproval = () => {
@@ -93,7 +112,14 @@ function App() {
     });
   };
 
-  const errors = [generateMutation.error, jobQuery.error, previewQuery.error, approveMutation.error]
+  const errors = [
+    generateMutation.error,
+    jobQuery.error,
+    previewQuery.error,
+    approveMutation.error,
+    integrationsQuery.error,
+    zendeskValidateMutation.error,
+  ]
     .filter(Boolean)
     .map((err) => err?.response?.data?.detail || err?.message);
 
@@ -119,6 +145,15 @@ function App() {
             </div>
 
             <StatusRibbon batchId={batchId} status={currentStatus} testResult={testResult} />
+            <IntegrationPanel
+              integrationsStatus={integrationsQuery.data}
+              integrationsLoading={integrationsQuery.isLoading}
+              generateMetadata={generatedData?.metadata}
+              approvalMetadata={approveMutation.data?.metadata}
+              onValidateZendesk={(payload) => zendeskValidateMutation.mutate(payload)}
+              isValidatingZendesk={zendeskValidateMutation.isPending}
+              zendeskValidationResult={zendeskValidateMutation.data}
+            />
 
             <PromptComposer
               onSubmitPrompt={submitPrompt}

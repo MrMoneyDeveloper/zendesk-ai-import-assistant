@@ -57,6 +57,19 @@ vi.mock("./services/api", () => ({
     summary: { approved: 1, skipped: 0, edit_later: 0 },
     message: "ok",
   })),
+  getIntegrationsStatus: vi.fn(async () => ({
+    appscript: { configured: true, health: "ok" },
+    sheets_backend_mode: { service_account_mode_enabled: false },
+    zendesk: { configured: false },
+  })),
+  validateZendeskCredentials: vi.fn(async () => ({
+    ok: true,
+    detail: "Zendesk credentials are valid.",
+    subdomain: "example",
+    base_url: "https://example.zendesk.com",
+    authenticated_user: "Local User",
+    authenticated_user_role: "admin",
+  })),
 }));
 
 function renderApp() {

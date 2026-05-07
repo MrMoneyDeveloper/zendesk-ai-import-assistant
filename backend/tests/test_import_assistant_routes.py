@@ -21,6 +21,21 @@ class StubSheetsService:
         return 0
 
 
+class StubAppScriptBridgeService:
+    @property
+    def enabled(self):
+        return False
+
+    async def invoke(self, action, payload=None, method="POST"):
+        return {
+            "action": action,
+            "status": "skipped",
+            "detail": "stubbed",
+            "http_status": None,
+            "data": {},
+        }
+
+
 def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
@@ -42,6 +57,7 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
     monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
     monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
 
     from app.main import app
 

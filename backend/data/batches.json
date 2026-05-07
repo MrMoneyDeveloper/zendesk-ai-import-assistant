@@ -545,6 +545,140 @@
           "message": "Google Sheets is not configured; staging skipped."
         }
       }
+    },
+    "BATCH-20260507-212609-AA66FD": {
+      "batch_id": "BATCH-20260507-212609-AA66FD",
+      "status": "approved",
+      "prompt": "build me a trigger",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-07T21:26:09.513201+00:00",
+      "updated_at": "2026-05-07T21:27:23.635953+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-07T21:26:09.513201+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-07T21:26:09.518590+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-07T21:26:09.521625+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-07T21:26:10.534730+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-07T21:26:10.538093+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-07T21:26:10.541018+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-07T21:26:11.802092+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-07T21:26:11.804961+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-07T21:26:11.807101+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-07T21:26:11.809761+00:00"
+        },
+        {
+          "status": "validated_passed",
+          "message": "Validation passed.",
+          "at": "2026-05-07T21:26:11.811827+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-07T21:26:11.814828+00:00"
+        },
+        {
+          "status": "approved",
+          "message": "Record-level approval decisions saved.",
+          "at": "2026-05-07T21:27:23.635938+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "triggers",
+          "title": "Auto-assign new tickets to Support Team",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "passed",
+          "warnings": [],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [
+            {
+              "all": [
+                {
+                  "field": "ticket.status",
+                  "operator": "is",
+                  "value": "new"
+                },
+                {
+                  "field": "ticket.assignee_id",
+                  "operator": "blank",
+                  "value": ""
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "field": "ticket.group_id",
+              "value": "Support Team"
+            }
+          ]
+        }
+      ],
+      "generated_counts": {
+        "triggers": 1
+      },
+      "validation_summary": {
+        "passed": 1,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "trigger",
+        "intent": "create",
+        "confidence": 0.9
+      },
+      "metadata": {
+        "validation_phase_status": "validated_passed",
+        "staging": {
+          "sheet_enabled": false,
+          "sheet_id": "",
+          "message": "Google Sheets is not configured; staging skipped."
+        }
+      },
+      "approved_by": "local-user"
     }
   }
 }
