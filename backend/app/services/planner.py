@@ -12,6 +12,8 @@ async def run_planner(
     *,
     dependency_mode: str = "match_existing_or_create_new",
     related_objects: list[dict] | None = None,
+    reference_catalog: dict | None = None,
+    recent_batch_context: list[str] | None = None,
     context_notes: str | None = None,
 ) -> dict:
     cleaned_prompt = ensure_prompt_is_valid(prompt)
@@ -27,6 +29,8 @@ async def run_planner(
         cleaned_prompt,
         dependency_mode=dependency_mode,
         related_objects=related_objects,
+        reference_catalog=reference_catalog,
+        recent_batch_context=recent_batch_context,
         context_notes=context_notes,
     )
 

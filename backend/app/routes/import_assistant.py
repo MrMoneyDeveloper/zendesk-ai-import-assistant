@@ -149,6 +149,7 @@ async def deploy_to_zendesk(request: ZendeskDeployRequest) -> ZendeskDeployRespo
             email=request.email,
             api_token=request.api_token,
             dry_run=request.dry_run,
+            on_existing=request.on_existing,
         )
         return ZendeskDeployResponse(**result)
     except KeyError as exc:

@@ -39,6 +39,7 @@ export default function StatusRibbon({
   approvalResult,
   deployEnabled = false,
   deployTarget = "",
+  onExistingMode = "create_new",
 }) {
   const variant = statusToVariant[status] || "neutral";
   const stageStatus = generateMetadata?.staging?.status;
@@ -95,6 +96,7 @@ export default function StatusRibbon({
         <div className="rounded border border-slate-800 bg-slate-950/60 p-2">
           <p className="mb-1 font-semibold text-slate-200">3. Deploy to Zendesk</p>
           {deployEnabled ? <Badge variant="success">enabled</Badge> : <Badge variant="warning">inactive</Badge>}
+          {deployEnabled ? <p className="mt-1 text-slate-400">on existing: {onExistingMode}</p> : null}
         </div>
       </div>
 

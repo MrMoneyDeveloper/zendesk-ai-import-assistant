@@ -50,6 +50,7 @@ def normalize_generated_rows(rows: list[dict]) -> list[dict]:
 
         record = GeneratedRecord.model_validate(
             {
+                "object_type": row.get("object_type", "triggers"),
                 "title": row.get("title", "Untitled Rule"),
                 "conditions": remapped_conditions,
                 "actions": remapped_actions,

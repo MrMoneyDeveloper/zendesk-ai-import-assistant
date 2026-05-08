@@ -24,14 +24,20 @@ from app.services.zendesk import deploy_records_to_zendesk
 TAB_OBJECT_TYPES = {
     "trigger": "triggers",
     "triggers": "triggers",
+    "automation": "automations",
+    "automations": "automations",
     "macro": "macros",
     "macros": "macros",
     "view": "views",
     "views": "views",
+    "group": "groups",
+    "groups": "groups",
     "ticket_field": "ticket_fields",
     "ticket_fields": "ticket_fields",
     "ticket_form": "ticket_forms",
     "ticket_forms": "ticket_forms",
+    "article": "articles",
+    "articles": "articles",
     "tag_dictionary": "tag_dictionary",
 }
 
@@ -161,13 +167,14 @@ def _build_preview_records(
     plan: dict,
     generated_data: list[dict],
 ) -> tuple[list[dict], ValidationSummary]:
-    object_type = _normalize_object_type(str(plan.get("object_type", "triggers")))
+    plan_object_type = _normalize_object_type(str(plan.get("object_type", "triggers")))
     records: list[dict] = []
     passed = 0
     warnings = 0
     blocked = 0
 
     for idx, item in enumerate(generated_data, start=1):
+        object_type = _normalize_object_type(str(item.get("object_type", plan_object_type)))
         title = str(item.get("title", "")).strip()
         conditions = item.get("conditions", []) or []
         actions = item.get("actions", []) or []
@@ -186,8 +193,10 @@ def _build_preview_records(
             validation_status = "failed"
         if not actions:
             row_warnings.append("No actions defined for this record.")
-        if object_type == "triggers" and not conditions:
-            row_warnings.append("Trigger has no conditions; verify routing logic.")
+        if object_type in {"triggers", "automations", "views"} and not conditions:
+            row_warnings.append("Record has no conditions; verify routing/filter logic.")
+        if object_type in {"groups"} and not title:
+            row_warnings.append("Group record requires a name/title.")
         if dependency_notes:
             row_warnings.extend(dependency_notes)
 
@@ -233,6 +242,10 @@ async def generate_import_assistant_batch(
     sheets = SheetsService()
     appscript = AppScriptBridgeService()
     related_objects = [item.model_dump() for item in request.related_objects]
+    reference_catalog = {
+        key: [item.model_dump() for item in values]
+        for key, values in (request.reference_catalog or {}).items()
+    }
     related_lookup = _build_related_lookup(related_objects)
 
     batch_id = _new_batch_id()
@@ -261,6 +274,8 @@ async def generate_import_assistant_batch(
         request.prompt,
         dependency_mode=request.dependency_mode,
         related_objects=related_objects,
+        reference_catalog=reference_catalog,
+        recent_batch_context=request.recent_batch_context,
         context_notes=request.context_notes,
     )
     store.append_status(batch_id, "planned", "Planner output received.")
@@ -271,6 +286,8 @@ async def generate_import_assistant_batch(
         plan,
         dependency_mode=request.dependency_mode,
         related_objects=related_objects,
+        reference_catalog=reference_catalog,
+        recent_batch_context=request.recent_batch_context,
         context_notes=request.context_notes,
     )
     store.append_status(batch_id, "generated", "Structured records generated.")
@@ -305,6 +322,9 @@ async def generate_import_assistant_batch(
                     "dependency_mode": request.dependency_mode,
                     "dependency_notes": plan.get("dependency_notes", ""),
                     "related_objects_selected": len(related_objects),
+                    "reference_catalog_counts": {
+                        key: len(values) for key, values in reference_catalog.items()
+                    },
                 },
                 "records": preview_records,
             },
@@ -415,11 +435,15 @@ async def generate_import_assistant_batch(
                 "dependency_mode": request.dependency_mode,
                 "dependency_notes": plan.get("dependency_notes", ""),
                 "related_objects_selected": len(related_objects),
+                "reference_catalog_counts": {
+                    key: len(values) for key, values in reference_catalog.items()
+                },
             },
             "metadata": {
                 "validation_phase_status": final_status,
                 "dependency_resolution": dependency_resolution,
                 "context_notes": request.context_notes or "",
+                "recent_batch_context": request.recent_batch_context,
                 "staging": staging_metadata,
                 "validation": validation_metadata,
                 "preview_roundtrip": appscript_preview_metadata,
@@ -562,6 +586,7 @@ async def deploy_batch_to_zendesk(
     email: str,
     api_token: str,
     dry_run: bool = False,
+    on_existing: str = "create_new",
 ) -> dict:
     store = get_batch_store()
     appscript = AppScriptBridgeService()
@@ -578,6 +603,7 @@ async def deploy_batch_to_zendesk(
         api_token=api_token,
         records=records,
         dry_run=dry_run,
+        on_existing=on_existing,
     )
     summary = deployment.get("summary", {})
     results = deployment.get("results", [])
@@ -615,6 +641,9 @@ async def deploy_batch_to_zendesk(
     if attempted == 0:
         final_status = "deployed_partial"
         final_message = "No approved deployable records were found for deployment."
+    elif deployed == 0 and failed == 0:
+        final_status = "deployed_partial"
+        final_message = "No objects were created or updated. All approved items were skipped."
     elif failed > 0 and deployed > 0:
         final_status = "deployed_partial"
         final_message = "Deployment completed with partial failures."
@@ -652,5 +681,6 @@ async def deploy_batch_to_zendesk(
             "base_url": deployment.get("base_url"),
             "execution_log": execution_log_result,
             "dry_run": dry_run,
+            "on_existing": on_existing,
         },
     }

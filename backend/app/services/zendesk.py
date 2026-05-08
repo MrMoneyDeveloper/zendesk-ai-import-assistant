@@ -168,20 +168,160 @@ async def fetch_zendesk_reference_catalog(
     }
 
 
-def _build_trigger_payload(record: dict) -> dict:
+def _build_rule_payload(record: dict, root_key: str) -> dict:
     conditions = record.get("conditions", []) or []
     actions = record.get("actions", []) or []
+    all_conditions = [_normalize_condition(item) for item in conditions if item.get("field")]
+    if not all_conditions:
+        all_conditions = [{"field": "status", "operator": "less_than", "value": "solved"}]
     return {
-        "trigger": {
+        root_key: {
             "title": str(record.get("title", "Untitled trigger")).strip() or "Untitled trigger",
             "active": True,
             "conditions": {
-                "all": [_normalize_condition(item) for item in conditions if item.get("field")],
+                "all": all_conditions,
                 "any": [],
             },
             "actions": [_normalize_action(item) for item in actions if item.get("field")],
         }
     }
+
+
+def _build_trigger_payload(record: dict) -> dict:
+    return _build_rule_payload(record, "trigger")
+
+
+def _build_automation_payload(record: dict) -> dict:
+    return _build_rule_payload(record, "automation")
+
+
+def _find_action_values(record: dict, target_field: str) -> list:
+    actions = record.get("actions", []) or []
+    results = []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        field = str(action.get("field", "")).strip().lower()
+        if field == target_field:
+            results.append(action.get("value"))
+    return results
+
+
+def _find_first_value(record: dict, target_field: str):
+    values = _find_action_values(record, target_field)
+    if values:
+        return values[0]
+    for condition in record.get("conditions", []) or []:
+        if not isinstance(condition, dict):
+            continue
+        field = str(condition.get("field", "")).strip().lower()
+        if field == target_field:
+            return condition.get("value")
+    return None
+
+
+def _build_macro_payload(record: dict) -> dict:
+    actions = [_normalize_action(item) for item in (record.get("actions", []) or []) if item.get("field")]
+    return {
+        "macro": {
+            "title": str(record.get("title", "Untitled macro")).strip() or "Untitled macro",
+            "active": True,
+            "actions": actions,
+        }
+    }
+
+
+def _build_view_payload(record: dict) -> dict:
+    conditions = record.get("conditions", []) or []
+    all_conditions = [_normalize_condition(item) for item in conditions if item.get("field")]
+    if not all_conditions:
+        all_conditions = [{"field": "status", "operator": "less_than", "value": "solved"}]
+
+    raw_columns = _find_first_value(record, "output_columns")
+    if isinstance(raw_columns, list):
+        output_columns = [str(item).strip() for item in raw_columns if str(item).strip()]
+    elif isinstance(raw_columns, str):
+        output_columns = [part.strip() for part in raw_columns.split(",") if part.strip()]
+    else:
+        output_columns = ["status", "updated", "subject"]
+
+    return {
+        "view": {
+            "title": str(record.get("title", "Untitled view")).strip() or "Untitled view",
+            "active": True,
+            "all": all_conditions,
+            "any": [],
+            "output": {"columns": output_columns},
+        }
+    }
+
+
+def _build_group_payload(record: dict) -> dict:
+    name = str(record.get("title", "")).strip() or "Untitled group"
+    description_value = _find_first_value(record, "description")
+    payload = {"group": {"name": name}}
+    if description_value:
+        payload["group"]["description"] = str(description_value)
+    return payload
+
+
+def _build_ticket_form_payload(record: dict) -> dict:
+    payload = {"ticket_form": {"name": str(record.get("title", "Untitled form")).strip() or "Untitled form"}}
+    raw_field_ids = _find_first_value(record, "ticket_field_ids")
+    if isinstance(raw_field_ids, list):
+        ids = [int(str(item)) for item in raw_field_ids if str(item).isdigit()]
+        if ids:
+            payload["ticket_form"]["ticket_field_ids"] = ids
+    elif isinstance(raw_field_ids, str):
+        ids = [int(part.strip()) for part in raw_field_ids.split(",") if part.strip().isdigit()]
+        if ids:
+            payload["ticket_form"]["ticket_field_ids"] = ids
+    return payload
+
+
+def _build_ticket_field_payload(record: dict) -> dict:
+    title = str(record.get("title", "Untitled field")).strip() or "Untitled field"
+    field_type = str(_find_first_value(record, "field_type") or "text").strip().lower()
+    payload = {"ticket_field": {"title": title, "type": field_type}}
+    tag_value = _find_first_value(record, "tag")
+    if tag_value:
+        payload["ticket_field"]["tag"] = str(tag_value).strip()
+    title_portal = _find_first_value(record, "title_in_portal")
+    if title_portal:
+        payload["ticket_field"]["title_in_portal"] = str(title_portal).strip()
+    options = _find_first_value(record, "custom_field_options")
+    if isinstance(options, list):
+        parsed_options = []
+        for item in options:
+            if isinstance(item, dict) and item.get("name") and item.get("value"):
+                parsed_options.append({"name": str(item["name"]), "value": str(item["value"])})
+        if parsed_options:
+            payload["ticket_field"]["custom_field_options"] = parsed_options
+    return payload
+
+
+def _build_article_payload(record: dict) -> tuple[dict, str | None]:
+    title = str(record.get("title", "Untitled article")).strip() or "Untitled article"
+    body = str(_find_first_value(record, "body") or "").strip()
+    if not body:
+        body = f"<p>{title}</p>"
+    locale = str(_find_first_value(record, "locale") or "en-us").strip().lower()
+    section_id = _find_first_value(record, "section_id")
+    if not section_id:
+        return {}, "Article requires a section_id in conditions/actions."
+    section_id_text = str(section_id).strip()
+    if not section_id_text.isdigit():
+        return {}, "Article section_id must be numeric."
+    payload = {
+        "article": {
+            "title": title,
+            "body": body,
+            "locale": locale,
+            "draft": False,
+        },
+        "notify_subscribers": False,
+    }
+    return payload, section_id_text
 
 
 async def validate_zendesk_credentials(subdomain: str, email: str, api_token: str) -> dict:
@@ -257,8 +397,9 @@ async def deploy_records_to_zendesk(
     api_token: str,
     records: list[dict],
     dry_run: bool = False,
+    on_existing: str = "create_new",
 ) -> dict:
-    base_url = _build_base_url(subdomain)
+    base_url = _build_base_url(_normalize_subdomain(subdomain))
     auth_user = f"{email}/token"
 
     results: list[dict] = []
@@ -267,8 +408,90 @@ async def deploy_records_to_zendesk(
     failed = 0
     skipped = 0
     group_lookup_cache: dict[str, str] | None = None
+    existing_cache: dict[str, dict[str, str]] = {}
+
+    object_mappings = {
+        "trigger": "triggers",
+        "triggers": "triggers",
+        "automation": "automations",
+        "automations": "automations",
+        "macro": "macros",
+        "macros": "macros",
+        "view": "views",
+        "views": "views",
+        "group": "groups",
+        "groups": "groups",
+        "ticket_form": "ticket_forms",
+        "ticket_forms": "ticket_forms",
+        "ticket_field": "ticket_fields",
+        "ticket_fields": "ticket_fields",
+        "article": "articles",
+        "articles": "articles",
+    }
 
     async with httpx.AsyncClient(timeout=30) as client:
+        async def _safe_list(path: str) -> dict:
+            try:
+                response = await client.get(
+                    f"{base_url}{path}",
+                    auth=(auth_user, api_token),
+                    headers={"Content-Type": "application/json"},
+                )
+                if not response.is_success:
+                    return {}
+                return response.json() if response.text else {}
+            except Exception:
+                return {}
+
+        async def _load_existing_map(object_type: str) -> dict[str, str]:
+            if object_type in existing_cache:
+                return existing_cache[object_type]
+
+            endpoint_by_type = {
+                "triggers": "/api/v2/triggers.json",
+                "automations": "/api/v2/automations.json",
+                "macros": "/api/v2/macros.json",
+                "views": "/api/v2/views.json",
+                "groups": "/api/v2/groups.json",
+                "ticket_forms": "/api/v2/ticket_forms.json",
+                "ticket_fields": "/api/v2/ticket_fields.json",
+                "articles": "/api/v2/help_center/articles.json?per_page=100",
+            }
+            items_key_by_type = {
+                "triggers": "triggers",
+                "automations": "automations",
+                "macros": "macros",
+                "views": "views",
+                "groups": "groups",
+                "ticket_forms": "ticket_forms",
+                "ticket_fields": "ticket_fields",
+                "articles": "articles",
+            }
+
+            path = endpoint_by_type.get(object_type)
+            if not path:
+                existing_cache[object_type] = {}
+                return {}
+
+            payload = await _safe_list(path)
+            items_key = items_key_by_type.get(object_type, object_type)
+            entries = payload.get(items_key, []) if isinstance(payload, dict) else []
+            match_map: dict[str, str] = {}
+            for item in entries:
+                if not isinstance(item, dict):
+                    continue
+                item_id = str(item.get("id", "")).strip()
+                if not item_id:
+                    continue
+                if object_type in {"groups", "ticket_forms"}:
+                    name = str(item.get("name", "")).strip().lower()
+                else:
+                    name = str(item.get("title", item.get("name", ""))).strip().lower()
+                if name:
+                    match_map[name] = item_id
+            existing_cache[object_type] = match_map
+            return match_map
+
         async def resolve_group_id(raw_value) -> str | None:
             nonlocal group_lookup_cache
             if raw_value is None:
@@ -306,7 +529,8 @@ async def deploy_records_to_zendesk(
 
         for record in records:
             record_id = str(record.get("record_id", "")).strip()
-            object_type = str(record.get("object_type", "")).strip().lower()
+            raw_object_type = str(record.get("object_type", "")).strip().lower()
+            object_type = object_mappings.get(raw_object_type, raw_object_type)
             title = str(record.get("title", "")).strip()
             executed_at = _now_iso()
             decision = str(record.get("import_decision", "")).strip().lower()
@@ -329,7 +553,17 @@ async def deploy_records_to_zendesk(
 
             attempted += 1
 
-            if object_type not in {"trigger", "triggers"}:
+            supported_types = {
+                "triggers",
+                "automations",
+                "macros",
+                "views",
+                "groups",
+                "ticket_forms",
+                "ticket_fields",
+                "articles",
+            }
+            if object_type not in supported_types:
                 skipped += 1
                 results.append(
                     {
@@ -338,59 +572,148 @@ async def deploy_records_to_zendesk(
                         "title": title,
                         "deployment_status": "skipped",
                         "zendesk_object_id": None,
-                        "execution_message": "Object type deploy not implemented yet; trigger deploy is supported.",
+                        "execution_message": f"Object type '{object_type}' deploy is not implemented yet.",
                         "executed_at": executed_at,
                     }
                 )
                 continue
 
-            payload = _build_trigger_payload(record)
-            actions = payload.get("trigger", {}).get("actions", [])
-            if not actions:
-                failed += 1
+            payload = {}
+            create_path = ""
+            update_path_template = ""
+            response_root = ""
+
+            if object_type == "triggers":
+                payload = _build_trigger_payload(record)
+                create_path = "/api/v2/triggers.json"
+                update_path_template = "/api/v2/triggers/{id}.json"
+                response_root = "trigger"
+            elif object_type == "automations":
+                payload = _build_automation_payload(record)
+                create_path = "/api/v2/automations.json"
+                update_path_template = "/api/v2/automations/{id}.json"
+                response_root = "automation"
+            elif object_type == "macros":
+                payload = _build_macro_payload(record)
+                create_path = "/api/v2/macros.json"
+                update_path_template = "/api/v2/macros/{id}.json"
+                response_root = "macro"
+            elif object_type == "views":
+                payload = _build_view_payload(record)
+                create_path = "/api/v2/views.json"
+                update_path_template = "/api/v2/views/{id}.json"
+                response_root = "view"
+            elif object_type == "groups":
+                payload = _build_group_payload(record)
+                create_path = "/api/v2/groups.json"
+                update_path_template = "/api/v2/groups/{id}.json"
+                response_root = "group"
+            elif object_type == "ticket_forms":
+                payload = _build_ticket_form_payload(record)
+                create_path = "/api/v2/ticket_forms.json"
+                update_path_template = "/api/v2/ticket_forms/{id}.json"
+                response_root = "ticket_form"
+            elif object_type == "ticket_fields":
+                payload = _build_ticket_field_payload(record)
+                create_path = "/api/v2/ticket_fields.json"
+                update_path_template = "/api/v2/ticket_fields/{id}.json"
+                response_root = "ticket_field"
+            elif object_type == "articles":
+                payload, section_id_or_error = _build_article_payload(record)
+                if not payload:
+                    failed += 1
+                    results.append(
+                        {
+                            "record_id": record_id,
+                            "object_type": object_type,
+                            "title": title,
+                            "deployment_status": "failed",
+                            "zendesk_object_id": None,
+                            "execution_message": str(section_id_or_error),
+                            "executed_at": executed_at,
+                        }
+                    )
+                    continue
+                create_path = f"/api/v2/help_center/sections/{section_id_or_error}/articles.json"
+                update_path_template = "/api/v2/help_center/articles/{id}.json"
+                response_root = "article"
+
+            if object_type in {"triggers", "automations"}:
+                rule_key = "trigger" if object_type == "triggers" else "automation"
+                actions = payload.get(rule_key, {}).get("actions", [])
+                if not actions:
+                    failed += 1
+                    results.append(
+                        {
+                            "record_id": record_id,
+                            "object_type": object_type,
+                            "title": title,
+                            "deployment_status": "failed",
+                            "zendesk_object_id": None,
+                            "execution_message": "Record has no valid actions.",
+                            "executed_at": executed_at,
+                        }
+                    )
+                    continue
+
+                unresolved_group = None
+                for action in actions:
+                    if action.get("field") != "group_id":
+                        continue
+                    resolved_group_id = await resolve_group_id(action.get("value"))
+                    if resolved_group_id:
+                        action["value"] = resolved_group_id
+                        continue
+                    raw_group = str(action.get("value", "")).strip()
+                    if raw_group and not raw_group.isdigit():
+                        unresolved_group = raw_group
+                        break
+
+                if unresolved_group:
+                    failed += 1
+                    results.append(
+                        {
+                            "record_id": record_id,
+                            "object_type": object_type,
+                            "title": title,
+                            "deployment_status": "failed",
+                            "zendesk_object_id": None,
+                            "execution_message": (
+                                f"Could not resolve group '{unresolved_group}' to a Zendesk group_id. "
+                                "Use a numeric group_id or an existing exact group name."
+                            ),
+                            "executed_at": executed_at,
+                        }
+                    )
+                    continue
+
+            existing_id = None
+            if on_existing in {"overwrite_existing", "skip_existing"} and title:
+                existing_map = await _load_existing_map(object_type)
+                existing_id = existing_map.get(title.strip().lower())
+
+            if existing_id and on_existing == "skip_existing":
+                skipped += 1
                 results.append(
                     {
                         "record_id": record_id,
                         "object_type": object_type,
                         "title": title,
-                        "deployment_status": "failed",
-                        "zendesk_object_id": None,
-                        "execution_message": "Trigger has no valid actions.",
+                        "deployment_status": "skipped",
+                        "zendesk_object_id": existing_id,
+                        "execution_message": "Skipped because object already exists (on_existing=skip_existing).",
                         "executed_at": executed_at,
                     }
                 )
                 continue
 
-            unresolved_group = None
-            for action in actions:
-                if action.get("field") != "group_id":
-                    continue
-                resolved_group_id = await resolve_group_id(action.get("value"))
-                if resolved_group_id:
-                    action["value"] = resolved_group_id
-                    continue
-                raw_group = str(action.get("value", "")).strip()
-                if raw_group and not raw_group.isdigit():
-                    unresolved_group = raw_group
-                    break
-
-            if unresolved_group:
-                failed += 1
-                results.append(
-                    {
-                        "record_id": record_id,
-                        "object_type": object_type,
-                        "title": title,
-                        "deployment_status": "failed",
-                        "zendesk_object_id": None,
-                        "execution_message": (
-                            f"Could not resolve group '{unresolved_group}' to a Zendesk group_id. "
-                            "Use a numeric group_id or an existing exact group name."
-                        ),
-                        "executed_at": executed_at,
-                    }
-                )
-                continue
+            method = "POST"
+            request_path = create_path
+            success_text = "created"
+            if existing_id and on_existing == "overwrite_existing":
+                method = "PUT"
+                request_path = update_path_template.format(id=existing_id)
+                success_text = "updated"
 
             if dry_run:
                 deployed += 1
@@ -400,20 +723,28 @@ async def deploy_records_to_zendesk(
                         "object_type": object_type,
                         "title": title,
                         "deployment_status": "deployed",
-                        "zendesk_object_id": "DRY-RUN",
-                        "execution_message": "Dry run success. Payload validated locally.",
+                        "zendesk_object_id": existing_id or "DRY-RUN",
+                        "execution_message": f"Dry run success. Payload validated locally ({success_text}).",
                         "executed_at": executed_at,
                     }
                 )
                 continue
 
             try:
-                response = await client.post(
-                    f"{base_url}/api/v2/triggers.json",
-                    auth=(auth_user, api_token),
-                    headers={"Content-Type": "application/json"},
-                    json=payload,
-                )
+                if method == "POST":
+                    response = await client.post(
+                        f"{base_url}{request_path}",
+                        auth=(auth_user, api_token),
+                        headers={"Content-Type": "application/json"},
+                        json=payload,
+                    )
+                else:
+                    response = await client.put(
+                        f"{base_url}{request_path}",
+                        auth=(auth_user, api_token),
+                        headers={"Content-Type": "application/json"},
+                        json=payload,
+                    )
             except httpx.HTTPError as exc:
                 failed += 1
                 results.append(
@@ -422,7 +753,7 @@ async def deploy_records_to_zendesk(
                         "object_type": object_type,
                         "title": title,
                         "deployment_status": "failed",
-                        "zendesk_object_id": None,
+                        "zendesk_object_id": existing_id,
                         "execution_message": f"Zendesk request failed: {exc}",
                         "executed_at": executed_at,
                     }
@@ -436,11 +767,8 @@ async def deploy_records_to_zendesk(
                 response_payload = {}
 
             if response.is_success:
-                trigger_id = (
-                    str(response_payload.get("trigger", {}).get("id"))
-                    if isinstance(response_payload, dict)
-                    else None
-                )
+                response_object = response_payload.get(response_root, {}) if isinstance(response_payload, dict) else {}
+                object_id = str(response_object.get("id")) if isinstance(response_object, dict) and response_object.get("id") is not None else (existing_id or None)
                 deployed += 1
                 results.append(
                     {
@@ -448,8 +776,8 @@ async def deploy_records_to_zendesk(
                         "object_type": object_type,
                         "title": title,
                         "deployment_status": "deployed",
-                        "zendesk_object_id": trigger_id,
-                        "execution_message": "Trigger created successfully.",
+                        "zendesk_object_id": object_id,
+                        "execution_message": f"{object_type.rstrip('s').title()} {success_text} successfully.",
                         "executed_at": executed_at,
                     }
                 )
@@ -471,7 +799,7 @@ async def deploy_records_to_zendesk(
                     "object_type": object_type,
                     "title": title,
                     "deployment_status": "failed",
-                    "zendesk_object_id": None,
+                    "zendesk_object_id": existing_id,
                     "execution_message": detail,
                     "executed_at": executed_at,
                 }

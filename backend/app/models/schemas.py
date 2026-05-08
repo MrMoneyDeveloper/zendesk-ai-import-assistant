@@ -32,6 +32,7 @@ DependencyMode = Literal[
     "force_create_new",
     "force_existing_only",
 ]
+OnExistingMode = Literal["create_new", "overwrite_existing", "skip_existing"]
 
 
 class GenerateRequest(BaseModel):
@@ -104,6 +105,8 @@ class ImportAssistantGenerateRequest(BaseModel):
     requester: str = "local-user"
     dependency_mode: DependencyMode = "match_existing_or_create_new"
     related_objects: list[ContextReference] = Field(default_factory=list)
+    reference_catalog: dict[str, list[ContextReference]] = Field(default_factory=dict)
+    recent_batch_context: list[str] = Field(default_factory=list)
     context_notes: str | None = None
 
     @field_validator("prompt")
@@ -331,6 +334,7 @@ class ZendeskDeployRequest(BaseModel):
     email: str = Field(..., min_length=3, max_length=254)
     api_token: str = Field(..., min_length=6, max_length=512)
     dry_run: bool = False
+    on_existing: OnExistingMode = "create_new"
 
     @field_validator("subdomain")
     @classmethod

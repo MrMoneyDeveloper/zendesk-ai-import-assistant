@@ -57,6 +57,7 @@ function App() {
   const [historySearch, setHistorySearch] = useState("");
   const [selectedContext, setSelectedContext] = useState({});
   const [dependencyMode, setDependencyMode] = useState("match_existing_or_create_new");
+  const [onExistingMode, setOnExistingMode] = useState("create_new");
   const lastContextSyncRef = useRef("");
   const lastContextErrorRef = useRef("");
   const [zendeskValidated, setZendeskValidated] = useState(false);
@@ -304,6 +305,10 @@ function App() {
       return;
     }
     setPrompt(value);
+    const referenceCatalog = contextCatalog || {};
+    const recentBatchContext = (historyItems || []).slice(0, 8).map((item) => (
+      `${item.batch_id} | ${item.status} | ${item.prompt_preview}`
+    ));
     generateMutation.mutate({
       prompt: value,
       target_environment: "sandbox",
@@ -311,9 +316,11 @@ function App() {
       requester: "local-user",
       dependency_mode: dependencyMode,
       related_objects: selectedRelatedObjects,
+      reference_catalog: referenceCatalog,
+      recent_batch_context: recentBatchContext,
       context_notes: selectedRelatedObjects.length
         ? `Selected context objects: ${selectedRelatedObjects.map((obj) => `${obj.object_type}:${obj.name}`).join(", ")}`
-        : "",
+        : "No explicit object selections were made. Use available context catalog and recent batch context.",
     });
   };
 
@@ -351,6 +358,7 @@ function App() {
     setHistorySearch("");
     setSelectedContext({});
     setDependencyMode("match_existing_or_create_new");
+    setOnExistingMode("create_new");
     lastContextSyncRef.current = "";
     lastContextErrorRef.current = "";
     resetFlow();
@@ -390,6 +398,7 @@ function App() {
       email: zendeskCredentials.email,
       api_token: zendeskCredentials.api_token,
       dry_run: false,
+      on_existing: onExistingMode,
     });
   };
 
@@ -462,15 +471,6 @@ function App() {
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm text-slate-500">CX Experts Assistant</span>
               <div className="flex items-center gap-2">
-                <select
-                  value={dependencyMode}
-                  onChange={(event) => setDependencyMode(event.target.value)}
-                  className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200"
-                >
-                  <option value="match_existing_or_create_new">Dependency: match existing, else create</option>
-                  <option value="force_existing_only">Dependency: existing only (strict)</option>
-                  <option value="force_create_new">Dependency: always create new</option>
-                </select>
                 <Button
                   variant="outline"
                   size="sm"
@@ -489,6 +489,19 @@ function App() {
               </div>
             </div>
 
+            <PromptComposer
+              onSubmitPrompt={submitPrompt}
+              isLoading={generateMutation.isPending}
+              defaultPrompt={prompt}
+              isLocked={!zendeskValidated}
+              lockReason="Validate Zendesk credentials first in Integration Diagnostics."
+              dependencyMode={dependencyMode}
+              onDependencyModeChange={setDependencyMode}
+              onExistingMode={onExistingMode}
+              onOnExistingModeChange={setOnExistingMode}
+              selectedContextCount={selectedRelatedObjects.length}
+            />
+
             <StatusRibbon
               batchId={batchId}
               status={currentStatus}
@@ -498,6 +511,7 @@ function App() {
               approvalResult={approveMutation.data}
               deployEnabled={Boolean(integrationsQuery.data?.zendesk?.deploy_endpoint_enabled)}
               deployTarget={zendeskValidationResult?.base_url || ""}
+              onExistingMode={onExistingMode}
             />
             <IntegrationPanel
               integrationsStatus={integrationsQuery.data}
@@ -535,18 +549,10 @@ function App() {
                 </div>
                 <p className="mt-2 text-slate-300">{currentPhaseLabel}</p>
                 <p className="mt-2 text-xs text-slate-400">
-                  Dependency mode: {dependencyMode} | Selected context objects: {selectedRelatedObjects.length}
+                  Dependency mode: {dependencyMode} | Existing object behavior: {onExistingMode} | Selected context objects: {selectedRelatedObjects.length}
                 </p>
               </CardContent>
             </Card>
-
-            <PromptComposer
-              onSubmitPrompt={submitPrompt}
-              isLoading={generateMutation.isPending}
-              defaultPrompt={prompt}
-              isLocked={!zendeskValidated}
-              lockReason="Validate Zendesk credentials first in Integration Diagnostics."
-            />
 
             {errors.length > 0 && (
               <Card className="mt-6 border-rose-800 bg-rose-950/30">

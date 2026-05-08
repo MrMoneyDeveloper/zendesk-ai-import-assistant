@@ -19,6 +19,11 @@ export default function PromptComposer({
   defaultPrompt,
   isLocked = false,
   lockReason = "",
+  dependencyMode = "match_existing_or_create_new",
+  onDependencyModeChange,
+  onExistingMode = "create_new",
+  onOnExistingModeChange,
+  selectedContextCount = 0,
 }) {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -127,10 +132,42 @@ export default function PromptComposer({
   };
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <h1 className="mb-6 text-center text-5xl font-medium text-slate-100">
+    <div className="mx-auto mb-8 w-full max-w-5xl">
+      <h1 className="mb-4 text-center text-5xl font-medium text-slate-100">
         Where should we begin?
       </h1>
+      <div className="mb-3 grid gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-300 md:grid-cols-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-slate-400">Dependency behavior</span>
+          <select
+            value={dependencyMode}
+            onChange={(event) => onDependencyModeChange?.(event.target.value)}
+            className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
+            disabled={isLocked}
+          >
+            <option value="match_existing_or_create_new">Match existing, else create new</option>
+            <option value="force_existing_only">Use existing only (strict)</option>
+            <option value="force_create_new">Always create new</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-slate-400">If object already exists</span>
+          <select
+            value={onExistingMode}
+            onChange={(event) => onOnExistingModeChange?.(event.target.value)}
+            className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
+            disabled={isLocked}
+          >
+            <option value="create_new">Create new anyway</option>
+            <option value="overwrite_existing">Overwrite existing</option>
+            <option value="skip_existing">Skip existing</option>
+          </select>
+        </label>
+        <div className="rounded-md border border-slate-800 bg-slate-950/60 px-2 py-2">
+          <p className="text-slate-400">Selected context</p>
+          <p className="mt-1 font-semibold text-slate-200">{selectedContextCount} objects selected</p>
+        </div>
+      </div>
       <form onSubmit={submit} className="rounded-3xl border border-slate-700 bg-[#2a2d35] p-3 shadow-lg">
         <div className="flex items-center gap-3">
           <button

@@ -60,7 +60,9 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
     monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
 
-    async def fake_deploy_records_to_zendesk(*, subdomain, email, api_token, records, dry_run=False):
+    async def fake_deploy_records_to_zendesk(
+        *, subdomain, email, api_token, records, dry_run=False, on_existing="create_new"
+    ):
         return {
             "summary": {
                 "attempted": 1,
