@@ -280,14 +280,25 @@ function App() {
 
   const currentStatus = jobQuery.data?.status || generateMutation.data?.status || null;
   const selectedRelatedObjects = Object.values(selectedContext);
+  const previewRecords = previewQuery.data?.records || [];
+
+  const buildDecisionPayload = () => {
+    return Object.entries(decisions)
+      .filter(([, importDecision]) => ["approved", "skipped", "edit_later"].includes(importDecision))
+      .map(([record_id, import_decision]) => ({ record_id, import_decision }));
+  };
 
   const saveApproval = () => {
     if (!batchId) return;
-    const records = Object.entries(decisions)
-      .filter(([, import_decision]) => ["approved", "skipped", "edit_later"].includes(import_decision))
-      .map(([record_id, import_decision]) => ({ record_id, import_decision }));
+    const records = buildDecisionPayload();
 
-    if (!records.length) return;
+    if (!records.length) {
+      appendActivity(
+        "info",
+        "No local approval changes to save. Set one or more decisions to approved/skipped/edit_later first."
+      );
+      return;
+    }
     approveMutation.mutate({
       batch_id: batchId,
       approved_by: "local-user",
@@ -387,19 +398,53 @@ function App() {
     });
   };
 
-  const deployToZendesk = () => {
+  const deployToZendesk = async () => {
     if (!batchId || !zendeskCredentials?.subdomain || !zendeskCredentials?.email || !zendeskCredentials?.api_token) {
       appendActivity("error", "Cannot deploy: missing validated Zendesk session credentials.");
       return;
     }
-    deployMutation.mutate({
-      batch_id: batchId,
-      subdomain: zendeskCredentials.subdomain,
-      email: zendeskCredentials.email,
-      api_token: zendeskCredentials.api_token,
-      dry_run: false,
-      on_existing: onExistingMode,
-    });
+
+    try {
+      const localDecisions = buildDecisionPayload();
+      if (localDecisions.length > 0) {
+        appendActivity("info", "Auto-saving local approval changes before deploy.");
+        await approveMutation.mutateAsync({
+          batch_id: batchId,
+          approved_by: "local-user",
+          records: localDecisions,
+        });
+      }
+
+      const hasApprovedRecords = previewRecords.some((row) => {
+        const local = decisions[row.record_id];
+        const effectiveDecision = local || row.import_decision;
+        return effectiveDecision === "approved" && row.deployable;
+      });
+
+      if (!hasApprovedRecords) {
+        appendActivity(
+          "error",
+          "No deployable approved records found. Approve at least one record, save, then deploy."
+        );
+        return;
+      }
+
+      deployMutation.mutate({
+        batch_id: batchId,
+        subdomain: zendeskCredentials.subdomain,
+        email: zendeskCredentials.email,
+        api_token: zendeskCredentials.api_token,
+        dry_run: false,
+        on_existing: onExistingMode,
+      });
+    } catch (error) {
+      appendActivity(
+        "error",
+        error?.response?.data?.detail
+          || error?.message
+          || "Could not save approval decisions before deploy."
+      );
+    }
   };
 
   const isWorking =
