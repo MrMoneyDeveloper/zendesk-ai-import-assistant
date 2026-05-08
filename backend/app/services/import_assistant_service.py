@@ -7,6 +7,8 @@ from app.models.schemas import (
     ApprovalSummary,
     ImportAssistantGenerateRequest,
     ImportAssistantGenerateResponse,
+    JobListItem,
+    JobListResponse,
     JobStatusResponse,
     PreviewRecord,
     PreviewResponse,
@@ -17,6 +19,7 @@ from app.services.generator import run_generator
 from app.services.planner import run_planner
 from app.services.appscript_bridge import AppScriptBridgeService
 from app.services.sheets_service import SheetsService
+from app.services.zendesk import deploy_records_to_zendesk
 
 TAB_OBJECT_TYPES = {
     "trigger": "triggers",
@@ -32,6 +35,16 @@ TAB_OBJECT_TYPES = {
     "tag_dictionary": "tag_dictionary",
 }
 
+REFERENCE_OBJECT_BY_FIELD = {
+    "group_id": "group",
+    "ticket_form_id": "ticket_form",
+    "form_id": "ticket_form",
+    "brand_id": "brand",
+    "section_id": "section",
+    "category_id": "category",
+    "help_center_id": "help_center",
+}
+
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -44,6 +57,104 @@ def _new_batch_id() -> str:
 def _normalize_object_type(raw: str) -> str:
     normalized = raw.strip().lower()
     return TAB_OBJECT_TYPES.get(normalized, "triggers")
+
+
+def _is_numeric_string(value: object) -> bool:
+    return str(value).strip().isdigit()
+
+
+def _build_related_lookup(related_objects: list[dict]) -> dict[str, dict[str, str]]:
+    lookup: dict[str, dict[str, str]] = {}
+    for item in related_objects:
+        if not isinstance(item, dict):
+            continue
+        obj_type = str(item.get("object_type", "")).strip().lower()
+        obj_id = str(item.get("id", "")).strip()
+        name = str(item.get("name", "")).strip().lower()
+        if not obj_type or not obj_id or not name:
+            continue
+        lookup.setdefault(obj_type, {})[name] = obj_id
+    return lookup
+
+
+def _apply_dependency_resolution(
+    rows: list[dict],
+    *,
+    related_lookup: dict[str, dict[str, str]],
+    dependency_mode: str,
+) -> tuple[list[dict], dict]:
+    if not related_lookup:
+        return rows, {"resolved_links": 0, "unresolved_links": 0, "unresolved_samples": []}
+
+    resolved_links = 0
+    unresolved_links = 0
+    unresolved_samples: list[str] = []
+    patched_rows: list[dict] = []
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+
+        patched_row = {
+            **row,
+            "conditions": list(row.get("conditions", []) or []),
+            "actions": list(row.get("actions", []) or []),
+        }
+        row_notes: list[str] = []
+
+        for bucket_name in ("conditions", "actions"):
+            bucket = patched_row.get(bucket_name, [])
+            for entry in bucket:
+                if not isinstance(entry, dict):
+                    continue
+                field = str(entry.get("field", "")).strip().lower()
+                expected_object = REFERENCE_OBJECT_BY_FIELD.get(field)
+                if not expected_object:
+                    continue
+                raw_value = entry.get("value")
+                if raw_value is None:
+                    continue
+                value = str(raw_value).strip()
+                if not value:
+                    continue
+                if _is_numeric_string(value):
+                    continue
+
+                resolved = related_lookup.get(expected_object, {}).get(value.lower())
+                if resolved:
+                    entry["value"] = resolved
+                    resolved_links += 1
+                    row_notes.append(
+                        f"{field}: mapped '{value}' to ID {resolved} from selected context."
+                    )
+                    continue
+
+                unresolved_links += 1
+                if len(unresolved_samples) < 10:
+                    unresolved_samples.append(f"{field}:{value}")
+                row_notes.append(
+                    f"{field}: '{value}' not found in selected context."
+                )
+
+        if row_notes:
+            existing = list(patched_row.get("dependency_notes", []) or [])
+            patched_row["dependency_notes"] = [*existing, *row_notes]
+        patched_rows.append(patched_row)
+
+    if dependency_mode == "force_existing_only" and unresolved_links > 0:
+        for row in patched_rows:
+            notes = list(row.get("dependency_notes", []) or [])
+            if any("not found in selected context" in note for note in notes):
+                row.setdefault("validation_overrides", {})
+                row["validation_overrides"]["blocked_reason"] = (
+                    "Dependency resolution required existing object IDs, but one or more references were not found."
+                )
+
+    return patched_rows, {
+        "resolved_links": resolved_links,
+        "unresolved_links": unresolved_links,
+        "unresolved_samples": unresolved_samples,
+    }
 
 
 def _build_preview_records(
@@ -63,6 +174,12 @@ def _build_preview_records(
         row_warnings: list[str] = []
         blocked_reason = None
         validation_status: str = "passed"
+        dependency_notes = list(item.get("dependency_notes", []) or [])
+        validation_overrides = item.get("validation_overrides", {}) or {}
+        override_blocked_reason = str(validation_overrides.get("blocked_reason", "")).strip()
+        if override_blocked_reason:
+            blocked_reason = override_blocked_reason
+            validation_status = "failed"
 
         if not title:
             blocked_reason = "Missing title."
@@ -71,6 +188,8 @@ def _build_preview_records(
             row_warnings.append("No actions defined for this record.")
         if object_type == "triggers" and not conditions:
             row_warnings.append("Trigger has no conditions; verify routing logic.")
+        if dependency_notes:
+            row_warnings.extend(dependency_notes)
 
         if blocked_reason:
             blocked += 1
@@ -93,6 +212,9 @@ def _build_preview_records(
                 "deployable": blocked_reason is None,
                 "conditions": conditions,
                 "actions": actions,
+                "deployment_status": "pending",
+                "zendesk_object_id": None,
+                "execution_message": "",
             }
         )
 
@@ -110,6 +232,8 @@ async def generate_import_assistant_batch(
     store = get_batch_store()
     sheets = SheetsService()
     appscript = AppScriptBridgeService()
+    related_objects = [item.model_dump() for item in request.related_objects]
+    related_lookup = _build_related_lookup(related_objects)
 
     batch_id = _new_batch_id()
     created_at = _utc_now()
@@ -133,13 +257,29 @@ async def generate_import_assistant_batch(
 
     store.append_status(batch_id, "request_validated", "Incoming request validated.")
     store.append_status(batch_id, "planning", "Planner call in progress.")
-    plan = await run_planner(request.prompt)
+    plan = await run_planner(
+        request.prompt,
+        dependency_mode=request.dependency_mode,
+        related_objects=related_objects,
+        context_notes=request.context_notes,
+    )
     store.append_status(batch_id, "planned", "Planner output received.")
 
     store.append_status(batch_id, "schemas_selected", "Schemas selected from registry.")
     store.append_status(batch_id, "generating", "Generator call in progress.")
-    generated_data = await run_generator(plan)
+    generated_data = await run_generator(
+        plan,
+        dependency_mode=request.dependency_mode,
+        related_objects=related_objects,
+        context_notes=request.context_notes,
+    )
     store.append_status(batch_id, "generated", "Structured records generated.")
+
+    generated_data, dependency_resolution = _apply_dependency_resolution(
+        generated_data,
+        related_lookup=related_lookup,
+        dependency_mode=request.dependency_mode,
+    )
 
     preview_records, validation_summary = _build_preview_records(plan, generated_data)
     generated_counts = _count_generated(preview_records)
@@ -162,6 +302,9 @@ async def generate_import_assistant_batch(
                     "object_type": plan.get("object_type", "triggers"),
                     "intent": plan.get("intent", request.prompt),
                     "confidence": plan.get("confidence", 0.7),
+                    "dependency_mode": request.dependency_mode,
+                    "dependency_notes": plan.get("dependency_notes", ""),
+                    "related_objects_selected": len(related_objects),
                 },
                 "records": preview_records,
             },
@@ -269,9 +412,14 @@ async def generate_import_assistant_batch(
                 "object_type": plan.get("object_type", "triggers"),
                 "intent": plan.get("intent", request.prompt),
                 "confidence": plan.get("confidence", 0.7),
+                "dependency_mode": request.dependency_mode,
+                "dependency_notes": plan.get("dependency_notes", ""),
+                "related_objects_selected": len(related_objects),
             },
             "metadata": {
                 "validation_phase_status": final_status,
+                "dependency_resolution": dependency_resolution,
+                "context_notes": request.context_notes or "",
                 "staging": staging_metadata,
                 "validation": validation_metadata,
                 "preview_roundtrip": appscript_preview_metadata,
@@ -296,6 +444,27 @@ def get_job_status(batch_id: str) -> JobStatusResponse:
     if not batch:
         raise KeyError(batch_id)
     return JobStatusResponse(**batch)
+
+
+def list_recent_batches(limit: int = 20) -> JobListResponse:
+    store = get_batch_store()
+    batches = list(store.list_batches())
+    batches.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
+
+    items: list[JobListItem] = []
+    for batch in batches[:limit]:
+        prompt = str(batch.get("prompt", "")).strip()
+        items.append(
+            JobListItem(
+                batch_id=str(batch.get("batch_id", "")),
+                status=str(batch.get("status", "received")),
+                created_at=str(batch.get("created_at", "")),
+                updated_at=str(batch.get("updated_at", "")),
+                requester=str(batch.get("requester", "")),
+                prompt_preview=(prompt[:90] + "...") if len(prompt) > 90 else prompt,
+            )
+        )
+    return JobListResponse(jobs=items)
 
 
 def get_preview(batch_id: str) -> PreviewResponse:
@@ -384,3 +553,104 @@ async def apply_approval(batch_id: str, approved_by: str, decisions: list[dict])
         message="Approval decisions saved.",
         metadata={"approval_sync": approval_sync_metadata},
     )
+
+
+async def deploy_batch_to_zendesk(
+    *,
+    batch_id: str,
+    subdomain: str,
+    email: str,
+    api_token: str,
+    dry_run: bool = False,
+) -> dict:
+    store = get_batch_store()
+    appscript = AppScriptBridgeService()
+    batch = store.get_batch(batch_id)
+    if not batch:
+        raise KeyError(batch_id)
+
+    records = batch.get("records", [])
+    store.append_status(batch_id, "deploying", "Deploying approved records to Zendesk.")
+
+    deployment = await deploy_records_to_zendesk(
+        subdomain=subdomain,
+        email=email,
+        api_token=api_token,
+        records=records,
+        dry_run=dry_run,
+    )
+    summary = deployment.get("summary", {})
+    results = deployment.get("results", [])
+
+    result_by_record = {item.get("record_id"): item for item in results}
+    updated_records = []
+    for row in records:
+        record_id = row.get("record_id")
+        result = result_by_record.get(record_id, {})
+        row["deployment_status"] = result.get("deployment_status", row.get("deployment_status", "pending"))
+        row["zendesk_object_id"] = result.get("zendesk_object_id")
+        row["execution_message"] = result.get("execution_message", "")
+        updated_records.append(row)
+
+    execution_log_result: dict = {}
+    if appscript.enabled:
+        execution_log = await appscript.invoke(
+            action="write_execution_log",
+            payload={
+                "batch_id": batch_id,
+                "results": results,
+            },
+        )
+        execution_log_result = {
+            "mode": "appscript",
+            "status": execution_log.get("status"),
+            "detail": execution_log.get("detail"),
+            "http_status": execution_log.get("http_status"),
+            "data": execution_log.get("data", {}),
+        }
+
+    deployed = int(summary.get("deployed", 0))
+    failed = int(summary.get("failed", 0))
+    attempted = int(summary.get("attempted", 0))
+    if attempted == 0:
+        final_status = "deployed_partial"
+        final_message = "No approved deployable records were found for deployment."
+    elif failed > 0 and deployed > 0:
+        final_status = "deployed_partial"
+        final_message = "Deployment completed with partial failures."
+    elif failed > 0 and deployed == 0:
+        final_status = "deploy_failed"
+        final_message = "Deployment failed."
+    else:
+        final_status = "deployed"
+        final_message = "Deployment completed successfully."
+
+    store.update_batch(
+        batch_id,
+        {
+            "records": updated_records,
+            "metadata": {
+                **batch.get("metadata", {}),
+                "zendesk_deploy": {
+                    "summary": summary,
+                    "results": results,
+                    "base_url": deployment.get("base_url"),
+                    "execution_log": execution_log_result,
+                },
+            },
+        },
+    )
+    store.append_status(batch_id, final_status, final_message)
+
+    return {
+        "batch_id": batch_id,
+        "status": final_status,
+        "summary": summary,
+        "results": results,
+        "message": final_message,
+        "metadata": {
+            "base_url": deployment.get("base_url"),
+            "execution_log": execution_log_result,
+            "dry_run": dry_run,
+        },
+    }

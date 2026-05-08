@@ -10,16 +10,30 @@ logger = get_logger(__name__)
 def _fallback_generated_rows() -> list[dict]:
     return [
         {
-            "title": "Billing Routing",
-            "conditions": [{"field": "group", "operator": "is", "value": "billing"}],
-            "actions": [{"field": "assign", "value": "Billing Team"}],
+            "title": "Default Intake Triage",
+            "conditions": [{"field": "status", "operator": "is", "value": "new"}],
+            "actions": [
+                {"field": "status", "value": "open"},
+                {"field": "set_tags", "value": "ai_import_generated"},
+            ],
         }
     ]
 
 
-async def run_generator(plan: dict) -> list[dict]:
+async def run_generator(
+    plan: dict,
+    *,
+    dependency_mode: str = "match_existing_or_create_new",
+    related_objects: list[dict] | None = None,
+    context_notes: str | None = None,
+) -> list[dict]:
     client = GrokClient()
-    messages = build_generator_messages(plan)
+    messages = build_generator_messages(
+        plan,
+        dependency_mode=dependency_mode,
+        related_objects=related_objects,
+        context_notes=context_notes,
+    )
 
     try:
         raw = await client.chat(messages, temperature=0.1)

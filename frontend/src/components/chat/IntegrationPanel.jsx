@@ -21,6 +21,10 @@ export default function IntegrationPanel({
   onValidateZendesk,
   isValidatingZendesk,
   zendeskValidationResult,
+  zendeskValidated = false,
+  contextStatus = null,
+  contextLoading = false,
+  selectedContextCount = 0,
 }) {
   const [subdomain, setSubdomain] = useState("");
   const [email, setEmail] = useState("");
@@ -44,12 +48,22 @@ export default function IntegrationPanel({
     <section className="mb-6 rounded-lg border border-slate-800 bg-slate-900/70 p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-200">Integration Diagnostics</h2>
-        {integrationsLoading ? <span className="text-xs text-slate-500">Refreshing...</span> : null}
+        <div className="flex items-center gap-2">
+          {zendeskValidated ? (
+            <Badge variant="success">Prompt Unlocked</Badge>
+          ) : (
+            <Badge variant="warning">Prompt Locked</Badge>
+          )}
+          {integrationsLoading ? <span className="text-xs text-slate-500">Refreshing...</span> : null}
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
           <p className="mb-2 font-semibold text-slate-200">Apps Script</p>
+          <p className="mb-2 text-slate-400">
+            Schema preflight sync runs automatically before generate, approve, and deploy actions.
+          </p>
           <p className="mb-1">Configured: {boolToBadge(integrationsStatus?.appscript?.configured)}</p>
           <p className="mb-1">Health: {statusToBadge(integrationsStatus?.appscript?.health)}</p>
           {integrationsStatus?.appscript?.health_detail ? (
@@ -82,14 +96,25 @@ export default function IntegrationPanel({
               <p>
                 Last approval sync: {statusToBadge(approvalSync.status)}
               </p>
+              {approvalSync?.result?.updated_records ? (
+                <p className="mt-1 text-slate-400">
+                  Updated rows: {approvalSync.result.updated_records}
+                </p>
+              ) : null}
               {approvalSync?.detail ? <p className="text-rose-300">{approvalSync.detail}</p> : null}
             </div>
           ) : null}
         </div>
 
         <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
-          <p className="mb-2 font-semibold text-slate-200">Zendesk Credentials Validation</p>
-          <p className="mb-2">Env configured: {boolToBadge(integrationsStatus?.zendesk?.configured)}</p>
+          <p className="mb-2 font-semibold text-slate-200">Zendesk Session</p>
+          <p className="mb-2">
+            Deploy endpoint:{" "}
+            {integrationsStatus?.zendesk?.deploy_endpoint_enabled ? <Badge variant="success">active</Badge> : <Badge variant="warning">inactive</Badge>}
+          </p>
+          <p className="mb-2">
+            Session credentials: {zendeskValidated ? <Badge variant="success">valid</Badge> : <Badge variant="warning">not validated</Badge>}
+          </p>
           <form className="space-y-2" onSubmit={submitValidate}>
             <input
               value={subdomain}
@@ -125,6 +150,9 @@ export default function IntegrationPanel({
                 )}
               </p>
               <p className="mt-1">{zendeskValidationResult.detail}</p>
+              {zendeskValidationResult.base_url ? (
+                <p className="mt-1 text-slate-400">Target instance: {zendeskValidationResult.base_url}</p>
+              ) : null}
               {zendeskValidationResult.authenticated_user ? (
                 <p className="mt-1">
                   Authenticated as: {zendeskValidationResult.authenticated_user} (
@@ -133,6 +161,33 @@ export default function IntegrationPanel({
               ) : null}
             </div>
           ) : null}
+          <div className="mt-3 border-t border-slate-800 pt-2">
+            <p>
+              Context sync:{" "}
+              {contextLoading ? (
+                <Badge variant="warning">syncing</Badge>
+              ) : contextStatus?.ok ? (
+                <Badge variant="success">active</Badge>
+              ) : (
+                <Badge variant="neutral">not loaded</Badge>
+              )}
+            </p>
+            {contextStatus?.catalogs ? (
+              <p className="mt-1 text-slate-400">
+                loaded items:{" "}
+                {Object.values(contextStatus.catalogs).reduce(
+                  (acc, entries) => acc + (Array.isArray(entries) ? entries.length : 0),
+                  0
+                )}{" "}
+                | selected: {selectedContextCount}
+              </p>
+            ) : null}
+            {contextStatus?.warnings?.length > 0 ? (
+              <p className="mt-1 text-amber-300">
+                {contextStatus.warnings[0]}
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
     </section>

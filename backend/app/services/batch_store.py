@@ -44,6 +44,14 @@ class BatchStore:
             data = self._read()
             return data.get("batches", {}).get(batch_id)
 
+    def list_batches(self) -> list[dict[str, Any]]:
+        with _lock:
+            data = self._read()
+            batches = data.get("batches", {})
+            if not isinstance(batches, dict):
+                return []
+            return list(batches.values())
+
     def update_batch(self, batch_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         with _lock:
             data = self._read()

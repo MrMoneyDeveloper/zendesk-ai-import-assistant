@@ -19,10 +19,19 @@ BatchStatus = Literal[
     "preview_ready",
     "partially_approved",
     "approved",
+    "deploying",
+    "deployed",
+    "deployed_partial",
+    "deploy_failed",
     "failed",
 ]
 
 ImportDecision = Literal["pending_review", "approved", "skipped", "edit_later", "blocked"]
+DependencyMode = Literal[
+    "match_existing_or_create_new",
+    "force_create_new",
+    "force_existing_only",
+]
 
 
 class GenerateRequest(BaseModel):
@@ -77,11 +86,25 @@ class ApiTestResponse(BaseModel):
     detail: str | None = None
 
 
+class ContextReference(BaseModel):
+    object_type: Literal["brand", "group", "ticket_form", "help_center", "category", "section"]
+    id: str = Field(..., min_length=1, max_length=120)
+    name: str = Field(..., min_length=1, max_length=300)
+
+    @field_validator("id", "name")
+    @classmethod
+    def trim_string_value(cls, value: str) -> str:
+        return value.strip()
+
+
 class ImportAssistantGenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=5, max_length=4000)
     target_environment: Literal["sandbox"] = "sandbox"
     mode: str = "generate_validate_preview"
     requester: str = "local-user"
+    dependency_mode: DependencyMode = "match_existing_or_create_new"
+    related_objects: list[ContextReference] = Field(default_factory=list)
+    context_notes: str | None = None
 
     @field_validator("prompt")
     @classmethod
@@ -125,6 +148,19 @@ class JobStatusResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class JobListItem(BaseModel):
+    batch_id: str
+    status: BatchStatus
+    created_at: str
+    updated_at: str
+    requester: str
+    prompt_preview: str
+
+
+class JobListResponse(BaseModel):
+    jobs: list[JobListItem] = Field(default_factory=list)
+
+
 class PreviewRecord(BaseModel):
     record_id: str
     object_type: str
@@ -137,6 +173,9 @@ class PreviewRecord(BaseModel):
     deployable: bool = True
     conditions: list[dict[str, Any]] = Field(default_factory=list)
     actions: list[dict[str, Any]] = Field(default_factory=list)
+    deployment_status: Literal["pending", "deployed", "failed", "skipped"] = "pending"
+    zendesk_object_id: str | None = None
+    execution_message: str = ""
 
 
 class PreviewResponse(BaseModel):
@@ -244,3 +283,102 @@ class ZendeskCredentialValidationResponse(BaseModel):
     authenticated_user: str | None = None
     authenticated_user_role: str | None = None
     http_status: int | None = None
+
+
+class ZendeskContextRequest(BaseModel):
+    subdomain: str = Field(..., min_length=2, max_length=200)
+    email: str = Field(..., min_length=3, max_length=254)
+    api_token: str = Field(..., min_length=6, max_length=512)
+
+    @field_validator("subdomain")
+    @classmethod
+    def normalize_subdomain(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if cleaned.startswith("https://"):
+            cleaned = cleaned.removeprefix("https://")
+        if cleaned.startswith("http://"):
+            cleaned = cleaned.removeprefix("http://")
+        if cleaned.endswith(".zendesk.com"):
+            cleaned = cleaned.removesuffix(".zendesk.com")
+        cleaned = cleaned.strip("/")
+        if "." in cleaned:
+            raise ValueError("Provide Zendesk subdomain only (for example: acme), not a full domain.")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("api_token")
+    @classmethod
+    def normalize_token(cls, value: str) -> str:
+        return value.strip()
+
+
+class ZendeskContextResponse(BaseModel):
+    ok: bool
+    detail: str
+    base_url: str
+    catalogs: dict[str, list[ContextReference]] = Field(default_factory=dict)
+    fetched_at: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ZendeskDeployRequest(BaseModel):
+    batch_id: str
+    subdomain: str = Field(..., min_length=2, max_length=200)
+    email: str = Field(..., min_length=3, max_length=254)
+    api_token: str = Field(..., min_length=6, max_length=512)
+    dry_run: bool = False
+
+    @field_validator("subdomain")
+    @classmethod
+    def normalize_subdomain(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if cleaned.startswith("https://"):
+            cleaned = cleaned.removeprefix("https://")
+        if cleaned.startswith("http://"):
+            cleaned = cleaned.removeprefix("http://")
+        if cleaned.endswith(".zendesk.com"):
+            cleaned = cleaned.removesuffix(".zendesk.com")
+        cleaned = cleaned.strip("/")
+        if "." in cleaned:
+            raise ValueError("Provide Zendesk subdomain only (for example: acme), not a full domain.")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("api_token")
+    @classmethod
+    def normalize_token(cls, value: str) -> str:
+        return value.strip()
+
+
+class ZendeskDeployRecordResult(BaseModel):
+    record_id: str
+    object_type: str
+    title: str
+    deployment_status: Literal["deployed", "failed", "skipped", "pending"]
+    zendesk_object_id: str | None = None
+    execution_message: str = ""
+    executed_at: str
+
+
+class ZendeskDeploySummary(BaseModel):
+    attempted: int = 0
+    deployed: int = 0
+    failed: int = 0
+    skipped: int = 0
+
+
+class ZendeskDeployResponse(BaseModel):
+    batch_id: str
+    status: BatchStatus
+    summary: ZendeskDeploySummary
+    message: str
+    results: list[ZendeskDeployRecordResult] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)

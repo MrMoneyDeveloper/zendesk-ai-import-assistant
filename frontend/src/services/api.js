@@ -18,6 +18,13 @@ export async function getJob(batchId) {
   return res.data;
 }
 
+export async function listJobs(limit = 20) {
+  const res = await axios.get(`${IMPORT_ASSISTANT_ROOT}/jobs`, {
+    params: { limit },
+  });
+  return res.data;
+}
+
 export async function getPreview(batchId) {
   const res = await axios.get(`${IMPORT_ASSISTANT_ROOT}/preview/${batchId}`);
   return res.data;
@@ -28,6 +35,11 @@ export async function approveBatch(payload) {
   return res.data;
 }
 
+export async function deployBatch(payload) {
+  const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/deploy`, payload);
+  return res.data;
+}
+
 export async function getIntegrationsStatus() {
   const res = await axios.get(`${IMPORT_ASSISTANT_ROOT}/integrations/status`);
   return res.data;
@@ -35,5 +47,10 @@ export async function getIntegrationsStatus() {
 
 export async function validateZendeskCredentials(payload) {
   const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/zendesk/validate`, payload);
+  return res.data;
+}
+
+export async function getZendeskContext(payload) {
+  const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/zendesk/context`, payload);
   return res.data;
 }

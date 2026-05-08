@@ -12,20 +12,27 @@ from app.models.schemas import (
     ImportAssistantGenerateRequest,
     ImportAssistantGenerateResponse,
     IntegrationStatusResponse,
+    JobListResponse,
     JobStatusResponse,
     PreviewResponse,
+    ZendeskContextRequest,
+    ZendeskContextResponse,
+    ZendeskDeployRequest,
+    ZendeskDeployResponse,
     ZendeskCredentialValidationRequest,
     ZendeskCredentialValidationResponse,
 )
 from app.services.import_assistant_service import (
     apply_approval,
+    deploy_batch_to_zendesk,
     generate_import_assistant_batch,
+    list_recent_batches,
     get_job_status,
     get_preview,
 )
 from app.services.appscript_bridge import AppScriptBridgeService
 from app.services.sheets_service import SheetsService
-from app.services.zendesk import validate_zendesk_credentials
+from app.services.zendesk import fetch_zendesk_reference_catalog, validate_zendesk_credentials
 
 router = APIRouter(prefix="/import-assistant", tags=["import-assistant"])
 
@@ -38,6 +45,9 @@ SCHEMA_SYNC_MODELS = [
     "JobStatusResponse",
     "PreviewRecord",
     "PreviewResponse",
+    "JobListResponse",
+    "JobListItem",
+    "ContextReference",
     "ApprovalRequest",
     "ApprovalResponse",
     "AppScriptActionRequest",
@@ -45,6 +55,12 @@ SCHEMA_SYNC_MODELS = [
     "IntegrationStatusResponse",
     "ZendeskCredentialValidationRequest",
     "ZendeskCredentialValidationResponse",
+    "ZendeskContextRequest",
+    "ZendeskContextResponse",
+    "ZendeskDeployRequest",
+    "ZendeskDeployRecordResult",
+    "ZendeskDeploySummary",
+    "ZendeskDeployResponse",
 ]
 
 
@@ -59,9 +75,23 @@ def _build_schema_bundle() -> dict:
     }
 
 
+async def _sync_schema_preflight_if_enabled() -> dict:
+    service = AppScriptBridgeService()
+    if not service.enabled:
+        return {
+            "status": "skipped",
+            "detail": "Apps Script bridge not configured.",
+        }
+    payload = {"schema_bundle": _build_schema_bundle()}
+    return await service.invoke(action="sync_schema", payload=payload, method="POST")
+
+
 @router.post("/generate", response_model=ImportAssistantGenerateResponse)
 async def generate(request: ImportAssistantGenerateRequest) -> ImportAssistantGenerateResponse:
     try:
+        preflight = await _sync_schema_preflight_if_enabled()
+        if preflight.get("status") == "error":
+            raise RuntimeError(preflight.get("detail") or "Apps Script schema sync preflight failed.")
         return await generate_import_assistant_batch(request)
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -75,6 +105,12 @@ async def get_job(batch_id: str) -> JobStatusResponse:
         raise HTTPException(status_code=404, detail="Batch not found.") from exc
 
 
+@router.get("/jobs", response_model=JobListResponse)
+async def list_jobs(limit: int = 20) -> JobListResponse:
+    safe_limit = max(1, min(limit, 100))
+    return list_recent_batches(limit=safe_limit)
+
+
 @router.get("/preview/{batch_id}", response_model=PreviewResponse)
 async def preview(batch_id: str) -> PreviewResponse:
     try:
@@ -86,11 +122,35 @@ async def preview(batch_id: str) -> PreviewResponse:
 @router.post("/approve", response_model=ApprovalResponse)
 async def approve(request: ApprovalRequest) -> ApprovalResponse:
     try:
+        preflight = await _sync_schema_preflight_if_enabled()
+        if preflight.get("status") == "error":
+            raise RuntimeError(preflight.get("detail") or "Apps Script schema sync preflight failed.")
         return await apply_approval(
             batch_id=request.batch_id,
             approved_by=request.approved_by,
             decisions=[item.model_dump() for item in request.records],
         )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Batch not found.") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/deploy", response_model=ZendeskDeployResponse)
+async def deploy_to_zendesk(request: ZendeskDeployRequest) -> ZendeskDeployResponse:
+    try:
+        preflight = await _sync_schema_preflight_if_enabled()
+        if preflight.get("status") == "error":
+            raise RuntimeError(preflight.get("detail") or "Apps Script schema sync preflight failed.")
+
+        result = await deploy_batch_to_zendesk(
+            batch_id=request.batch_id,
+            subdomain=request.subdomain,
+            email=request.email,
+            api_token=request.api_token,
+            dry_run=request.dry_run,
+        )
+        return ZendeskDeployResponse(**result)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Batch not found.") from exc
     except RuntimeError as exc:
@@ -153,9 +213,10 @@ async def integrations_status() -> IntegrationStatusResponse:
         "email_configured": bool(settings.zendesk_email),
         "api_token_configured": bool(settings.zendesk_api_token),
         "target_environment": settings.zendesk_target_environment,
+        "deploy_endpoint_enabled": True,
         "note": (
-            "Zendesk deploy endpoint is not enabled in this milestone yet. "
-            "Credentials are collected now for the next deployment phase."
+            "Zendesk deploy endpoint is available. Session-validated credentials from the UI "
+            "can be used to deploy approved records to the target instance."
         ),
     }
 
@@ -176,3 +237,15 @@ async def zendesk_validate_credentials(
         api_token=request.api_token,
     )
     return ZendeskCredentialValidationResponse(**result)
+
+
+@router.post("/zendesk/context", response_model=ZendeskContextResponse)
+async def zendesk_context_catalog(
+    request: ZendeskContextRequest,
+) -> ZendeskContextResponse:
+    result = await fetch_zendesk_reference_catalog(
+        subdomain=request.subdomain,
+        email=request.email,
+        api_token=request.api_token,
+    )
+    return ZendeskContextResponse(**result)

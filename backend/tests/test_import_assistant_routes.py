@@ -42,10 +42,10 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     get_settings.cache_clear()
     reset_batch_store()
 
-    async def fake_planner(prompt: str):
+    async def fake_planner(prompt: str, **kwargs):
         return {"object_type": "triggers", "intent": prompt, "confidence": 0.91}
 
-    async def fake_generator(plan: dict):
+    async def fake_generator(plan: dict, **kwargs):
         return [
             {
                 "title": "Route Claims",
@@ -58,6 +58,34 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
     monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
     monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    async def fake_deploy_records_to_zendesk(*, subdomain, email, api_token, records, dry_run=False):
+        return {
+            "summary": {
+                "attempted": 1,
+                "deployed": 1,
+                "failed": 0,
+                "skipped": 0,
+            },
+            "results": [
+                {
+                    "record_id": "REC-0001",
+                    "object_type": "triggers",
+                    "title": "Route Claims",
+                    "deployment_status": "deployed",
+                    "zendesk_object_id": "123456",
+                    "execution_message": "Trigger created successfully.",
+                    "executed_at": "2026-01-01T00:00:00Z",
+                }
+            ],
+            "base_url": "https://acme.zendesk.com",
+        }
+
+    monkeypatch.setattr(
+        "app.services.import_assistant_service.deploy_records_to_zendesk",
+        fake_deploy_records_to_zendesk,
+    )
 
     from app.main import app
 
@@ -98,5 +126,20 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     )
     assert approve_resp.status_code == 200
     assert approve_resp.json()["summary"]["approved"] == 1
+
+    deploy_resp = client.post(
+        "/api/import-assistant/deploy",
+        json={
+            "batch_id": batch_id,
+            "subdomain": "acme",
+            "email": "admin@acme.com",
+            "api_token": "tok_test_123",
+            "dry_run": False,
+        },
+    )
+    assert deploy_resp.status_code == 200
+    deploy_payload = deploy_resp.json()
+    assert deploy_payload["status"] == "deployed"
+    assert deploy_payload["summary"]["deployed"] == 1
 
     assert Path(store_file).exists()

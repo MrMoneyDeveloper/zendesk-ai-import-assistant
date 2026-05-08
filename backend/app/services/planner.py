@@ -7,16 +7,28 @@ from app.validation.payloads import ensure_prompt_is_valid
 logger = get_logger(__name__)
 
 
-async def run_planner(prompt: str) -> dict:
+async def run_planner(
+    prompt: str,
+    *,
+    dependency_mode: str = "match_existing_or_create_new",
+    related_objects: list[dict] | None = None,
+    context_notes: str | None = None,
+) -> dict:
     cleaned_prompt = ensure_prompt_is_valid(prompt)
     fallback_plan = {
         "object_type": "trigger",
         "intent": cleaned_prompt,
         "confidence": 0.7,
+        "dependency_notes": "",
     }
 
     client = GrokClient()
-    messages = build_planner_messages(cleaned_prompt)
+    messages = build_planner_messages(
+        cleaned_prompt,
+        dependency_mode=dependency_mode,
+        related_objects=related_objects,
+        context_notes=context_notes,
+    )
 
     try:
         raw = await client.chat(messages, temperature=0.0)
@@ -31,6 +43,7 @@ async def run_planner(prompt: str) -> dict:
             "object_type": str(payload.get("object_type", "trigger")),
             "intent": str(payload.get("intent", cleaned_prompt)),
             "confidence": confidence,
+            "dependency_notes": str(payload.get("dependency_notes", "")),
         }
     except Exception as exc:
         logger.warning("Planner fallback in use: %s", exc)

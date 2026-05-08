@@ -679,6 +679,385 @@
         }
       },
       "approved_by": "local-user"
+    },
+    "BATCH-20260508-164221-56FD3E": {
+      "batch_id": "BATCH-20260508-164221-56FD3E",
+      "status": "approved",
+      "prompt": "make me a test trigger",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-08T16:42:21.743113+00:00",
+      "updated_at": "2026-05-08T16:43:10.349767+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-08T16:42:21.743113+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-08T16:42:21.770556+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-08T16:42:21.773313+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-08T16:42:22.671776+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-08T16:42:22.676009+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-08T16:42:22.680349+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-08T16:42:23.833872+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-08T16:42:23.846656+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-08T16:42:31.071753+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-08T16:42:31.075047+00:00"
+        },
+        {
+          "status": "validated_passed",
+          "message": "Validation passed.",
+          "at": "2026-05-08T16:42:49.702023+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-08T16:42:49.705687+00:00"
+        },
+        {
+          "status": "approved",
+          "message": "Record-level approval decisions saved.",
+          "at": "2026-05-08T16:43:10.349525+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "triggers",
+          "title": "Test Trigger",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "passed",
+          "warnings": [],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "operator": "is",
+              "value": "new"
+            }
+          ],
+          "actions": [
+            {
+              "field": "notification",
+              "value": "Test notification"
+            }
+          ]
+        }
+      ],
+      "generated_counts": {
+        "triggers": 1
+      },
+      "validation_summary": {
+        "passed": 1,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "trigger",
+        "intent": "create_test_trigger",
+        "confidence": 0.9
+      },
+      "metadata": {
+        "validation_phase_status": "validated_passed",
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260508-164221-56FD3E",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Triggers": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260508-164221-56FD3E",
+            "summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-08T16:42:38.922Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        }
+      },
+      "approved_by": "local-user"
+    },
+    "BATCH-20260508-171751-9C4FF1": {
+      "batch_id": "BATCH-20260508-171751-9C4FF1",
+      "status": "deployed",
+      "prompt": "make me a test trigger",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-08T17:17:51.546664+00:00",
+      "updated_at": "2026-05-08T17:19:26.107313+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-08T17:17:51.546664+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-08T17:17:51.560479+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-08T17:17:51.563840+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-08T17:17:52.396069+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-08T17:17:52.399020+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-08T17:17:52.402799+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-08T17:17:53.395110+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-08T17:17:53.403516+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-08T17:18:00.616449+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-08T17:18:00.619336+00:00"
+        },
+        {
+          "status": "validated_passed",
+          "message": "Validation passed.",
+          "at": "2026-05-08T17:18:19.531640+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-08T17:18:19.536160+00:00"
+        },
+        {
+          "status": "approved",
+          "message": "Record-level approval decisions saved.",
+          "at": "2026-05-08T17:18:49.708101+00:00"
+        },
+        {
+          "status": "deploying",
+          "message": "Deploying approved records to Zendesk.",
+          "at": "2026-05-08T17:19:12.598692+00:00"
+        },
+        {
+          "status": "deployed",
+          "message": "Deployment completed successfully.",
+          "at": "2026-05-08T17:19:26.107302+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "triggers",
+          "title": "Test Trigger",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "passed",
+          "warnings": [],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "operator": "is",
+              "value": "new"
+            }
+          ],
+          "actions": [
+            {
+              "field": "status",
+              "value": "open"
+            },
+            {
+              "field": "priority",
+              "value": "high"
+            },
+            {
+              "field": "set_tags",
+              "value": "test_tag"
+            }
+          ],
+          "deployment_status": "deployed",
+          "zendesk_object_id": "27337874229660",
+          "execution_message": "Trigger created successfully."
+        }
+      ],
+      "generated_counts": {
+        "triggers": 1
+      },
+      "validation_summary": {
+        "passed": 1,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "trigger",
+        "intent": "create_test_trigger",
+        "confidence": 0.9
+      },
+      "metadata": {
+        "validation_phase_status": "validated_passed",
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260508-171751-9C4FF1",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Triggers": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260508-171751-9C4FF1",
+            "summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-08T17:18:07.753Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "zendesk_deploy": {
+          "summary": {
+            "attempted": 1,
+            "deployed": 1,
+            "failed": 0,
+            "skipped": 0
+          },
+          "results": [
+            {
+              "record_id": "REC-0001",
+              "object_type": "triggers",
+              "title": "Test Trigger",
+              "deployment_status": "deployed",
+              "zendesk_object_id": "27337874229660",
+              "execution_message": "Trigger created successfully.",
+              "executed_at": "2026-05-08T17:19:12.954598+00:00"
+            }
+          ],
+          "base_url": "https://digify7.zendesk.com",
+          "execution_log": {
+            "mode": "appscript",
+            "status": "ok",
+            "detail": null,
+            "http_status": 200,
+            "data": {
+              "ok": true,
+              "action": "write_execution_log",
+              "batch_id": "BATCH-20260508-171751-9C4FF1",
+              "written_rows": 1
+            }
+          }
+        }
+      },
+      "approved_by": "local-user"
     }
   }
 }
