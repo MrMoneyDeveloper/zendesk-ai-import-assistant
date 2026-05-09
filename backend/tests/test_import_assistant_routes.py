@@ -145,3 +145,85 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     assert deploy_payload["summary"]["deployed"] == 1
 
     assert Path(store_file).exists()
+
+
+def test_generate_requires_clarification_for_vague_macro(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "macros", "intent": prompt, "confidence": 0.88}
+
+    async def fake_generator(plan: dict, **kwargs):
+        raise AssertionError("Generator should not run when clarification is required.")
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "create reply in 25 hours macro",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "clarification_required"
+    assert payload["needs_clarification"] is True
+    assert len(payload["clarification_questions"]) >= 1
+
+
+def test_generate_requires_clarification_on_high_ambiguity_score(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AMBIGUITY_THRESHOLD", "0.55")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {
+            "object_type": "triggers",
+            "intent": prompt,
+            "confidence": 0.86,
+            "ambiguity_score": 0.92,
+            "ambiguity_reasons": ["No explicit target group or ownership strategy was provided."],
+            "clarification_questions": [],
+        }
+
+    async def fake_generator(plan: dict, **kwargs):
+        raise AssertionError("Generator should not run when ambiguity threshold is exceeded.")
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create a trigger when status is new and add a tag.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "clarification_required"
+    assert payload["needs_clarification"] is True
+    assert len(payload["clarification_questions"]) >= 1

@@ -11,9 +11,10 @@ def build_planner_messages(
     context_notes: str | None = None,
 ) -> list[dict]:
     system_prompt = (
-        "You are a Grok planning assistant for Zendesk admins. "
-        "Return strict JSON only with keys: object_type, intent, confidence, dependency_notes. "
-        "confidence must be between 0 and 1."
+        "You are a Zendesk planning assistant for administrators. "
+        "Return JSON only and follow the schema exactly. "
+        "Choose the best object_type, summarize intent, score confidence and ambiguity, "
+        "and include short clarification_questions when the request is under-specified."
     )
     user_payload = {
         "prompt": prompt,
@@ -39,9 +40,10 @@ def build_generator_messages(
     context_notes: str | None = None,
 ) -> list[dict]:
     system_prompt = (
-        "You are a Grok generator for Zendesk configuration records. "
-        "Return strict JSON only. Output either an array of records or "
-        '{"records":[...]}. Each record must include "object_type", "title", "conditions", and "actions". '
+        "You are a Zendesk configuration generator. "
+        "Return JSON only and follow the schema exactly. "
+        'Output {"records":[...],"generation_notes":[...]}. '
+        'Each record must include "object_type", "title", "conditions", "actions", and "dependency_notes". '
         'Supported object_type values include "triggers","automations","macros","views","groups","ticket_forms","ticket_fields","articles". '
         'For trigger or automation object_type, format conditions as [{"field","operator","value"}] and '
         'actions as Zendesk-compatible actions like {"field":"status","value":"open"}, '

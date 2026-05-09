@@ -165,3 +165,19 @@ Then restart pipeline:
 - Keep secrets in env files only; do not hardcode API keys in frontend.
 - This flow is sandbox-first for Zendesk deploy operations.
 - Apps Script and backend schema sync should remain healthy before generation/approval/deploy.
+
+## LLM Routing and Reliability
+
+Set these in `backend/.env` to tune model behavior:
+
+- `LLM_MODEL_PLANNER` task model for planning/classification
+- `LLM_MODEL_GENERATOR` task model for record generation
+- `LLM_MODEL_CLARIFIER` task model for clarification follow-ups
+- `LLM_STRICT_SCHEMA_MODE=true|false` enable JSON-schema constrained output
+- `LLM_FALLBACK_TO_JSON_OBJECT=true|false` fallback if strict schema is rejected
+- `LLM_AMBIGUITY_THRESHOLD=0.58` score above this triggers clarification flow
+- `LLM_PLANNER_MAX_OUTPUT_TOKENS=900`
+- `LLM_GENERATOR_MAX_OUTPUT_TOKENS=1800`
+- `LLM_CLARIFIER_MAX_OUTPUT_TOKENS=700`
+
+Default behavior is safe for free-tier PoC usage: smaller planner token budget, strict structured outputs, and ambiguity gating before generation.

@@ -42,6 +42,7 @@ SCHEMA_SYNC_MODELS = [
     "ApiTestResponse",
     "ImportAssistantGenerateRequest",
     "ImportAssistantGenerateResponse",
+    "ClarificationQuestion",
     "JobStatusResponse",
     "PreviewRecord",
     "PreviewResponse",

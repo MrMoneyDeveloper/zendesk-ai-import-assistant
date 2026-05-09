@@ -58,6 +58,7 @@ function App() {
   const [selectedContext, setSelectedContext] = useState({});
   const [dependencyMode, setDependencyMode] = useState("match_existing_or_create_new");
   const [onExistingMode, setOnExistingMode] = useState("create_new");
+  const [clarificationQuestions, setClarificationQuestions] = useState([]);
   const lastContextSyncRef = useRef("");
   const lastContextErrorRef = useRef("");
   const [zendeskValidated, setZendeskValidated] = useState(false);
@@ -105,6 +106,18 @@ function App() {
     },
     onSuccess: (data) => {
       setBatchId(data.batch_id);
+      if (data.status === "clarification_required" || data.needs_clarification) {
+        const questions = data.clarification_questions || [];
+        setClarificationQuestions(questions);
+        appendActivity(
+          "warning",
+          `Clarification required before generation. Questions: ${questions.map((q) => q.question).join(" | ")}`
+        );
+        queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
+        queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
+        return;
+      }
+      setClarificationQuestions([]);
       appendActivity(
         "success",
         `Batch ${data.batch_id} ready for review. Validation summary: passed=${data.validation_summary?.passed || 0}, warnings=${data.validation_summary?.warnings || 0}, blocked=${data.validation_summary?.blocked || 0}.`
@@ -350,6 +363,7 @@ function App() {
     .map((err) => err?.response?.data?.detail || err?.message);
 
   const generatedData = generateMutation.data;
+  const effectiveGenerateMetadata = generatedData?.metadata || jobQuery.data?.metadata || {};
   const previewData = previewQuery.data;
   const historyItems = jobsQuery.data?.jobs || [];
   const contextCatalog = zendeskContextQuery.data?.catalogs || null;
@@ -366,6 +380,7 @@ function App() {
     setDecisions({});
     setTestResult(null);
     setActivityLogs([]);
+    setClarificationQuestions([]);
     setHistorySearch("");
     setSelectedContext({});
     setDependencyMode("match_existing_or_create_new");
@@ -459,6 +474,7 @@ function App() {
       request_validated: "Validating request...",
       planning: "Planning configuration...",
       planned: "Plan ready.",
+      clarification_required: "Waiting for clarification before generation...",
       schemas_selected: "Selecting schemas...",
       generating: "Generating records...",
       generated: "Generation complete.",
@@ -552,7 +568,7 @@ function App() {
               status={currentStatus}
               testResult={testResult}
               jobData={jobQuery.data}
-              generateMetadata={generatedData?.metadata}
+              generateMetadata={effectiveGenerateMetadata}
               approvalResult={approveMutation.data}
               deployEnabled={Boolean(integrationsQuery.data?.zendesk?.deploy_endpoint_enabled)}
               deployTarget={zendeskValidationResult?.base_url || ""}
@@ -561,7 +577,7 @@ function App() {
             <IntegrationPanel
               integrationsStatus={integrationsQuery.data}
               integrationsLoading={integrationsQuery.isLoading}
-              generateMetadata={generatedData?.metadata}
+              generateMetadata={effectiveGenerateMetadata}
               approvalMetadata={approveMutation.data?.metadata}
               onValidateZendesk={(payload) => mutateZendeskValidation(payload)}
               isValidatingZendesk={zendeskValidationPending}
@@ -598,6 +614,28 @@ function App() {
                 </p>
               </CardContent>
             </Card>
+
+            {clarificationQuestions.length > 0 ? (
+              <Card className="mb-6 border-amber-700/50 bg-amber-950/20">
+                <CardContent className="space-y-3 p-4 text-sm text-amber-100">
+                  <p className="font-semibold">More details needed before generation</p>
+                  {clarificationQuestions.map((item) => (
+                    <div key={item.id} className="rounded border border-amber-800/40 bg-amber-950/30 p-3">
+                      <p>{item.question}</p>
+                      <p className="mt-1 text-xs text-amber-300">{item.reason}</p>
+                      {item.examples?.length ? (
+                        <p className="mt-1 text-xs text-amber-200">
+                          Examples: {item.examples.join(" | ")}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                  <p className="text-xs text-amber-200">
+                    Add answers in your next prompt and submit again.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : null}
 
             {errors.length > 0 && (
               <Card className="mt-6 border-rose-800 bg-rose-950/30">

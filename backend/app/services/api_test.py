@@ -1,6 +1,7 @@
 import time
 
 from app.api.grok.client import GrokClient
+from app.api.grok.routing import resolve_model_route
 from app.core.settings import get_settings
 
 
@@ -33,6 +34,7 @@ async def run_api_test() -> dict:
         }
 
     client = GrokClient()
+    route = resolve_model_route(settings, "healthcheck")
     start = time.perf_counter()
 
     try:
@@ -45,13 +47,16 @@ async def run_api_test() -> dict:
                 {"role": "user", "content": "Return a short API connectivity confirmation."},
             ],
             temperature=0.0,
+            model=route.model,
+            max_output_tokens=route.max_output_tokens,
+            strict_schema=False,
         )
         latency_ms = (time.perf_counter() - start) * 1000
 
         return {
             "provider": provider,
             "base_url": settings.xai_base_url,
-            "model": settings.xai_model,
+            "model": route.model,
             "status": "ok",
             "latency_ms": round(latency_ms, 2),
             "output_preview": content[:220],
@@ -62,7 +67,7 @@ async def run_api_test() -> dict:
         return {
             "provider": provider,
             "base_url": settings.xai_base_url,
-            "model": settings.xai_model,
+            "model": route.model,
             "status": "error",
             "latency_ms": round(latency_ms, 2),
             "detail": str(exc),

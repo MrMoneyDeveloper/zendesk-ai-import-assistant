@@ -1,7 +1,10 @@
 from collections import Counter
 from datetime import UTC, datetime
+import re
 from uuid import uuid4
 
+from app.api.grok.routing import resolve_model_route
+from app.core.settings import get_settings
 from app.models.schemas import (
     ApprovalResponse,
     ApprovalSummary,
@@ -235,12 +238,153 @@ def _count_generated(records: list[dict]) -> dict[str, int]:
     return dict(counts)
 
 
+def _build_clarification_questions(prompt: str, plan: dict) -> list[dict]:
+    text = prompt.strip().lower()
+    object_type = _normalize_object_type(str(plan.get("object_type", "triggers")))
+    questions: list[dict] = []
+    planner_questions = plan.get("clarification_questions", [])
+    if isinstance(planner_questions, list):
+        for index, item in enumerate(planner_questions, start=1):
+            question_text = str(item).strip()
+            if not question_text:
+                continue
+            questions.append(
+                {
+                    "id": f"planner_question_{index}",
+                    "question": question_text,
+                    "reason": "Planner flagged this as missing detail for reliable generation.",
+                    "examples": [],
+                }
+            )
+
+    has_time_phrase = bool(re.search(r"\b\d+\s*(hour|hours|hr|hrs|day|days)\b", text))
+    mentions_message_content = any(
+        key in text for key in ["reply", "message", "comment", "body", "template", "say"]
+    )
+    mentions_action_target = any(
+        key in text for key in ["assign", "group", "tag", "status", "priority", "form", "field"]
+    )
+    mentions_condition = any(
+        key in text
+        for key in [
+            "when",
+            "if",
+            "for tickets",
+            "condition",
+            "where",
+            "only if",
+            "route",
+            "routing",
+            "triage",
+        ]
+    )
+
+    if object_type == "macros":
+        if has_time_phrase:
+            questions.append(
+                {
+                    "id": "macro_vs_automation",
+                    "question": "Do you want a manual macro or a timed automation?",
+                    "reason": "Macros run manually, while timed behavior requires an automation/trigger flow.",
+                    "examples": [
+                        "Manual macro only",
+                        "Timed automation after 25 hours",
+                    ],
+                }
+            )
+        if not mentions_message_content:
+            questions.append(
+                {
+                    "id": "macro_content",
+                    "question": "What exact reply/comment text should the macro add?",
+                    "reason": "Macro output is ambiguous without message content.",
+                    "examples": [
+                        "Please share your policy number and claim reference.",
+                        "We are following up on your request and will respond within 1 business day.",
+                    ],
+                }
+            )
+        if not mentions_action_target:
+            questions.append(
+                {
+                    "id": "macro_side_effects",
+                    "question": "Should this macro also set tags, status, assignee group, or priority?",
+                    "reason": "No ticket update actions were specified.",
+                    "examples": [
+                        "Set tag follow_up_25h and status open",
+                        "Only add comment, no ticket field changes",
+                    ],
+                }
+            )
+
+    if object_type in {"triggers", "automations", "views"} and not mentions_condition:
+        questions.append(
+            {
+                "id": "conditions_needed",
+                "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+                "reason": "Rule-like objects need clear filter criteria.",
+                "examples": [
+                    "Only for status=new and form=Claim & Payouts",
+                    "Only for group=Finance & Investments and priority=high",
+                ],
+            }
+        )
+
+    if object_type == "articles" and not any(key in text for key in ["section", "category", "help center"]):
+        questions.append(
+            {
+                "id": "article_target_location",
+                "question": "Which Help Center section/category should the article be created in?",
+                "reason": "Article placement requires section/category context.",
+                "examples": [
+                    "Section: Claim Process",
+                    "Category: Pensioners, Section: FAQ",
+                ],
+            }
+        )
+
+    # de-duplicate by normalized text and keep concise.
+    deduped: list[dict] = []
+    seen: set[str] = set()
+    for item in questions:
+        key = str(item.get("question", "")).strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped[:6]
+
+
+def _build_planning_summary(
+    *,
+    plan: dict,
+    request: ImportAssistantGenerateRequest,
+    related_objects: list[dict],
+    reference_catalog: dict[str, list[dict]],
+) -> dict:
+    return {
+        "object_type": plan.get("object_type", "triggers"),
+        "intent": plan.get("intent", request.prompt),
+        "confidence": plan.get("confidence", 0.7),
+        "ambiguity_score": plan.get("ambiguity_score", 0.0),
+        "ambiguity_reasons": plan.get("ambiguity_reasons", []),
+        "dependency_mode": request.dependency_mode,
+        "dependency_notes": plan.get("dependency_notes", ""),
+        "related_objects_selected": len(related_objects),
+        "reference_catalog_counts": {key: len(values) for key, values in reference_catalog.items()},
+        "llm": plan.get("llm", {}),
+    }
+
+
 async def generate_import_assistant_batch(
     request: ImportAssistantGenerateRequest,
 ) -> ImportAssistantGenerateResponse:
     store = get_batch_store()
     sheets = SheetsService()
     appscript = AppScriptBridgeService()
+    settings = get_settings()
+    planner_route = resolve_model_route(settings, "planner")
+    generator_route = resolve_model_route(settings, "generator")
     related_objects = [item.model_dump() for item in request.related_objects]
     reference_catalog = {
         key: [item.model_dump() for item in values]
@@ -280,6 +424,73 @@ async def generate_import_assistant_batch(
     )
     store.append_status(batch_id, "planned", "Planner output received.")
 
+    ambiguity_score = float(plan.get("ambiguity_score", 0.0) or 0.0)
+    ambiguity_threshold = settings.llm_ambiguity_threshold
+    clarification_questions = _build_clarification_questions(request.prompt, plan)
+    if ambiguity_score >= ambiguity_threshold and not clarification_questions:
+        ambiguity_reasons = plan.get("ambiguity_reasons", [])
+        reason_text = (
+            str(ambiguity_reasons[0]).strip()
+            if isinstance(ambiguity_reasons, list) and ambiguity_reasons
+            else "The request appears ambiguous for a reliable one-shot deployment."
+        )
+        clarification_questions = [
+            {
+                "id": "ambiguity_scope",
+                "question": "Please provide specific scope, conditions, and expected actions for this request.",
+                "reason": reason_text,
+                "examples": [
+                    "Applies to which group/form/brand?",
+                    "What exact action should be applied when conditions match?",
+                ],
+            }
+        ]
+    needs_clarification = bool(clarification_questions)
+    planning_summary = _build_planning_summary(
+        plan=plan,
+        request=request,
+        related_objects=related_objects,
+        reference_catalog=reference_catalog,
+    )
+    if needs_clarification:
+        store.append_status(
+            batch_id,
+            "clarification_required",
+            "Additional details required before generation.",
+        )
+        batch = store.update_batch(
+            batch_id,
+            {
+                "status": "clarification_required",
+                "planning_summary": planning_summary,
+                "metadata": {
+                    "clarification": {
+                        "required": True,
+                        "questions": clarification_questions,
+                        "ambiguity_score": ambiguity_score,
+                        "ambiguity_threshold": ambiguity_threshold,
+                    },
+                    "llm_routes": {
+                        "planner": planner_route.__dict__,
+                        "generator": generator_route.__dict__,
+                    },
+                    "context_notes": request.context_notes or "",
+                    "recent_batch_context": request.recent_batch_context,
+                },
+            },
+        )
+        return ImportAssistantGenerateResponse(
+            batch_id=batch_id,
+            status="clarification_required",
+            planning_summary=batch.get("planning_summary", {}),
+            generated_counts={},
+            validation_summary=ValidationSummary(),
+            preview_url=f"/api/import-assistant/preview/{batch_id}",
+            needs_clarification=True,
+            clarification_questions=clarification_questions,
+            metadata=batch.get("metadata", {}),
+        )
+
     store.append_status(batch_id, "schemas_selected", "Schemas selected from registry.")
     store.append_status(batch_id, "generating", "Generator call in progress.")
     generated_data = await run_generator(
@@ -315,17 +526,7 @@ async def generate_import_assistant_batch(
                 "status": "staging",
                 "target_environment": request.target_environment,
                 "created_at": created_at,
-                "planning_summary": {
-                    "object_type": plan.get("object_type", "triggers"),
-                    "intent": plan.get("intent", request.prompt),
-                    "confidence": plan.get("confidence", 0.7),
-                    "dependency_mode": request.dependency_mode,
-                    "dependency_notes": plan.get("dependency_notes", ""),
-                    "related_objects_selected": len(related_objects),
-                    "reference_catalog_counts": {
-                        key: len(values) for key, values in reference_catalog.items()
-                    },
-                },
+                "planning_summary": planning_summary,
                 "records": preview_records,
             },
         )
@@ -428,20 +629,16 @@ async def generate_import_assistant_batch(
             "records": preview_records,
             "generated_counts": generated_counts,
             "validation_summary": validation_summary.model_dump(),
-            "planning_summary": {
-                "object_type": plan.get("object_type", "triggers"),
-                "intent": plan.get("intent", request.prompt),
-                "confidence": plan.get("confidence", 0.7),
-                "dependency_mode": request.dependency_mode,
-                "dependency_notes": plan.get("dependency_notes", ""),
-                "related_objects_selected": len(related_objects),
-                "reference_catalog_counts": {
-                    key: len(values) for key, values in reference_catalog.items()
-                },
-            },
+            "planning_summary": planning_summary,
             "metadata": {
                 "validation_phase_status": final_status,
                 "dependency_resolution": dependency_resolution,
+                "ambiguity_score": ambiguity_score,
+                "ambiguity_threshold": ambiguity_threshold,
+                "llm_routes": {
+                    "planner": planner_route.__dict__,
+                    "generator": generator_route.__dict__,
+                },
                 "context_notes": request.context_notes or "",
                 "recent_batch_context": request.recent_batch_context,
                 "staging": staging_metadata,

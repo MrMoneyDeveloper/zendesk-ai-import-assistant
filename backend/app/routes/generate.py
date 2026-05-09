@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.services.sheets_service import send_to_sheets
 
+from app.api.grok.routing import resolve_model_route
 from app.core.settings import get_settings
 from app.loggers.logger import get_logger
 from app.models.schemas import ApiTestResponse, GenerateRequest, GenerateResponse
@@ -17,6 +18,8 @@ settings = get_settings()
 @router.post("/generate")
 async def generate(request: GenerateRequest) -> GenerateResponse:
     prompt = request.prompt
+    planner_route = resolve_model_route(settings, "planner")
+    generator_route = resolve_model_route(settings, "generator")
 
     try:
         # Step 1: Planning
@@ -54,6 +57,10 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         metadata={
             "provider": settings.llm_provider,
             "model": settings.xai_model,
+            "routes": {
+                "planner": planner_route.__dict__,
+                "generator": generator_route.__dict__,
+            },
             "sheet_response": sheet_response
         },
     )

@@ -2,6 +2,7 @@ import { Badge } from "../ui/badge";
 
 const statusToVariant = {
   preview_ready: "success",
+  clarification_required: "warning",
   validated_warning: "warning",
   validated_failed: "danger",
   deploying: "warning",
@@ -15,6 +16,7 @@ const terminalStatuses = new Set([
   "approved",
   "partially_approved",
   "preview_ready",
+  "clarification_required",
   "validated_passed",
   "validated_warning",
   "validated_failed",

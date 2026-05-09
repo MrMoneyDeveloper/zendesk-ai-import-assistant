@@ -7,6 +7,7 @@ BatchStatus = Literal[
     "request_validated",
     "planning",
     "planned",
+    "clarification_required",
     "schemas_selected",
     "generating",
     "generated",
@@ -121,6 +122,13 @@ class ValidationSummary(BaseModel):
     blocked: int = 0
 
 
+class ClarificationQuestion(BaseModel):
+    id: str
+    question: str
+    reason: str
+    examples: list[str] = Field(default_factory=list)
+
+
 class ImportAssistantGenerateResponse(BaseModel):
     batch_id: str
     status: BatchStatus
@@ -128,6 +136,8 @@ class ImportAssistantGenerateResponse(BaseModel):
     generated_counts: dict[str, int]
     validation_summary: ValidationSummary
     preview_url: str
+    needs_clarification: bool = False
+    clarification_questions: list[ClarificationQuestion] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

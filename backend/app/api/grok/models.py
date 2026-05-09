@@ -29,5 +29,6 @@ RATE_LIMIT_SUMMARY = {
         "Rate limits vary by model and by team tier.",
         "Per-model RPM/TPM values are shown in xAI Console.",
         "Text model tiers: Tier 0 ($0), Tier 1 ($50), Tier 2 ($250), Tier 3 ($1,000), Tier 4 ($5,000), Enterprise.",
+        "Use smaller max token limits and strict schemas for free-tier reliability in PoCs.",
     ],
 }

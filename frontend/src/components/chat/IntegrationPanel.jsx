@@ -33,6 +33,9 @@ export default function IntegrationPanel({
   const stageMeta = generateMetadata?.staging || {};
   const stageResult = stageMeta?.result || {};
   const approvalSync = approvalMetadata?.approval_sync || {};
+  const llmRoutes = generateMetadata?.llm_routes || {};
+  const plannerRoute = llmRoutes?.planner || null;
+  const generatorRoute = llmRoutes?.generator || null;
 
   const submitValidate = (event) => {
     event.preventDefault();
@@ -102,6 +105,26 @@ export default function IntegrationPanel({
                 </p>
               ) : null}
               {approvalSync?.detail ? <p className="text-rose-300">{approvalSync.detail}</p> : null}
+            </div>
+          ) : null}
+          {plannerRoute || generatorRoute ? (
+            <div className="mt-2 border-t border-slate-800 pt-2">
+              <p className="mb-1 font-semibold text-slate-200">LLM orchestration</p>
+              {plannerRoute ? (
+                <p className="text-slate-400">
+                  planner: <span className="font-mono">{plannerRoute.model}</span> | strict schema: {String(plannerRoute.strict_schema)}
+                </p>
+              ) : null}
+              {generatorRoute ? (
+                <p className="text-slate-400">
+                  generator: <span className="font-mono">{generatorRoute.model}</span> | strict schema: {String(generatorRoute.strict_schema)}
+                </p>
+              ) : null}
+              {generateMetadata?.ambiguity_score !== undefined ? (
+                <p className="mt-1 text-slate-400">
+                  ambiguity score: {Number(generateMetadata.ambiguity_score).toFixed(2)} (threshold {Number(generateMetadata.ambiguity_threshold || 0).toFixed(2)})
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

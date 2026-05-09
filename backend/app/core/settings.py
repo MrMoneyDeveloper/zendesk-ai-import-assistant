@@ -15,6 +15,24 @@ def _as_bool(value: str | None, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _as_float(value: str | None, default: float) -> float:
+    if value is None:
+        return default
+    try:
+        return float(value.strip())
+    except ValueError:
+        return default
+
+
+def _as_int(value: str | None, default: int) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
+
+
 def _normalize_provider(value: str | None) -> str:
     if not value:
         return "auto"
@@ -69,6 +87,15 @@ class Settings:
     xai_max_output_tokens: int
     xai_temperature: float
     xai_enabled: bool
+    llm_model_planner: str
+    llm_model_generator: str
+    llm_model_clarifier: str
+    llm_planner_max_output_tokens: int
+    llm_generator_max_output_tokens: int
+    llm_clarifier_max_output_tokens: int
+    llm_strict_schema_mode: bool
+    llm_fallback_to_json_object: bool
+    llm_ambiguity_threshold: float
     google_sheet_id: str
     google_service_account_file: str
     google_sheets_scope: str
@@ -86,6 +113,8 @@ class Settings:
 def get_settings() -> Settings:
     api_key = os.getenv("XAI_API_KEY", "").strip()
     provider = _resolve_provider(api_key, os.getenv("LLM_PROVIDER", "auto"))
+    default_model = _resolve_model(provider, os.getenv("XAI_MODEL", ""))
+    default_max_tokens = _as_int(os.getenv("XAI_MAX_OUTPUT_TOKENS"), 1800)
 
     return Settings(
         app_name=os.getenv("APP_NAME", "AI Zendesk Import Assistant"),
@@ -93,11 +122,35 @@ def get_settings() -> Settings:
         llm_provider=provider,
         xai_api_key=api_key,
         xai_base_url=_resolve_base_url(provider, os.getenv("XAI_BASE_URL", "")),
-        xai_model=_resolve_model(provider, os.getenv("XAI_MODEL", "")),
-        xai_request_timeout_seconds=float(os.getenv("XAI_REQUEST_TIMEOUT_SECONDS", "60")),
-        xai_max_output_tokens=int(os.getenv("XAI_MAX_OUTPUT_TOKENS", "1800")),
-        xai_temperature=float(os.getenv("XAI_TEMPERATURE", "0.1")),
+        xai_model=default_model,
+        xai_request_timeout_seconds=_as_float(os.getenv("XAI_REQUEST_TIMEOUT_SECONDS"), 60.0),
+        xai_max_output_tokens=default_max_tokens,
+        xai_temperature=_as_float(os.getenv("XAI_TEMPERATURE"), 0.1),
         xai_enabled=_as_bool(os.getenv("XAI_ENABLED"), True),
+        llm_model_planner=os.getenv("LLM_MODEL_PLANNER", "").strip() or default_model,
+        llm_model_generator=os.getenv("LLM_MODEL_GENERATOR", "").strip() or default_model,
+        llm_model_clarifier=os.getenv("LLM_MODEL_CLARIFIER", "").strip() or default_model,
+        llm_planner_max_output_tokens=_as_int(
+            os.getenv("LLM_PLANNER_MAX_OUTPUT_TOKENS"),
+            min(default_max_tokens, 900),
+        ),
+        llm_generator_max_output_tokens=_as_int(
+            os.getenv("LLM_GENERATOR_MAX_OUTPUT_TOKENS"),
+            default_max_tokens,
+        ),
+        llm_clarifier_max_output_tokens=_as_int(
+            os.getenv("LLM_CLARIFIER_MAX_OUTPUT_TOKENS"),
+            min(default_max_tokens, 700),
+        ),
+        llm_strict_schema_mode=_as_bool(os.getenv("LLM_STRICT_SCHEMA_MODE"), True),
+        llm_fallback_to_json_object=_as_bool(
+            os.getenv("LLM_FALLBACK_TO_JSON_OBJECT"),
+            True,
+        ),
+        llm_ambiguity_threshold=min(
+            max(_as_float(os.getenv("LLM_AMBIGUITY_THRESHOLD"), 0.58), 0.0),
+            1.0,
+        ),
         google_sheet_id=os.getenv("GOOGLE_SHEET_ID", "").strip(),
         google_service_account_file=os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip(),
         google_sheets_scope=(
