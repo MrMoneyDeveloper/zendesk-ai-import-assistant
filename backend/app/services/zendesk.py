@@ -1,4 +1,5 @@
 import httpx
+import asyncio
 from datetime import UTC, datetime
 
 
@@ -60,6 +61,12 @@ async def fetch_zendesk_reference_catalog(
         "brands": [],
         "groups": [],
         "ticket_forms": [],
+        "triggers": [],
+        "automations": [],
+        "macros": [],
+        "views": [],
+        "ticket_fields": [],
+        "articles": [],
         "help_centers": [],
         "categories": [],
         "sections": [],
@@ -85,67 +92,155 @@ async def fetch_zendesk_reference_catalog(
                 warnings.append(f"{path}: response was not valid JSON.")
                 return {}
 
-        brands_payload = await _safe_get("/api/v2/brands.json")
-        for item in brands_payload.get("brands", []) if isinstance(brands_payload, dict) else []:
-            item_id = str(item.get("id", "")).strip()
-            name = str(item.get("name", "")).strip()
-            if item_id and name:
-                catalogs["brands"].append(
-                    {"object_type": "brand", "id": item_id, "name": name}
-                )
+        endpoint_map = {
+            "brands": "/api/v2/brands.json",
+            "groups": "/api/v2/groups.json",
+            "ticket_forms": "/api/v2/ticket_forms.json",
+            "triggers": "/api/v2/triggers.json",
+            "automations": "/api/v2/automations.json",
+            "macros": "/api/v2/macros.json",
+            "views": "/api/v2/views.json",
+            "ticket_fields": "/api/v2/ticket_fields.json",
+            "articles": "/api/v2/help_center/articles.json?per_page=100",
+            "help_centers": "/api/v2/help_center/help_centers.json",
+            "categories": "/api/v2/help_center/categories.json?per_page=100",
+            "sections": "/api/v2/help_center/sections.json?per_page=100",
+        }
+        payloads = await asyncio.gather(
+            *[_safe_get(path) for path in endpoint_map.values()]
+        )
+        payload_by_key = dict(zip(endpoint_map.keys(), payloads))
 
-        groups_payload = await _safe_get("/api/v2/groups.json")
-        for item in groups_payload.get("groups", []) if isinstance(groups_payload, dict) else []:
-            item_id = str(item.get("id", "")).strip()
-            name = str(item.get("name", "")).strip()
-            if item_id and name:
-                catalogs["groups"].append(
-                    {"object_type": "group", "id": item_id, "name": name}
-                )
+        def _add(
+            *,
+            target_key: str,
+            object_type: str,
+            entries: list,
+            name_field: str = "name",
+            description_builder=None,
+        ) -> None:
+            for item in entries:
+                if not isinstance(item, dict):
+                    continue
+                item_id = str(item.get("id", "")).strip()
+                name = str(item.get(name_field, "")).strip()
+                if not item_id or not name:
+                    continue
+                payload = {"object_type": object_type, "id": item_id, "name": name}
+                if callable(description_builder):
+                    description = description_builder(item)
+                    if description:
+                        payload["description"] = description
+                catalogs[target_key].append(payload)
 
-        forms_payload = await _safe_get("/api/v2/ticket_forms.json")
-        for item in forms_payload.get("ticket_forms", []) if isinstance(forms_payload, dict) else []:
-            item_id = str(item.get("id", "")).strip()
-            name = str(item.get("name", "")).strip()
-            if item_id and name:
-                catalogs["ticket_forms"].append(
-                    {"object_type": "ticket_form", "id": item_id, "name": name}
-                )
+        def _rule_summary(item: dict) -> str:
+            conditions = item.get("conditions", {}) if isinstance(item, dict) else {}
+            all_conditions = conditions.get("all", []) if isinstance(conditions, dict) else []
+            actions = item.get("actions", []) if isinstance(item, dict) else []
+            cond_count = len(all_conditions) if isinstance(all_conditions, list) else 0
+            action_count = len(actions) if isinstance(actions, list) else 0
+            return f"conditions={cond_count}; actions={action_count}"
 
-        help_centers_payload = await _safe_get("/api/v2/help_center/help_centers.json")
-        for item in (
-            help_centers_payload.get("help_centers", [])
-            if isinstance(help_centers_payload, dict)
-            else []
-        ):
-            item_id = str(item.get("id", "")).strip()
-            name = str(item.get("name", "")).strip()
-            if item_id and name:
-                catalogs["help_centers"].append(
-                    {"object_type": "help_center", "id": item_id, "name": name}
-                )
+        def _macro_summary(item: dict) -> str:
+            actions = item.get("actions", []) if isinstance(item, dict) else []
+            action_count = len(actions) if isinstance(actions, list) else 0
+            return f"actions={action_count}"
 
-        categories_payload = await _safe_get("/api/v2/help_center/categories.json?per_page=100")
-        for item in (
-            categories_payload.get("categories", []) if isinstance(categories_payload, dict) else []
-        ):
-            item_id = str(item.get("id", "")).strip()
-            name = str(item.get("name", "")).strip()
-            if item_id and name:
-                catalogs["categories"].append(
-                    {"object_type": "category", "id": item_id, "name": name}
-                )
+        def _view_summary(item: dict) -> str:
+            all_conditions = item.get("all", []) if isinstance(item, dict) else []
+            any_conditions = item.get("any", []) if isinstance(item, dict) else []
+            return f"all={len(all_conditions) if isinstance(all_conditions, list) else 0}; any={len(any_conditions) if isinstance(any_conditions, list) else 0}"
 
-        sections_payload = await _safe_get("/api/v2/help_center/sections.json?per_page=100")
-        for item in (
-            sections_payload.get("sections", []) if isinstance(sections_payload, dict) else []
-        ):
-            item_id = str(item.get("id", "")).strip()
-            name = str(item.get("name", "")).strip()
-            if item_id and name:
-                catalogs["sections"].append(
-                    {"object_type": "section", "id": item_id, "name": name}
-                )
+        def _ticket_field_summary(item: dict) -> str:
+            field_type = str(item.get("type", "")).strip().lower()
+            tag = str(item.get("tag", "")).strip()
+            if tag:
+                return f"type={field_type}; tag={tag}"
+            return f"type={field_type}"
+
+        def _article_summary(item: dict) -> str:
+            label_names = item.get("label_names", []) if isinstance(item, dict) else []
+            section_id = str(item.get("section_id", "")).strip()
+            tags = ", ".join(label_names[:3]) if isinstance(label_names, list) and label_names else ""
+            parts = []
+            if section_id:
+                parts.append(f"section_id={section_id}")
+            if tags:
+                parts.append(f"labels={tags}")
+            return "; ".join(parts)
+
+        _add(
+            target_key="brands",
+            object_type="brand",
+            entries=payload_by_key.get("brands", {}).get("brands", []) if isinstance(payload_by_key.get("brands"), dict) else [],
+        )
+        _add(
+            target_key="groups",
+            object_type="group",
+            entries=payload_by_key.get("groups", {}).get("groups", []) if isinstance(payload_by_key.get("groups"), dict) else [],
+        )
+        _add(
+            target_key="ticket_forms",
+            object_type="ticket_form",
+            entries=payload_by_key.get("ticket_forms", {}).get("ticket_forms", []) if isinstance(payload_by_key.get("ticket_forms"), dict) else [],
+        )
+        _add(
+            target_key="triggers",
+            object_type="trigger",
+            entries=payload_by_key.get("triggers", {}).get("triggers", []) if isinstance(payload_by_key.get("triggers"), dict) else [],
+            name_field="title",
+            description_builder=_rule_summary,
+        )
+        _add(
+            target_key="automations",
+            object_type="automation",
+            entries=payload_by_key.get("automations", {}).get("automations", []) if isinstance(payload_by_key.get("automations"), dict) else [],
+            name_field="title",
+            description_builder=_rule_summary,
+        )
+        _add(
+            target_key="macros",
+            object_type="macro",
+            entries=payload_by_key.get("macros", {}).get("macros", []) if isinstance(payload_by_key.get("macros"), dict) else [],
+            name_field="title",
+            description_builder=_macro_summary,
+        )
+        _add(
+            target_key="views",
+            object_type="view",
+            entries=payload_by_key.get("views", {}).get("views", []) if isinstance(payload_by_key.get("views"), dict) else [],
+            name_field="title",
+            description_builder=_view_summary,
+        )
+        _add(
+            target_key="ticket_fields",
+            object_type="ticket_field",
+            entries=payload_by_key.get("ticket_fields", {}).get("ticket_fields", []) if isinstance(payload_by_key.get("ticket_fields"), dict) else [],
+            name_field="title",
+            description_builder=_ticket_field_summary,
+        )
+        _add(
+            target_key="articles",
+            object_type="article",
+            entries=payload_by_key.get("articles", {}).get("articles", []) if isinstance(payload_by_key.get("articles"), dict) else [],
+            name_field="title",
+            description_builder=_article_summary,
+        )
+        _add(
+            target_key="help_centers",
+            object_type="help_center",
+            entries=payload_by_key.get("help_centers", {}).get("help_centers", []) if isinstance(payload_by_key.get("help_centers"), dict) else [],
+        )
+        _add(
+            target_key="categories",
+            object_type="category",
+            entries=payload_by_key.get("categories", {}).get("categories", []) if isinstance(payload_by_key.get("categories"), dict) else [],
+        )
+        _add(
+            target_key="sections",
+            object_type="section",
+            entries=payload_by_key.get("sections", {}).get("sections", []) if isinstance(payload_by_key.get("sections"), dict) else [],
+        )
 
     fetched_total = sum(len(v) for v in catalogs.values())
     if fetched_total == 0:

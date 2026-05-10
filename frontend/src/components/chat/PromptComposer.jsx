@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import cxHeroBanner from "../../assets/cx-hero-banner.png";
 
 const schema = z.object({
   prompt: z.string().min(5, "Prompt must be at least 5 characters."),
@@ -133,16 +134,19 @@ export default function PromptComposer({
 
   return (
     <div className="mx-auto mb-8 w-full max-w-5xl">
+      <div className="mb-3 overflow-hidden rounded-2xl border border-[#7B1FFF]/38 bg-[#120522]/60 shadow-[0_0_24px_rgba(91,53,255,0.12)]">
+        <img src={cxHeroBanner} alt="CX banner" className="h-20 w-full object-cover opacity-80" />
+      </div>
       <h1 className="mb-4 text-center text-5xl font-medium text-slate-100">
         Where should we begin?
       </h1>
-      <div className="mb-3 grid gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-300 md:grid-cols-3">
+      <div className="mb-3 grid gap-2 rounded-xl border border-[#7B1FFF]/30 bg-[#120522]/70 p-3 text-xs text-slate-300 md:grid-cols-3">
         <label className="flex flex-col gap-1">
-          <span className="text-slate-400">Dependency behavior</span>
+          <span className="text-[#B9A7D9]">Dependency behavior</span>
           <select
             value={dependencyMode}
             onChange={(event) => onDependencyModeChange?.(event.target.value)}
-            className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
+            className="rounded-md border border-[#7B1FFF]/40 bg-[#07030F]/80 px-2 py-1 text-xs text-slate-200"
             disabled={isLocked}
           >
             <option value="match_existing_or_create_new">Match existing, else create new</option>
@@ -151,11 +155,11 @@ export default function PromptComposer({
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-slate-400">If object already exists</span>
+          <span className="text-[#B9A7D9]">If object already exists</span>
           <select
             value={onExistingMode}
             onChange={(event) => onOnExistingModeChange?.(event.target.value)}
-            className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
+            className="rounded-md border border-[#7B1FFF]/40 bg-[#07030F]/80 px-2 py-1 text-xs text-slate-200"
             disabled={isLocked}
           >
             <option value="create_new">Create new anyway</option>
@@ -163,16 +167,16 @@ export default function PromptComposer({
             <option value="skip_existing">Skip existing</option>
           </select>
         </label>
-        <div className="rounded-md border border-slate-800 bg-slate-950/60 px-2 py-2">
-          <p className="text-slate-400">Selected context</p>
+        <div className="rounded-md border border-[#7B1FFF]/30 bg-[#07030F]/70 px-2 py-2">
+          <p className="text-[#B9A7D9]">Selected context</p>
           <p className="mt-1 font-semibold text-slate-200">{selectedContextCount} objects selected</p>
         </div>
       </div>
-      <form onSubmit={submit} className="rounded-3xl border border-slate-700 bg-[#2a2d35] p-3 shadow-lg">
+      <form onSubmit={submit} className="rounded-3xl border border-[#7B1FFF]/45 bg-[#120522]/80 p-3 shadow-lg shadow-[#9B35FF]/15">
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="rounded-md p-2 text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md p-2 text-[#B9A7D9] hover:bg-[#7B1FFF]/20 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label="Add attachment"
             onClick={onAttachmentClick}
             disabled={isLocked}
@@ -189,14 +193,14 @@ export default function PromptComposer({
           <Input
             {...form.register("prompt")}
             placeholder="Describe the Zendesk setup you want generated..."
-            className="h-12 flex-1 border-none bg-transparent text-base focus:border-none"
+            className="h-12 flex-1 border-none bg-transparent text-base text-[#F4EEFF] focus:border-none"
             disabled={isLocked}
           />
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className={`rounded-full p-2 ${isListening ? "text-emerald-300" : "text-slate-300"}`}
+            className={`rounded-full p-2 ${isListening ? "text-emerald-300" : "text-[#B9A7D9]"}`}
             disabled={isLocked}
             onClick={toggleMic}
           >
@@ -205,7 +209,7 @@ export default function PromptComposer({
           <Button
             type="submit"
             size="sm"
-            className="h-10 w-10 rounded-full bg-white text-slate-900 hover:bg-slate-200"
+            className="h-10 w-10 rounded-full bg-[#9B35FF] text-white hover:bg-[#C063FF]"
             disabled={isLoading || isLocked}
           >
             <ArrowUp size={18} />
@@ -226,15 +230,15 @@ export default function PromptComposer({
       {helperMessage ? <p className="mt-1 text-center text-xs text-slate-400">{helperMessage}</p> : null}
 
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-        <button type="button" className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">
+        <button type="button" className="cx-chip rounded-full px-4 py-2 text-sm hover:bg-[#7B1FFF]/20">
           <ImageIcon size={16} className="mr-2 inline" />
           Create an image
         </button>
-        <button type="button" className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">
+        <button type="button" className="cx-chip rounded-full px-4 py-2 text-sm hover:bg-[#7B1FFF]/20">
           <PencilLine size={16} className="mr-2 inline" />
           Write or edit
         </button>
-        <button type="button" className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">
+        <button type="button" className="cx-chip rounded-full px-4 py-2 text-sm hover:bg-[#7B1FFF]/20">
           <Globe size={16} className="mr-2 inline" />
           Look something up
         </button>

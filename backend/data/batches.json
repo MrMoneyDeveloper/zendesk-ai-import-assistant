@@ -1058,6 +1058,528 @@
         }
       },
       "approved_by": "local-user"
+    },
+    "BATCH-20260509-203556-24D048": {
+      "batch_id": "BATCH-20260509-203556-24D048",
+      "status": "clarification_required",
+      "prompt": "make me a test trigger",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-09T20:35:56.122144+00:00",
+      "updated_at": "2026-05-09T20:35:57.607143+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-09T20:35:56.122144+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-09T20:35:56.129151+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-09T20:35:56.133605+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-09T20:35:57.576652+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-09T20:35:57.591062+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Create a test trigger",
+        "confidence": 0.6,
+        "ambiguity_score": 0.8,
+        "ambiguity_reasons": [
+          "Trigger name not specified",
+          "Trigger conditions not specified",
+          "Trigger actions not specified",
+          "Target groups or ticket forms not specified"
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "dependency_notes": "No explicit object selections were made; will use context catalog and recent batch context to determine relevant groups, ticket forms, etc.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 1,
+          "groups": 7,
+          "ticket_forms": 6,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": true
+        }
+      },
+      "metadata": {
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "planner_question_1",
+              "question": "What should the trigger be named?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_2",
+              "question": "What conditions should trigger the action?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_3",
+              "question": "What actions should the trigger perform?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_4",
+              "question": "Which groups or ticket forms should be involved?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Rule-like objects need clear filter criteria.",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts",
+                "Only for group=Finance & Investments and priority=high"
+              ]
+            }
+          ],
+          "ambiguity_score": 0.8,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 1800,
+            "strict_schema": true
+          }
+        },
+        "context_notes": "No explicit object selections were made. Use available context catalog and recent batch context.",
+        "recent_batch_context": [
+          "BATCH-20260508-171751-9C4FF1 | deployed | make me a test trigger",
+          "BATCH-20260508-164221-56FD3E | approved | make me a test trigger",
+          "BATCH-20260507-212609-AA66FD | approved | build me a trigger",
+          "BATCH-20260507-191121-9692A0 | preview_ready | create billing trigger",
+          "BATCH-20260507-162310-D58342 | preview_ready | create billing trigger",
+          "BATCH-20260507-161537-DA63BA | preview_ready | Create a billing trigger that routes tickets to the billing team",
+          "BATCH-20260507-160453-8B48C8 | preview_ready | Create a billing trigger that routes tickets to the billing team"
+        ]
+      }
+    },
+    "BATCH-20260509-203655-95802C": {
+      "batch_id": "BATCH-20260509-203655-95802C",
+      "status": "clarification_required",
+      "prompt": "make me a test trigger that creates a tag to any open ticket and adds the word test thats all",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-09T20:36:55.780239+00:00",
+      "updated_at": "2026-05-09T20:36:56.830099+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-09T20:36:55.780239+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-09T20:36:55.786069+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-09T20:36:55.789102+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-09T20:36:56.820102+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-09T20:36:56.825543+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Create a trigger that tags any open ticket with the tag 'test'.",
+        "confidence": 0.95,
+        "ambiguity_score": 0.0,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "dependency_notes": "The trigger will apply to all tickets with status 'open' and add the tag 'test'.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 1,
+          "groups": 7,
+          "ticket_forms": 6,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": true
+        }
+      },
+      "metadata": {
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Rule-like objects need clear filter criteria.",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts",
+                "Only for group=Finance & Investments and priority=high"
+              ]
+            }
+          ],
+          "ambiguity_score": 0.0,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 1800,
+            "strict_schema": true
+          }
+        },
+        "context_notes": "No explicit object selections were made. Use available context catalog and recent batch context.",
+        "recent_batch_context": [
+          "BATCH-20260509-203556-24D048 | clarification_required | make me a test trigger",
+          "BATCH-20260508-171751-9C4FF1 | deployed | make me a test trigger",
+          "BATCH-20260508-164221-56FD3E | approved | make me a test trigger",
+          "BATCH-20260507-212609-AA66FD | approved | build me a trigger",
+          "BATCH-20260507-191121-9692A0 | preview_ready | create billing trigger",
+          "BATCH-20260507-162310-D58342 | preview_ready | create billing trigger",
+          "BATCH-20260507-161537-DA63BA | preview_ready | Create a billing trigger that routes tickets to the billing team",
+          "BATCH-20260507-160453-8B48C8 | preview_ready | Create a billing trigger that routes tickets to the billing team"
+        ]
+      }
+    },
+    "BATCH-20260509-203747-426A67": {
+      "batch_id": "BATCH-20260509-203747-426A67",
+      "status": "clarification_required",
+      "prompt": "make me a test trigger that creates a tag to any open ticket and adds the word test thats all and insure it apply to all groups",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-09T20:37:47.132836+00:00",
+      "updated_at": "2026-05-09T20:37:48.587645+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-09T20:37:47.132836+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-09T20:37:47.138566+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-09T20:37:47.142536+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-09T20:37:48.576125+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-09T20:37:48.582553+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Create a trigger that tags any open ticket with the tag \"test\" and applies to all groups.",
+        "confidence": 0.85,
+        "ambiguity_score": 0.35,
+        "ambiguity_reasons": [
+          "Unclear if the tag to add is exactly \"test\" or a different tag name.",
+          "Unclear whether the trigger should fire on ticket creation, status change, or any open ticket event.",
+          "Unclear if the trigger should apply to all groups or only specific ones.",
+          "Unclear if the word \"test\" should be added to the ticket description or just as a tag."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "dependency_notes": "The trigger will be created under brand EPPF and will apply to all groups listed in the reference catalog.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 1,
+          "groups": 7,
+          "ticket_forms": 6,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": true
+        }
+      },
+      "metadata": {
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "planner_question_1",
+              "question": "What exact tag name should be added to the ticket?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_2",
+              "question": "Should the trigger fire on ticket creation, status change, or any open ticket event?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_3",
+              "question": "Do you want the trigger to apply to all groups or only specific ones?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_4",
+              "question": "Should the word \"test\" be added to the ticket description or just as a tag?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_5",
+              "question": "Do you need any conditions on ticket form or category?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_6",
+              "question": "Is there a specific priority or order for this trigger?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            }
+          ],
+          "ambiguity_score": 0.35,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 1800,
+            "strict_schema": true
+          }
+        },
+        "context_notes": "No explicit object selections were made. Use available context catalog and recent batch context.",
+        "recent_batch_context": [
+          "BATCH-20260509-203655-95802C | clarification_required | make me a test trigger that creates a tag to any open ticket and adds the word test thats ...",
+          "BATCH-20260509-203556-24D048 | clarification_required | make me a test trigger",
+          "BATCH-20260508-171751-9C4FF1 | deployed | make me a test trigger",
+          "BATCH-20260508-164221-56FD3E | approved | make me a test trigger",
+          "BATCH-20260507-212609-AA66FD | approved | build me a trigger",
+          "BATCH-20260507-191121-9692A0 | preview_ready | create billing trigger",
+          "BATCH-20260507-162310-D58342 | preview_ready | create billing trigger",
+          "BATCH-20260507-161537-DA63BA | preview_ready | Create a billing trigger that routes tickets to the billing team"
+        ]
+      }
+    },
+    "BATCH-20260509-203826-747DFD": {
+      "batch_id": "BATCH-20260509-203826-747DFD",
+      "status": "clarification_required",
+      "prompt": "make me a test trigger that creates a tag to any open ticket and adds the word test thats all and insure it apply to all groups tag is test, add it to all forms and all stautes",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-09T20:38:26.162704+00:00",
+      "updated_at": "2026-05-09T20:38:30.049826+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-09T20:38:26.162704+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-09T20:38:26.172642+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-09T20:38:26.182556+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-09T20:38:30.032239+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-09T20:38:30.042321+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Create a trigger that adds the tag 'test' to any open ticket, applying to all groups, all ticket forms, and all statuses.",
+        "confidence": 0.7,
+        "ambiguity_score": 0.4,
+        "ambiguity_reasons": [
+          "Unclear if 'creates a tag to any open ticket' means adding tag 'test' or creating a new tag",
+          "Unclear if 'apply to all groups' refers to trigger scope or tag assignment",
+          "Unclear if 'add it to all forms and all stautes' means trigger applies to all forms and statuses or action applies to all forms and statuses"
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "dependency_notes": "Trigger will be created under brand EPPF, affecting all listed groups and ticket forms.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 1,
+          "groups": 7,
+          "ticket_forms": 6,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": true
+        }
+      },
+      "metadata": {
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "planner_question_1",
+              "question": "Should the trigger add the tag 'test' to tickets that are currently open, or to all tickets regardless of status?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_2",
+              "question": "Do you want the trigger to run for tickets in all groups, or only specific groups?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "planner_question_3",
+              "question": "Should the trigger apply to all ticket forms and all statuses, or only to certain forms/statuses?",
+              "reason": "Planner flagged this as missing detail for reliable generation.",
+              "examples": []
+            },
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Rule-like objects need clear filter criteria.",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts",
+                "Only for group=Finance & Investments and priority=high"
+              ]
+            }
+          ],
+          "ambiguity_score": 0.4,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 1800,
+            "strict_schema": true
+          }
+        },
+        "context_notes": "No explicit object selections were made. Use available context catalog and recent batch context.",
+        "recent_batch_context": [
+          "BATCH-20260509-203747-426A67 | clarification_required | make me a test trigger that creates a tag to any open ticket and adds the word test thats ...",
+          "BATCH-20260509-203655-95802C | clarification_required | make me a test trigger that creates a tag to any open ticket and adds the word test thats ...",
+          "BATCH-20260509-203556-24D048 | clarification_required | make me a test trigger",
+          "BATCH-20260508-171751-9C4FF1 | deployed | make me a test trigger",
+          "BATCH-20260508-164221-56FD3E | approved | make me a test trigger",
+          "BATCH-20260507-212609-AA66FD | approved | build me a trigger",
+          "BATCH-20260507-191121-9692A0 | preview_ready | create billing trigger",
+          "BATCH-20260507-162310-D58342 | preview_ready | create billing trigger"
+        ]
+      }
     }
   }
 }

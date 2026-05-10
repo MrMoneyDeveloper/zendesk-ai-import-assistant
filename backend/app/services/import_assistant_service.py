@@ -238,12 +238,199 @@ def _count_generated(records: list[dict]) -> dict[str, int]:
     return dict(counts)
 
 
-def _build_clarification_questions(prompt: str, plan: dict) -> list[dict]:
+CATALOG_OBJECT_NORMALIZATION = {
+    "brands": "brands",
+    "brand": "brands",
+    "groups": "groups",
+    "group": "groups",
+    "ticket_forms": "ticket_forms",
+    "ticket_form": "ticket_forms",
+    "triggers": "triggers",
+    "trigger": "triggers",
+    "automations": "automations",
+    "automation": "automations",
+    "macros": "macros",
+    "macro": "macros",
+    "views": "views",
+    "view": "views",
+    "ticket_fields": "ticket_fields",
+    "ticket_field": "ticket_fields",
+    "articles": "articles",
+    "article": "articles",
+    "help_centers": "help_centers",
+    "help_center": "help_centers",
+    "categories": "categories",
+    "category": "categories",
+    "sections": "sections",
+    "section": "sections",
+}
+
+
+def _build_existing_object_index(reference_catalog: dict[str, list[dict]]) -> dict[str, dict[str, dict]]:
+    index: dict[str, dict[str, dict]] = {}
+    for raw_key, rows in reference_catalog.items():
+        canonical_key = CATALOG_OBJECT_NORMALIZATION.get(str(raw_key).strip().lower(), "")
+        if not canonical_key:
+            continue
+        bucket = index.setdefault(canonical_key, {})
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+            bucket[name.lower()] = item
+    return index
+
+
+def _annotate_duplicate_candidates(
+    rows: list[dict],
+    *,
+    existing_index: dict[str, dict[str, dict]],
+    dependency_mode: str,
+) -> tuple[list[dict], list[dict]]:
+    if not existing_index:
+        return rows, []
+
+    duplicate_candidates: list[dict] = []
+    patched_rows: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        object_type = _normalize_object_type(str(row.get("object_type", "triggers")))
+        title = str(row.get("title", "")).strip()
+        if not title:
+            patched_rows.append(row)
+            continue
+
+        existing_match = existing_index.get(object_type, {}).get(title.lower())
+        if not existing_match:
+            if dependency_mode == "force_existing_only":
+                row.setdefault("validation_overrides", {})
+                row["validation_overrides"]["blocked_reason"] = (
+                    "Existing-only mode is active and no existing object with this exact title was found."
+                )
+            patched_rows.append(row)
+            continue
+
+        existing_id = str(existing_match.get("id", "")).strip()
+        existing_description = str(existing_match.get("description", "")).strip()
+        note = (
+            f"Duplicate candidate: existing {object_type.rstrip('s')} '{title}'"
+            + (f" (id={existing_id})" if existing_id else "")
+            + ". Confirm whether to reuse/update or keep creating new."
+        )
+
+        existing_notes = list(row.get("dependency_notes", []) or [])
+        existing_notes.append(note)
+        row["dependency_notes"] = existing_notes
+
+        duplicate_candidates.append(
+            {
+                "object_type": object_type,
+                "title": title,
+                "existing_id": existing_id or None,
+                "existing_description": existing_description or None,
+            }
+        )
+        patched_rows.append(row)
+
+    return patched_rows, duplicate_candidates
+
+
+def _is_explicit_enough_for_generation(prompt: str, object_type: str) -> bool:
+    text = prompt.strip().lower()
+    if not text:
+        return False
+
+    if object_type in {"triggers", "automations", "views"}:
+        mentions_action = any(
+            token in text for token in ["add tag", "set tag", "tag", "status", "priority", "group", "notify", "comment"]
+        )
+        mentions_scope = any(
+            token in text
+            for token in [
+                "all groups",
+                "all forms",
+                "all statuses",
+                "any open ticket",
+                "open ticket",
+                "status is open",
+                "status=open",
+            ]
+        )
+        mentions_concrete_condition = any(
+            token in text
+            for token in [
+                "where",
+                "apply to",
+                "status is",
+                "status=",
+                "open ticket",
+                "new ticket",
+                "group",
+                "form",
+                "brand",
+            ]
+        )
+        tag_value = re.search(
+            r"\btag(?:\s+name)?\s*(?:is|=|to|as)\s*[\"']?([a-z0-9_-]{2,})",
+            text,
+        )
+        add_tag_value = re.search(
+            r"\badd(?:s)?\s+(?:the\s+)?tag\s+[\"']?([a-z0-9_-]{2,})",
+            text,
+        )
+        status_action_value = re.search(
+            r"\b(?:set|change|update)\s+status\s*(?:to|=|as)?\s*([a-z_]+)",
+            text,
+        )
+        mentions_action_value = bool(tag_value or add_tag_value or status_action_value)
+        return mentions_action and mentions_action_value and (mentions_scope or mentions_concrete_condition)
+
+    if object_type == "macros":
+        explicit_message = bool(
+            re.search(r"comment\s*:\s*.+", text)
+            or re.search(r"reply\s*:\s*.+", text)
+            or re.search(r"[\"'].{4,}[\"']", text)
+        )
+        explicit_side_effect = bool(
+            re.search(r"\btag(?:\s+name)?\s*(?:is|=|to|as)\s*[\"']?([a-z0-9_-]{2,})", text)
+            or re.search(r"\b(?:set|change|update)\s+status\s*(?:to|=|as)?\s*([a-z_]+)", text)
+            or re.search(r"\b(?:set|assign)\s+group\s*(?:to|=|as)?\s*[\"']?([a-z0-9 _-]{2,})", text)
+        )
+        return explicit_message or explicit_side_effect
+
+    if object_type == "articles":
+        mentions_location = any(token in text for token in ["section", "category", "help center", "knowledge base"])
+        mentions_content = any(token in text for token in ["article", "title", "body", "publish"])
+        return mentions_location and mentions_content
+
+    return len(text) >= 20
+
+
+def _build_clarification_questions(
+    prompt: str,
+    plan: dict,
+    *,
+    ambiguity_score: float,
+    ambiguity_threshold: float,
+) -> list[dict]:
     text = prompt.strip().lower()
     object_type = _normalize_object_type(str(plan.get("object_type", "triggers")))
     questions: list[dict] = []
+    prompt_explicit = _is_explicit_enough_for_generation(prompt, object_type)
+    confidence = float(plan.get("confidence", 0.0) or 0.0)
     planner_questions = plan.get("clarification_questions", [])
-    if isinstance(planner_questions, list):
+    include_planner_questions = (
+        not prompt_explicit
+        and isinstance(planner_questions, list)
+        and (
+            ambiguity_score >= max(ambiguity_threshold + 0.08, 0.68)
+            or confidence < 0.62
+        )
+    )
+    if include_planner_questions:
         for index, item in enumerate(planner_questions, start=1):
             question_text = str(item).strip()
             if not question_text:
@@ -276,10 +463,16 @@ def _build_clarification_questions(prompt: str, plan: dict) -> list[dict]:
             "route",
             "routing",
             "triage",
+            "all groups",
+            "all forms",
+            "all statuses",
+            "open ticket",
+            "status is",
+            "apply to",
         ]
     )
 
-    if object_type == "macros":
+    if object_type == "macros" and not prompt_explicit:
         if has_time_phrase:
             questions.append(
                 {
@@ -317,7 +510,7 @@ def _build_clarification_questions(prompt: str, plan: dict) -> list[dict]:
                 }
             )
 
-    if object_type in {"triggers", "automations", "views"} and not mentions_condition:
+    if object_type in {"triggers", "automations", "views"} and not mentions_condition and not prompt_explicit:
         questions.append(
             {
                 "id": "conditions_needed",
@@ -330,7 +523,11 @@ def _build_clarification_questions(prompt: str, plan: dict) -> list[dict]:
             }
         )
 
-    if object_type == "articles" and not any(key in text for key in ["section", "category", "help center"]):
+    if (
+        object_type == "articles"
+        and not prompt_explicit
+        and not any(key in text for key in ["section", "category", "help center"])
+    ):
         questions.append(
             {
                 "id": "article_target_location",
@@ -352,7 +549,7 @@ def _build_clarification_questions(prompt: str, plan: dict) -> list[dict]:
             continue
         seen.add(key)
         deduped.append(item)
-    return deduped[:6]
+    return deduped[:1]
 
 
 def _build_planning_summary(
@@ -361,12 +558,14 @@ def _build_planning_summary(
     request: ImportAssistantGenerateRequest,
     related_objects: list[dict],
     reference_catalog: dict[str, list[dict]],
+    prompt_explicit: bool,
 ) -> dict:
     return {
         "object_type": plan.get("object_type", "triggers"),
         "intent": plan.get("intent", request.prompt),
         "confidence": plan.get("confidence", 0.7),
         "ambiguity_score": plan.get("ambiguity_score", 0.0),
+        "prompt_explicit": prompt_explicit,
         "ambiguity_reasons": plan.get("ambiguity_reasons", []),
         "dependency_mode": request.dependency_mode,
         "dependency_notes": plan.get("dependency_notes", ""),
@@ -391,6 +590,7 @@ async def generate_import_assistant_batch(
         for key, values in (request.reference_catalog or {}).items()
     }
     related_lookup = _build_related_lookup(related_objects)
+    existing_object_index = _build_existing_object_index(reference_catalog)
 
     batch_id = _new_batch_id()
     created_at = _utc_now()
@@ -426,8 +626,15 @@ async def generate_import_assistant_batch(
 
     ambiguity_score = float(plan.get("ambiguity_score", 0.0) or 0.0)
     ambiguity_threshold = settings.llm_ambiguity_threshold
-    clarification_questions = _build_clarification_questions(request.prompt, plan)
-    if ambiguity_score >= ambiguity_threshold and not clarification_questions:
+    planned_object_type = _normalize_object_type(str(plan.get("object_type", "triggers")))
+    prompt_explicit = _is_explicit_enough_for_generation(request.prompt, planned_object_type)
+    clarification_questions = _build_clarification_questions(
+        request.prompt,
+        plan,
+        ambiguity_score=ambiguity_score,
+        ambiguity_threshold=ambiguity_threshold,
+    )
+    if ambiguity_score >= ambiguity_threshold and not clarification_questions and not prompt_explicit:
         ambiguity_reasons = plan.get("ambiguity_reasons", [])
         reason_text = (
             str(ambiguity_reasons[0]).strip()
@@ -445,12 +652,16 @@ async def generate_import_assistant_batch(
                 ],
             }
         ]
+    if prompt_explicit and clarification_questions:
+        # Deterministic override: explicit, actionable prompts should not be trapped in clarification loops.
+        clarification_questions = []
     needs_clarification = bool(clarification_questions)
     planning_summary = _build_planning_summary(
         plan=plan,
         request=request,
         related_objects=related_objects,
         reference_catalog=reference_catalog,
+        prompt_explicit=prompt_explicit,
     )
     if needs_clarification:
         store.append_status(
@@ -506,6 +717,11 @@ async def generate_import_assistant_batch(
     generated_data, dependency_resolution = _apply_dependency_resolution(
         generated_data,
         related_lookup=related_lookup,
+        dependency_mode=request.dependency_mode,
+    )
+    generated_data, duplicate_candidates = _annotate_duplicate_candidates(
+        generated_data,
+        existing_index=existing_object_index,
         dependency_mode=request.dependency_mode,
     )
 
@@ -633,6 +849,7 @@ async def generate_import_assistant_batch(
             "metadata": {
                 "validation_phase_status": final_status,
                 "dependency_resolution": dependency_resolution,
+                "duplicate_candidates": duplicate_candidates,
                 "ambiguity_score": ambiguity_score,
                 "ambiguity_threshold": ambiguity_threshold,
                 "llm_routes": {

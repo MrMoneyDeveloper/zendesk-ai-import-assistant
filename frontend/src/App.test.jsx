@@ -153,6 +153,6 @@ test("runs generation flow from prompt submit", async () => {
   fireEvent.submit(input.closest("form"));
 
   await waitFor(() => {
-    expect(screen.getByText("Preview Workspace")).toBeInTheDocument();
+    expect(screen.getByText("Review and Confirm")).toBeInTheDocument();
   });
 });

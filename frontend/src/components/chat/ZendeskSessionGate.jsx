@@ -4,6 +4,8 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 import { Input } from "../ui/input";
+import cxIcon from "../../assets/cx-icon.png";
+import cxLogo from "../../assets/cx-logo.png";
 
 function statusToBadge(status) {
   if (status === "ok") return <Badge variant="success">ok</Badge>;
@@ -39,26 +41,30 @@ export default function ZendeskSessionGate({
   };
 
   return (
-    <div className="min-h-screen bg-[#10131a] px-4 py-8 text-slate-100">
+    <div className="min-h-screen bg-[#07030F] px-4 py-8 text-[#F4EEFF]">
       <div className="mx-auto max-w-2xl">
-        <Card>
+        <div className="mb-3 flex items-center justify-center gap-2">
+          <img src={cxIcon} alt="CX icon" className="h-6 w-6 rounded-md border border-[#7B1FFF]/40" />
+          <img src={cxLogo} alt="CX Experts Assistant" className="h-6 w-auto opacity-95" />
+        </div>
+        <Card className="cx-soft-glow">
           <CardHeader>
-            <h1 className="text-lg font-semibold text-slate-100">Zendesk Session Required</h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <h1 className="text-lg font-semibold text-[#F4EEFF]">Zendesk Session Required</h1>
+            <p className="mt-1 text-sm text-[#B9A7D9]">
               Validate Zendesk credentials before using prompts. Session is stored in this browser tab
               until you sign out.
             </p>
           </CardHeader>
           <CardContent>
             {isRestoringSession ? (
-              <div className="mb-4 rounded-md border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">
+              <div className="mb-4 rounded-md border border-[#7B1FFF]/30 bg-[#120522]/70 p-3 text-sm text-[#B9A7D9]">
                 Restoring previous Zendesk session...
               </div>
             ) : null}
 
-            <div className="mb-4 rounded-md border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+            <div className="mb-4 rounded-md border border-[#7B1FFF]/30 bg-[#120522]/70 p-3 text-xs text-[#B9A7D9]">
               <div className="mb-1 flex items-center gap-2">
-                <span className="text-slate-200">Apps Script health:</span>
+                <span className="text-[#F4EEFF]">Apps Script health:</span>
                 {statusToBadge(integrationsStatus?.appscript?.health)}
               </div>
               {integrationsLoading ? <p>Checking integration status...</p> : null}
@@ -69,7 +75,7 @@ export default function ZendeskSessionGate({
 
             <form className="space-y-3" onSubmit={submit}>
               <div>
-                <label className="mb-1 block text-xs text-slate-300">Zendesk Subdomain</label>
+                <label className="mb-1 block text-xs text-[#B9A7D9]">Zendesk Subdomain</label>
                 <Input
                   placeholder="example: acme"
                   value={credentials.subdomain}
@@ -79,7 +85,7 @@ export default function ZendeskSessionGate({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-slate-300">Zendesk Email</label>
+                <label className="mb-1 block text-xs text-[#B9A7D9]">Zendesk Email</label>
                 <Input
                   placeholder="agent@acme.com"
                   value={credentials.email}
@@ -89,7 +95,7 @@ export default function ZendeskSessionGate({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-slate-300">Zendesk API Token</label>
+                <label className="mb-1 block text-xs text-[#B9A7D9]">Zendesk API Token</label>
                 <Input
                   type="password"
                   placeholder="Zendesk API token"
@@ -105,7 +111,7 @@ export default function ZendeskSessionGate({
             </form>
 
             {validationResult ? (
-              <div className="mt-4 rounded-md border border-slate-800 bg-slate-950/60 p-3 text-sm">
+              <div className="mt-4 rounded-md border border-[#7B1FFF]/30 bg-[#120522]/70 p-3 text-sm">
                 <div className="mb-1">
                   Result:{" "}
                   {validationResult.ok ? (
@@ -114,7 +120,7 @@ export default function ZendeskSessionGate({
                     <Badge variant="danger">invalid</Badge>
                   )}
                 </div>
-                <p className="text-slate-300">{validationResult.detail}</p>
+                <p className="text-[#B9A7D9]">{validationResult.detail}</p>
               </div>
             ) : null}
 

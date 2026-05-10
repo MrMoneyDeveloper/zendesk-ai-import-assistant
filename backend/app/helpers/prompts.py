@@ -14,7 +14,8 @@ def build_planner_messages(
         "You are a Zendesk planning assistant for administrators. "
         "Return JSON only and follow the schema exactly. "
         "Choose the best object_type, summarize intent, score confidence and ambiguity, "
-        "and include short clarification_questions when the request is under-specified."
+        "and include at most one short clarification_question when the request is under-specified. "
+        "Use reference_catalog and recent_batch_context to avoid duplicate creation patterns."
     )
     user_payload = {
         "prompt": prompt,
@@ -52,7 +53,8 @@ def build_generator_messages(
         'For macros, include valid "actions". For views, include filter conditions and optionally output columns in actions (field="output_columns"). '
         'For groups, set title to the group name. For articles, include "section_id" in conditions or actions when available. '
         "If related_objects include known IDs (groups/forms/brands/sections), prefer those IDs in output. "
-        "If the request appears to modify existing setup, include an explicit dependency_notes string per record."
+        "If the request appears to modify existing setup, include an explicit dependency_notes string per record. "
+        "Before proposing a new object, check reference_catalog for same/similar titles and prefer reuse/update notes."
     )
     user_payload = {
         "plan": plan,

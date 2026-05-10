@@ -57,7 +57,7 @@ export default function StatusRibbon({
   const latestHistory = [...(jobData?.status_history || [])].slice(-4).reverse();
 
   return (
-    <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/70 px-4 py-3">
+    <div className="mb-6 rounded-lg border border-[#7B1FFF]/30 bg-[#120522]/70 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-300">Batch:</span>
@@ -84,18 +84,18 @@ export default function StatusRibbon({
       </div>
 
       <div className="mt-3 grid gap-2 text-xs text-slate-300 lg:grid-cols-3">
-        <div className="rounded border border-slate-800 bg-slate-950/60 p-2">
+        <div className="rounded border border-[#7B1FFF]/25 bg-[#07030F]/55 p-2">
           <p className="mb-1 font-semibold text-slate-200">1. Stage to Sheet</p>
           {phaseBadge(phaseStageDone, phaseStageFailed)}
         </div>
-        <div className="rounded border border-slate-800 bg-slate-950/60 p-2">
+        <div className="rounded border border-[#7B1FFF]/25 bg-[#07030F]/55 p-2">
           <p className="mb-1 font-semibold text-slate-200">2. Save Approval</p>
           {phaseBadge(phaseApprovalDone, phaseApprovalFailed)}
           {phaseApprovalDone ? (
             <p className="mt-1 text-slate-400">approved records: {approvedCount}</p>
           ) : null}
         </div>
-        <div className="rounded border border-slate-800 bg-slate-950/60 p-2">
+        <div className="rounded border border-[#7B1FFF]/25 bg-[#07030F]/55 p-2">
           <p className="mb-1 font-semibold text-slate-200">3. Deploy to Zendesk</p>
           {deployEnabled ? <Badge variant="success">enabled</Badge> : <Badge variant="warning">inactive</Badge>}
           {deployEnabled ? <p className="mt-1 text-slate-400">on existing: {onExistingMode}</p> : null}
@@ -103,7 +103,7 @@ export default function StatusRibbon({
       </div>
 
       {latestHistory.length > 0 ? (
-        <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-300">
+        <div className="mt-3 rounded border border-[#7B1FFF]/25 bg-[#07030F]/55 p-2 text-xs text-slate-300">
           <p className="mb-2 font-semibold text-slate-200">Recent Activity</p>
           <div className="space-y-1">
             {latestHistory.map((entry, idx) => (

@@ -89,14 +89,36 @@ class ApiTestResponse(BaseModel):
 
 
 class ContextReference(BaseModel):
-    object_type: Literal["brand", "group", "ticket_form", "help_center", "category", "section"]
+    object_type: Literal[
+        "brand",
+        "group",
+        "ticket_form",
+        "help_center",
+        "category",
+        "section",
+        "trigger",
+        "automation",
+        "macro",
+        "view",
+        "ticket_field",
+        "article",
+    ]
     id: str = Field(..., min_length=1, max_length=120)
     name: str = Field(..., min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=1200)
 
     @field_validator("id", "name")
     @classmethod
     def trim_string_value(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("description")
+    @classmethod
+    def trim_optional_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class ImportAssistantGenerateRequest(BaseModel):

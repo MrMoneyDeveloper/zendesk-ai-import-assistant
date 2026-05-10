@@ -48,7 +48,7 @@ export default function IntegrationPanel({
   };
 
   return (
-    <section className="mb-6 rounded-lg border border-slate-800 bg-slate-900/70 p-4">
+    <section className="mb-6 rounded-lg border border-[#7B1FFF]/30 bg-[#120522]/70 p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-200">Integration Diagnostics</h2>
         <div className="flex items-center gap-2">
@@ -62,7 +62,7 @@ export default function IntegrationPanel({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+        <div className="rounded-md border border-[#7B1FFF]/25 bg-[#07030F]/55 p-3 text-xs text-slate-300">
           <p className="mb-2 font-semibold text-slate-200">Apps Script</p>
           <p className="mb-2 text-slate-400">
             Schema preflight sync runs automatically before generate, approve, and deploy actions.
@@ -73,7 +73,7 @@ export default function IntegrationPanel({
             <p className="text-rose-300">{integrationsStatus.appscript.health_detail}</p>
           ) : null}
           {stageMeta?.status ? (
-            <div className="mt-2 border-t border-slate-800 pt-2">
+            <div className="mt-2 border-t border-[#7B1FFF]/20 pt-2">
               <p>
                 Last stage write: {statusToBadge(stageMeta.status)}
               </p>
@@ -88,14 +88,14 @@ export default function IntegrationPanel({
                 </a>
               ) : null}
               {stageResult?.object_rows_written ? (
-                <pre className="mt-2 overflow-auto rounded border border-slate-800 bg-slate-950 p-2 text-[11px]">
+                  <pre className="mt-2 overflow-auto rounded border border-[#7B1FFF]/25 bg-[#07030F]/65 p-2 text-[11px]">
                   {JSON.stringify(stageResult.object_rows_written, null, 2)}
                 </pre>
               ) : null}
             </div>
           ) : null}
           {approvalSync?.status ? (
-            <div className="mt-2 border-t border-slate-800 pt-2">
+            <div className="mt-2 border-t border-[#7B1FFF]/20 pt-2">
               <p>
                 Last approval sync: {statusToBadge(approvalSync.status)}
               </p>
@@ -108,7 +108,7 @@ export default function IntegrationPanel({
             </div>
           ) : null}
           {plannerRoute || generatorRoute ? (
-            <div className="mt-2 border-t border-slate-800 pt-2">
+            <div className="mt-2 border-t border-[#7B1FFF]/20 pt-2">
               <p className="mb-1 font-semibold text-slate-200">LLM orchestration</p>
               {plannerRoute ? (
                 <p className="text-slate-400">
@@ -129,7 +129,7 @@ export default function IntegrationPanel({
           ) : null}
         </div>
 
-        <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+        <div className="rounded-md border border-[#7B1FFF]/25 bg-[#07030F]/55 p-3 text-xs text-slate-300">
           <p className="mb-2 font-semibold text-slate-200">Zendesk Session</p>
           <p className="mb-2">
             Deploy endpoint:{" "}
@@ -142,19 +142,19 @@ export default function IntegrationPanel({
             <input
               value={subdomain}
               onChange={(event) => setSubdomain(event.target.value)}
-              className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1"
+              className="w-full rounded border border-[#7B1FFF]/35 bg-[#07030F]/70 px-2 py-1"
               placeholder="subdomain (example: acme)"
             />
             <input
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1"
+              className="w-full rounded border border-[#7B1FFF]/35 bg-[#07030F]/70 px-2 py-1"
               placeholder="agent/admin email"
             />
             <input
               value={apiToken}
               onChange={(event) => setApiToken(event.target.value)}
-              className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1"
+              className="w-full rounded border border-[#7B1FFF]/35 bg-[#07030F]/70 px-2 py-1"
               placeholder="Zendesk API token"
               type="password"
             />
@@ -163,7 +163,7 @@ export default function IntegrationPanel({
             </Button>
           </form>
           {zendeskValidationResult ? (
-            <div className="mt-3 border-t border-slate-800 pt-2">
+            <div className="mt-3 border-t border-[#7B1FFF]/20 pt-2">
               <p>
                 Result:{" "}
                 {zendeskValidationResult.ok ? (
@@ -184,7 +184,7 @@ export default function IntegrationPanel({
               ) : null}
             </div>
           ) : null}
-          <div className="mt-3 border-t border-slate-800 pt-2">
+          <div className="mt-3 border-t border-[#7B1FFF]/20 pt-2">
             <p>
               Context sync:{" "}
               {contextLoading ? (
