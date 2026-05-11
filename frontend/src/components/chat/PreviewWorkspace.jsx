@@ -6,6 +6,11 @@ import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 
 const columnHelper = createColumnHelper();
+const DECISION_OPTIONS = [
+  { value: "approved", label: "Approve" },
+  { value: "skipped", label: "Skip" },
+  { value: "edit_later", label: "Edit later" },
+];
 
 function statusBadge(status) {
   if (status === "passed") return <Badge variant="success">passed</Badge>;
@@ -18,6 +23,37 @@ function deployBadge(value) {
   if (value === "failed") return <Badge variant="danger">failed</Badge>;
   if (value === "skipped") return <Badge variant="warning">skipped</Badge>;
   return <Badge variant="neutral">pending</Badge>;
+}
+
+function DecisionPills({ value, onChange, deployable = true }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {DECISION_OPTIONS.map((option) => {
+        const active = value === option.value;
+        const disabled = option.value === "approved" && !deployable;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => !disabled && onChange(option.value)}
+            disabled={disabled}
+            className={`rounded-full border px-2 py-1 text-[11px] transition ${
+              active
+                ? "border-[#7B1FFF]/70 bg-[#7B1FFF]/24 text-[#F4EEFF]"
+                : "border-[#7B1FFF]/30 bg-[#07030F]/40 text-[#B9A7D9] hover:bg-[#7B1FFF]/14"
+            } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+      {value === "pending_review" ? (
+        <span className="rounded-full border border-[#7B1FFF]/25 bg-[#07030F]/35 px-2 py-1 text-[10px] text-slate-400">
+          Pending
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 export default function PreviewWorkspace({
@@ -73,16 +109,11 @@ export default function PreviewWorkspace({
           const recordId = row.original.record_id;
           const value = decisions[recordId] || row.original.import_decision || "pending_review";
           return (
-            <select
-              className="rounded-md border border-[#7B1FFF]/35 bg-[#07030F]/75 px-2 py-1 text-xs text-slate-100"
+            <DecisionPills
               value={value}
-              onChange={(event) => onDecisionChange(recordId, event.target.value)}
-            >
-              <option value="pending_review">pending_review</option>
-              <option value="approved">approved</option>
-              <option value="skipped">skipped</option>
-              <option value="edit_later">edit_later</option>
-            </select>
+              deployable={Boolean(row.original.deployable)}
+              onChange={(nextDecision) => onDecisionChange(recordId, nextDecision)}
+            />
           );
         },
       }),
@@ -222,16 +253,11 @@ export default function PreviewWorkspace({
             </p>
             <div className="mt-3 flex items-center gap-2">
               <span className="text-xs text-slate-400">Decision</span>
-              <select
-                className="rounded-md border border-[#7B1FFF]/35 bg-[#07030F]/75 px-2 py-1 text-xs text-slate-100"
+              <DecisionPills
                 value={decisions[filteredRecords[0].record_id] || filteredRecords[0].import_decision || "pending_review"}
-                onChange={(event) => onDecisionChange(filteredRecords[0].record_id, event.target.value)}
-              >
-                <option value="pending_review">pending_review</option>
-                <option value="approved">approved</option>
-                <option value="skipped">skipped</option>
-                <option value="edit_later">edit_later</option>
-              </select>
+                deployable={Boolean(filteredRecords[0].deployable)}
+                onChange={(nextDecision) => onDecisionChange(filteredRecords[0].record_id, nextDecision)}
+              />
             </div>
           </div>
         ) : (

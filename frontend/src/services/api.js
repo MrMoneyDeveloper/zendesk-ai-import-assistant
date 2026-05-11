@@ -54,3 +54,12 @@ export async function getZendeskContext(payload) {
   const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/zendesk/context`, payload);
   return res.data;
 }
+
+export async function extractAttachment(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/attachments/extract`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data;
+}

@@ -29,10 +29,17 @@ async def run_generator(
     plan: dict,
     *,
     dependency_mode: str = "match_existing_or_create_new",
+    focus_object_types: list[str] | None = None,
     related_objects: list[dict] | None = None,
     reference_catalog: dict | None = None,
     recent_batch_context: list[str] | None = None,
     context_notes: str | None = None,
+    chunk_instruction: str | None = None,
+    chunk_target_count: int | None = None,
+    chunk_index: int | None = None,
+    chunk_total: int | None = None,
+    existing_titles: list[str] | None = None,
+    allow_fallback: bool = True,
 ) -> list[dict]:
     settings = get_settings()
     route = resolve_model_route(settings, "generator")
@@ -40,10 +47,16 @@ async def run_generator(
     messages = build_generator_messages(
         plan,
         dependency_mode=dependency_mode,
+        focus_object_types=focus_object_types,
         related_objects=related_objects,
         reference_catalog=reference_catalog,
         recent_batch_context=recent_batch_context,
         context_notes=context_notes,
+        chunk_instruction=chunk_instruction,
+        chunk_target_count=chunk_target_count,
+        chunk_index=chunk_index,
+        chunk_total=chunk_total,
+        existing_titles=existing_titles,
     )
 
     try:
@@ -55,6 +68,7 @@ async def run_generator(
             response_schema=GENERATOR_JSON_SCHEMA,
             response_schema_name="generator_records",
             strict_schema=route.strict_schema,
+            task=route.task,
         )
         payload = extract_json_payload(raw)
 
@@ -72,4 +86,6 @@ async def run_generator(
         return normalize_generated_rows(records)
     except Exception as exc:
         logger.warning("Generator fallback in use: %s", exc)
-        return _fallback_generated_rows()
+        if allow_fallback:
+            return _fallback_generated_rows()
+        raise RuntimeError(f"Generator model call failed: {exc}") from exc

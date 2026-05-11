@@ -1,44 +1,61 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Globe, Image as ImageIcon, Mic, Paperclip, PencilLine, Square } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUp, Mic, Paperclip, Square, X } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import cxHeroBanner from "../../assets/cx-hero-banner.png";
 
 const schema = z.object({
   prompt: z.string().min(5, "Prompt must be at least 5 characters."),
 });
 
-const MAX_ATTACHMENT_SIZE_BYTES = 1024 * 1024;
+const OBJECT_FOCUS_OPTIONS = [
+  { key: "triggers", label: "Triggers" },
+  { key: "automations", label: "Automations" },
+  { key: "macros", label: "Macros" },
+  { key: "views", label: "Views" },
+  { key: "groups", label: "Groups" },
+  { key: "ticket_forms", label: "Forms" },
+  { key: "ticket_fields", label: "Fields" },
+  { key: "articles", label: "Articles" },
+];
 
 export default function PromptComposer({
   onSubmitPrompt,
+  onExtractAttachment,
+  onRemoveAttachment,
   isLoading,
-  defaultPrompt,
   isLocked = false,
   lockReason = "",
   dependencyMode = "match_existing_or_create_new",
   onDependencyModeChange,
   onExistingMode = "create_new",
   onOnExistingModeChange,
+  existingItemBehavior = "relate_or_update",
+  onExistingItemBehaviorChange,
   selectedContextCount = 0,
+  focusObjectTypes = [],
+  onFocusObjectTypesChange,
+  attachments = [],
+  existingItemOptions = [],
+  selectedExistingItems = [],
+  selectedExistingItemKeySet = new Set(),
+  onAddExistingContext,
+  onRemoveExistingContext,
+  articleHelpCenterHint = "",
 }) {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const [isListening, setIsListening] = useState(false);
-  const [attachmentName, setAttachmentName] = useState("");
   const [helperMessage, setHelperMessage] = useState("");
+  const [existingSelectionKey, setExistingSelectionKey] = useState("");
+
   const form = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { prompt: defaultPrompt || "" },
+    defaultValues: { prompt: "" },
   });
-
-  useEffect(() => {
-    form.reset({ prompt: defaultPrompt || "" });
-  }, [defaultPrompt, form]);
 
   useEffect(
     () => () => {
@@ -49,9 +66,33 @@ export default function PromptComposer({
     []
   );
 
-  const submit = form.handleSubmit((values) => {
-    if (isLocked) return;
-    onSubmitPrompt(values.prompt);
+  const activeFocusSet = useMemo(() => new Set(focusObjectTypes || []), [focusObjectTypes]);
+  const hasExplicitFocus = (focusObjectTypes || []).length > 0;
+  const activeModeLabel = existingItemBehavior === "create_new" ? "Create New" : "Base";
+
+  const toggleFocus = (key) => {
+    const current = new Set(activeFocusSet);
+    if (current.has(key)) {
+      current.delete(key);
+    } else {
+      current.add(key);
+    }
+    onFocusObjectTypesChange?.(Array.from(current));
+  };
+
+  const addExistingContextSelection = () => {
+    if (!existingSelectionKey) return;
+    onAddExistingContext?.(existingSelectionKey);
+    setExistingSelectionKey("");
+  };
+
+  const submit = form.handleSubmit(async (values) => {
+    if (isLocked || isLoading) return;
+    const accepted = await onSubmitPrompt(values.prompt);
+    if (accepted !== false) {
+      form.reset({ prompt: "" });
+      setHelperMessage("Prompt submitted.");
+    }
   });
 
   const appendToPrompt = (text) => {
@@ -62,35 +103,32 @@ export default function PromptComposer({
   };
 
   const onAttachmentClick = () => {
-    if (isLocked) return;
+    if (isLocked || isLoading) return;
     fileInputRef.current?.click();
   };
 
   const onAttachmentChange = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    setHelperMessage("");
-    if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
-      setHelperMessage("Attachment too large. Keep it under 1MB for inline prompt context.");
-      event.target.value = "";
-      return;
-    }
-
+    setHelperMessage("Extracting attachment...");
     try {
-      const text = await file.text();
-      setAttachmentName(file.name);
-      appendToPrompt(`Attachment: ${file.name}\n${text.slice(0, 6000)}`);
-      setHelperMessage("Attachment text added to prompt.");
+      const result = await onExtractAttachment?.(file);
+      if (result?.filename) {
+        setHelperMessage(
+          `Attached ${result.filename}${result.truncated ? " (truncated)" : ""}.`
+        );
+      } else {
+        setHelperMessage("Attachment extracted.");
+      }
     } catch {
-      setHelperMessage("Could not read this file as text. Use TXT, CSV, or JSON.");
+      setHelperMessage("Could not extract this attachment.");
     } finally {
       event.target.value = "";
     }
   };
 
   const toggleMic = () => {
-    if (isLocked) return;
+    if (isLocked || isLoading) return;
     setHelperMessage("");
 
     if (isListening && recognitionRef.current) {
@@ -101,7 +139,7 @@ export default function PromptComposer({
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setHelperMessage("Microphone transcription is not available in this browser.");
+      setHelperMessage("Dictation is not available in this browser.");
       return;
     }
 
@@ -116,16 +154,16 @@ export default function PromptComposer({
     };
     recognition.onend = () => {
       setIsListening(false);
-      setHelperMessage((prev) => (prev === "Listening..." ? "Mic capture finished." : prev));
+      setHelperMessage((prev) => (prev === "Listening..." ? "Dictation complete." : prev));
     };
     recognition.onerror = () => {
       setIsListening(false);
-      setHelperMessage("Could not capture microphone input.");
+      setHelperMessage("Could not capture dictation.");
     };
     recognition.onresult = (event) => {
       const transcript = event.results?.[0]?.[0]?.transcript || "";
       appendToPrompt(transcript);
-      setHelperMessage("Mic input added to prompt.");
+      setHelperMessage("Dictation appended.");
     };
 
     recognitionRef.current = recognition;
@@ -134,9 +172,6 @@ export default function PromptComposer({
 
   return (
     <div className="mx-auto mb-8 w-full max-w-5xl">
-      <div className="mb-3 overflow-hidden rounded-2xl border border-[#7B1FFF]/38 bg-[#120522]/60 shadow-[0_0_24px_rgba(91,53,255,0.12)]">
-        <img src={cxHeroBanner} alt="CX banner" className="h-20 w-full object-cover opacity-80" />
-      </div>
       <h1 className="mb-4 text-center text-5xl font-medium text-slate-100">
         Where should we begin?
       </h1>
@@ -172,6 +207,160 @@ export default function PromptComposer({
           <p className="mt-1 font-semibold text-slate-200">{selectedContextCount} objects selected</p>
         </div>
       </div>
+
+      <div className="mb-3 rounded-xl border border-[#7B1FFF]/30 bg-[#120522]/70 p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs font-semibold text-[#B9A7D9]">Object focus</p>
+          <button
+            type="button"
+            className={`rounded-full border px-2 py-1 text-[11px] ${
+              focusObjectTypes.length === 0
+                ? "border-[#7B1FFF]/60 bg-[#7B1FFF]/20 text-[#F4EEFF]"
+                : "border-[#7B1FFF]/30 text-[#B9A7D9]"
+            }`}
+            onClick={() => onFocusObjectTypesChange?.([])}
+            disabled={isLocked}
+          >
+            Auto
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {OBJECT_FOCUS_OPTIONS.map((option) => {
+            const active = activeFocusSet.has(option.key);
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => toggleFocus(option.key)}
+                disabled={isLocked}
+                className={`rounded-full border px-3 py-1 text-xs ${
+                  active
+                    ? "border-[#7B1FFF]/70 bg-[#7B1FFF]/20 text-[#F4EEFF]"
+                    : "border-[#7B1FFF]/30 text-[#B9A7D9] hover:bg-[#7B1FFF]/12"
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {hasExplicitFocus ? (
+        <div className="mb-3 rounded-xl border border-[#7B1FFF]/30 bg-[#120522]/70 p-3">
+          <p className="mb-2 text-xs font-semibold text-[#B9A7D9]">Existing item (optional)</p>
+          <div className="mb-2">
+            <p className="mb-1 text-[11px] text-[#B9A7D9]">Behavior</p>
+            <div className="inline-flex rounded-lg border border-[#7B1FFF]/35 bg-[#07030F]/70 p-1">
+              <button
+                type="button"
+                onClick={() => onExistingItemBehaviorChange?.("relate_or_update")}
+                className={`rounded-md px-2 py-1 text-[11px] ${
+                  existingItemBehavior === "relate_or_update"
+                    ? "bg-[#7B1FFF]/28 text-[#F4EEFF]"
+                    : "text-[#B9A7D9]"
+                }`}
+                disabled={isLocked || isLoading}
+              >
+                Use existing as base
+              </button>
+              <button
+                type="button"
+                onClick={() => onExistingItemBehaviorChange?.("create_new")}
+                className={`rounded-md px-2 py-1 text-[11px] ${
+                  existingItemBehavior === "create_new"
+                    ? "bg-[#7B1FFF]/28 text-[#F4EEFF]"
+                    : "text-[#B9A7D9]"
+                }`}
+                disabled={isLocked || isLoading}
+              >
+                Ignore existing, create new
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 md:flex-row">
+            <select
+              value={existingSelectionKey}
+              onChange={(event) => setExistingSelectionKey(event.target.value)}
+              className="flex-1 rounded-md border border-[#7B1FFF]/40 bg-[#07030F]/80 px-2 py-2 text-xs text-slate-200"
+              disabled={isLocked || isLoading || existingItemOptions.length === 0}
+            >
+              <option value="">
+                {existingItemOptions.length === 0
+                  ? "No matching existing items loaded"
+                  : "Select an existing item"}
+              </option>
+              {existingItemOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addExistingContextSelection}
+              disabled={isLocked || isLoading || !existingSelectionKey || existingItemBehavior === "create_new"}
+            >
+              Add
+            </Button>
+          </div>
+          {existingItemBehavior === "create_new" ? (
+            <p className="mt-2 text-[11px] text-slate-400">
+              Existing selections are ignored for generation while this mode is active.
+            </p>
+          ) : null}
+          {articleHelpCenterHint ? (
+            <p className="mt-2 text-xs text-amber-300">{articleHelpCenterHint}</p>
+          ) : null}
+          {selectedExistingItems.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {selectedExistingItems.map((item) => {
+                const key = `${item.object_type}:${item.id}`;
+                if (!selectedExistingItemKeySet.has(key)) return null;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onRemoveExistingContext?.(key)}
+                    className="rounded-full border border-emerald-700/80 bg-emerald-950/30 px-2 py-1 text-[11px] text-emerald-200"
+                    title="Remove from selected context"
+                  >
+                    {item.object_type}: {item.name} <span className="text-emerald-300">x</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-2 text-[11px] text-slate-400">
+              Pick an existing object to guide update/relationship behavior for this prompt.
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {attachments.length > 0 ? (
+        <div className="mb-3 rounded-xl border border-[#7B1FFF]/30 bg-[#120522]/60 p-3">
+          <p className="mb-2 text-xs font-semibold text-[#B9A7D9]">Attached context (session)</p>
+          <div className="space-y-1">
+            {attachments.map((item) => (
+              <div key={item.id} className="flex items-center justify-between rounded border border-[#7B1FFF]/20 bg-[#07030F]/60 px-2 py-1 text-xs text-slate-200">
+                <span>{item.filename} ({item.char_count} chars)</span>
+                <button
+                  type="button"
+                  className="rounded p-1 text-slate-400 hover:text-slate-200"
+                  onClick={() => onRemoveAttachment?.(item.id)}
+                  aria-label={`Remove ${item.filename}`}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <form onSubmit={submit} className="rounded-3xl border border-[#7B1FFF]/45 bg-[#120522]/80 p-3 shadow-lg shadow-[#9B35FF]/15">
         <div className="flex items-center gap-3">
           <button
@@ -179,7 +368,7 @@ export default function PromptComposer({
             className="rounded-md p-2 text-[#B9A7D9] hover:bg-[#7B1FFF]/20 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label="Add attachment"
             onClick={onAttachmentClick}
-            disabled={isLocked}
+            disabled={isLocked || isLoading}
           >
             <Paperclip size={20} />
           </button>
@@ -188,24 +377,30 @@ export default function PromptComposer({
             type="file"
             className="hidden"
             onChange={onAttachmentChange}
-            accept=".txt,.json,.csv,.md,.log,.yaml,.yml"
+            accept=".txt,.json,.csv,.md,.log,.yaml,.yml,.pdf,.docx"
           />
           <Input
             {...form.register("prompt")}
             placeholder="Describe the Zendesk setup you want generated..."
             className="h-12 flex-1 border-none bg-transparent text-base text-[#F4EEFF] focus:border-none"
-            disabled={isLocked}
+            disabled={isLocked || isLoading}
           />
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className={`rounded-full p-2 ${isListening ? "text-emerald-300" : "text-[#B9A7D9]"}`}
-            disabled={isLocked}
+            disabled={isLocked || isLoading}
             onClick={toggleMic}
           >
             {isListening ? <Square size={18} /> : <Mic size={18} />}
           </Button>
+          <span
+            className="rounded-full border border-[#7B1FFF]/50 bg-[#07030F]/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#B9A7D9]"
+            title="Existing item behavior mode"
+          >
+            {activeModeLabel}
+          </span>
           <Button
             type="submit"
             size="sm"
@@ -216,6 +411,7 @@ export default function PromptComposer({
           </Button>
         </div>
       </form>
+
       {isLocked ? (
         <p className="mt-2 text-center text-sm text-amber-300">
           {lockReason || "Prompt is locked until integrations are validated."}
@@ -224,25 +420,7 @@ export default function PromptComposer({
       {form.formState.errors.prompt ? (
         <p className="mt-2 text-center text-sm text-rose-400">{form.formState.errors.prompt.message}</p>
       ) : null}
-      {attachmentName ? (
-        <p className="mt-2 text-center text-xs text-slate-400">Attached: {attachmentName}</p>
-      ) : null}
       {helperMessage ? <p className="mt-1 text-center text-xs text-slate-400">{helperMessage}</p> : null}
-
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-        <button type="button" className="cx-chip rounded-full px-4 py-2 text-sm hover:bg-[#7B1FFF]/20">
-          <ImageIcon size={16} className="mr-2 inline" />
-          Create an image
-        </button>
-        <button type="button" className="cx-chip rounded-full px-4 py-2 text-sm hover:bg-[#7B1FFF]/20">
-          <PencilLine size={16} className="mr-2 inline" />
-          Write or edit
-        </button>
-        <button type="button" className="cx-chip rounded-full px-4 py-2 text-sm hover:bg-[#7B1FFF]/20">
-          <Globe size={16} className="mr-2 inline" />
-          Look something up
-        </button>
-      </div>
     </div>
   );
 }

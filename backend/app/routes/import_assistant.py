@@ -1,12 +1,13 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 import app.models.schemas as schema_models
 from app.core.settings import get_settings
 from app.models.schemas import (
     AppScriptActionRequest,
     AppScriptActionResponse,
+    AttachmentExtractResponse,
     ApprovalRequest,
     ApprovalResponse,
     ImportAssistantGenerateRequest,
@@ -31,6 +32,10 @@ from app.services.import_assistant_service import (
     get_preview,
 )
 from app.services.appscript_bridge import AppScriptBridgeService
+from app.services.attachment_extractor import (
+    AttachmentExtractionError,
+    extract_attachment_payload,
+)
 from app.services.sheets_service import SheetsService
 from app.services.zendesk import fetch_zendesk_reference_catalog, validate_zendesk_credentials
 
@@ -53,6 +58,7 @@ SCHEMA_SYNC_MODELS = [
     "ApprovalResponse",
     "AppScriptActionRequest",
     "AppScriptActionResponse",
+    "AttachmentExtractResponse",
     "IntegrationStatusResponse",
     "ZendeskCredentialValidationRequest",
     "ZendeskCredentialValidationResponse",
@@ -155,6 +161,8 @@ async def deploy_to_zendesk(request: ZendeskDeployRequest) -> ZendeskDeployRespo
         return ZendeskDeployResponse(**result)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Batch not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -179,6 +187,18 @@ async def appscript_sync_schemas() -> AppScriptActionResponse:
     payload = {"schema_bundle": _build_schema_bundle()}
     result = await service.invoke(action="sync_schema", payload=payload, method="POST")
     return AppScriptActionResponse(**result)
+
+
+@router.post("/attachments/extract", response_model=AttachmentExtractResponse)
+async def extract_attachment(
+    file: UploadFile = File(...),
+) -> AttachmentExtractResponse:
+    settings = get_settings()
+    try:
+        payload = await extract_attachment_payload(file, settings)
+        return AttachmentExtractResponse(**payload)
+    except AttachmentExtractionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/integrations/status", response_model=IntegrationStatusResponse)

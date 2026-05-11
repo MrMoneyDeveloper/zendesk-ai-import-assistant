@@ -2,6 +2,39 @@ import httpx
 import asyncio
 from datetime import UTC, datetime
 
+TICKET_FIELD_TYPE_ALIASES = {
+    "dropdown": "tagger",
+    "drop-down": "tagger",
+    "drop_down": "tagger",
+    "single-select": "tagger",
+    "single_select": "tagger",
+    "single select": "tagger",
+    "select": "tagger",
+    "tagger": "tagger",
+    "multi-select": "multiselect",
+    "multi_select": "multiselect",
+    "multi select": "multiselect",
+    "multiselect": "multiselect",
+}
+
+TICKET_FIELD_TYPE_FIELDS = {"field_type", "fieldtype", "field_type_name", "type"}
+TICKET_FIELD_OPTIONS_FIELDS = {"custom_field_options", "options", "values", "field_values", "choices"}
+TICKET_FIELD_PERMISSION_FIELDS = {
+    "agent_can_edit": {"agent_can_edit", "agents_can_edit", "agent_editable"},
+    "visible_in_portal": {"visible_in_portal", "customers_can_view", "customer_can_view"},
+    "editable_in_portal": {"editable_in_portal", "customers_can_edit", "customer_can_edit"},
+    "required": {"required", "required_to_solve", "required_for_agents"},
+    "required_in_portal": {"required_in_portal", "required_to_submit", "required_for_customers"},
+}
+TICKET_FORM_REFERENCE_FIELDS = {
+    "ticket_field_ids",
+    "ticket_fields",
+    "field_ids",
+    "field_names",
+    "fields",
+    "ticket_field_names",
+}
+
 
 def _build_base_url(subdomain: str) -> str:
     return f"https://{subdomain}.zendesk.com"
@@ -44,6 +77,35 @@ def _normalize_action(action: dict) -> dict:
         "field": normalized_field,
         "value": action.get("value"),
     }
+
+
+def _normalize_ticket_field_type(raw: object) -> str:
+    text = str(raw or "").strip().lower()
+    if not text:
+        return "text"
+    direct = TICKET_FIELD_TYPE_ALIASES.get(text)
+    if direct:
+        return direct
+    compact = text.replace(" ", "_")
+    return TICKET_FIELD_TYPE_ALIASES.get(compact, text)
+
+
+def _slugify_option_value(value: str) -> str:
+    import re
+
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
+    return normalized[:255] if normalized else "option"
+
+
+def _coerce_bool(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "on"}:
+        return True
+    if text in {"false", "0", "no", "off"}:
+        return False
+    return None
 
 
 async def fetch_zendesk_reference_catalog(
@@ -110,6 +172,33 @@ async def fetch_zendesk_reference_catalog(
             *[_safe_get(path) for path in endpoint_map.values()]
         )
         payload_by_key = dict(zip(endpoint_map.keys(), payloads))
+
+        help_center_entries = []
+        help_center_payload = payload_by_key.get("help_centers")
+        if isinstance(help_center_payload, dict):
+            raw_list = help_center_payload.get("help_centers", [])
+            if isinstance(raw_list, list):
+                help_center_entries = raw_list
+
+        if not help_center_entries:
+            fallback_paths = [
+                "/api/v2/help_center/help_center.json",
+                "/api/v2/help_center.json",
+            ]
+            for fallback_path in fallback_paths:
+                fallback_payload = await _safe_get(fallback_path)
+                if not isinstance(fallback_payload, dict):
+                    continue
+                raw_list = fallback_payload.get("help_centers")
+                if isinstance(raw_list, list) and raw_list:
+                    payload_by_key["help_centers"] = {"help_centers": raw_list}
+                    help_center_entries = raw_list
+                    break
+                raw_single = fallback_payload.get("help_center")
+                if isinstance(raw_single, dict) and raw_single.get("id") and raw_single.get("name"):
+                    payload_by_key["help_centers"] = {"help_centers": [raw_single]}
+                    help_center_entries = [raw_single]
+                    break
 
         def _add(
             *,
@@ -242,6 +331,11 @@ async def fetch_zendesk_reference_catalog(
             entries=payload_by_key.get("sections", {}).get("sections", []) if isinstance(payload_by_key.get("sections"), dict) else [],
         )
 
+        if not catalogs["help_centers"]:
+            warnings.append(
+                "No help centers returned by Zendesk Guide endpoints. Article creation still works via section_id."
+            )
+
     fetched_total = sum(len(v) for v in catalogs.values())
     if fetched_total == 0:
         return {
@@ -315,6 +409,100 @@ def _find_first_value(record: dict, target_field: str):
     return None
 
 
+def _find_first_value_by_aliases(record: dict, aliases: set[str]):
+    for bucket_name in ("actions", "conditions"):
+        bucket = record.get(bucket_name, []) or []
+        for entry in bucket:
+            if not isinstance(entry, dict):
+                continue
+            field = str(entry.get("field", "")).strip().lower()
+            if field in aliases:
+                return entry.get("value")
+    return None
+
+
+def _find_all_values_by_aliases(record: dict, aliases: set[str]) -> list:
+    values = []
+    for bucket_name in ("actions", "conditions"):
+        bucket = record.get(bucket_name, []) or []
+        for entry in bucket:
+            if not isinstance(entry, dict):
+                continue
+            field = str(entry.get("field", "")).strip().lower()
+            if field in aliases:
+                values.append(entry.get("value"))
+    return values
+
+
+def _parse_custom_field_options(raw: object) -> list[dict]:
+    options: list[dict[str, str]] = []
+
+    def _append(name: str, value: str | None = None) -> None:
+        cleaned = str(name).strip()
+        if not cleaned:
+            return
+        normalized_value = _slugify_option_value(value or cleaned)
+        if any(item["value"] == normalized_value for item in options):
+            return
+        options.append({"name": cleaned[:255], "value": normalized_value})
+
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                raw_name = str(item.get("name") or item.get("label") or item.get("value") or "").strip()
+                raw_value = str(item.get("value") or "").strip() or None
+                if raw_name:
+                    _append(raw_name, raw_value)
+            else:
+                _append(str(item))
+    elif isinstance(raw, str):
+        import re
+
+        for token in [part.strip() for part in re.split(r"[\n,|;]", raw) if part.strip()]:
+            _append(token)
+    elif raw is not None:
+        _append(str(raw))
+    return options
+
+
+def _extract_ticket_form_field_references(record: dict) -> list[str]:
+    raw_values = _find_all_values_by_aliases(record, TICKET_FORM_REFERENCE_FIELDS)
+    refs: list[str] = []
+    for raw in raw_values:
+        if isinstance(raw, list):
+            for item in raw:
+                if isinstance(item, dict):
+                    candidate = item.get("id") or item.get("name") or item.get("title") or item.get("value")
+                    if candidate is not None:
+                        refs.append(str(candidate).strip())
+                else:
+                    refs.append(str(item).strip())
+        elif isinstance(raw, dict):
+            candidate = raw.get("id") or raw.get("name") or raw.get("title") or raw.get("value")
+            if candidate is not None:
+                refs.append(str(candidate).strip())
+        elif raw is not None:
+            text = str(raw).strip()
+            if not text:
+                continue
+            if "," in text or "|" in text or ";" in text:
+                import re
+
+                refs.extend([part.strip() for part in re.split(r"[,|;]", text) if part.strip()])
+            else:
+                refs.append(text)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for ref in refs:
+        key = ref.lower()
+        if not ref or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(ref)
+    return deduped
+
+
 def _build_macro_payload(record: dict) -> dict:
     actions = [_normalize_action(item) for item in (record.get("actions", []) or []) if item.get("field")]
     return {
@@ -360,23 +548,25 @@ def _build_group_payload(record: dict) -> dict:
     return payload
 
 
-def _build_ticket_form_payload(record: dict) -> dict:
+def _build_ticket_form_payload(record: dict) -> tuple[dict, list[str]]:
     payload = {"ticket_form": {"name": str(record.get("title", "Untitled form")).strip() or "Untitled form"}}
-    raw_field_ids = _find_first_value(record, "ticket_field_ids")
-    if isinstance(raw_field_ids, list):
-        ids = [int(str(item)) for item in raw_field_ids if str(item).isdigit()]
-        if ids:
-            payload["ticket_form"]["ticket_field_ids"] = ids
-    elif isinstance(raw_field_ids, str):
-        ids = [int(part.strip()) for part in raw_field_ids.split(",") if part.strip().isdigit()]
-        if ids:
-            payload["ticket_form"]["ticket_field_ids"] = ids
-    return payload
+    references = _extract_ticket_form_field_references(record)
+    ids: list[int] = []
+    names: list[str] = []
+    for ref in references:
+        if ref.isdigit():
+            ids.append(int(ref))
+        else:
+            names.append(ref)
+    if ids:
+        payload["ticket_form"]["ticket_field_ids"] = ids
+    return payload, names
 
 
 def _build_ticket_field_payload(record: dict) -> dict:
     title = str(record.get("title", "Untitled field")).strip() or "Untitled field"
-    field_type = str(_find_first_value(record, "field_type") or "text").strip().lower()
+    field_type_raw = _find_first_value_by_aliases(record, TICKET_FIELD_TYPE_FIELDS)
+    field_type = _normalize_ticket_field_type(field_type_raw)
     payload = {"ticket_field": {"title": title, "type": field_type}}
     tag_value = _find_first_value(record, "tag")
     if tag_value:
@@ -384,14 +574,25 @@ def _build_ticket_field_payload(record: dict) -> dict:
     title_portal = _find_first_value(record, "title_in_portal")
     if title_portal:
         payload["ticket_field"]["title_in_portal"] = str(title_portal).strip()
-    options = _find_first_value(record, "custom_field_options")
-    if isinstance(options, list):
-        parsed_options = []
-        for item in options:
-            if isinstance(item, dict) and item.get("name") and item.get("value"):
-                parsed_options.append({"name": str(item["name"]), "value": str(item["value"])})
-        if parsed_options:
-            payload["ticket_field"]["custom_field_options"] = parsed_options
+    options_raw = _find_first_value_by_aliases(record, TICKET_FIELD_OPTIONS_FIELDS)
+    parsed_options = _parse_custom_field_options(options_raw)
+    if parsed_options:
+        payload["ticket_field"]["custom_field_options"] = parsed_options
+
+    default_permissions = {
+        "agent_can_edit": True,
+        "visible_in_portal": True,
+        "editable_in_portal": False,
+        "required": False,
+        "required_in_portal": False,
+    }
+    for permission_field, aliases in TICKET_FIELD_PERMISSION_FIELDS.items():
+        raw_permission = _find_first_value_by_aliases(record, aliases)
+        parsed_permission = _coerce_bool(raw_permission)
+        if parsed_permission is None:
+            parsed_permission = default_permissions[permission_field]
+        payload["ticket_field"][permission_field] = parsed_permission
+
     return payload
 
 
@@ -523,6 +724,16 @@ async def deploy_records_to_zendesk(
         "article": "articles",
         "articles": "articles",
     }
+    deploy_priority_by_type = {
+        "groups": 10,
+        "ticket_fields": 20,
+        "ticket_forms": 30,
+    }
+
+    def _record_deploy_priority(record: dict) -> tuple[int, str]:
+        raw = str(record.get("object_type", "")).strip().lower()
+        normalized = object_mappings.get(raw, raw)
+        return deploy_priority_by_type.get(normalized, 100), normalized
 
     async with httpx.AsyncClient(timeout=30) as client:
         async def _safe_list(path: str) -> dict:
@@ -622,7 +833,11 @@ async def deploy_records_to_zendesk(
 
             return group_lookup_cache.get(raw.lower())
 
-        for record in records:
+        ordered_records = sorted(
+            enumerate(records),
+            key=lambda item: (_record_deploy_priority(item[1])[0], item[0]),
+        )
+        for _, record in ordered_records:
             record_id = str(record.get("record_id", "")).strip()
             raw_object_type = str(record.get("object_type", "")).strip().lower()
             object_type = object_mappings.get(raw_object_type, raw_object_type)
@@ -704,7 +919,51 @@ async def deploy_records_to_zendesk(
                 update_path_template = "/api/v2/groups/{id}.json"
                 response_root = "group"
             elif object_type == "ticket_forms":
-                payload = _build_ticket_form_payload(record)
+                payload, unresolved_field_names = _build_ticket_form_payload(record)
+                if unresolved_field_names:
+                    existing_field_map = await _load_existing_map("ticket_fields")
+                    resolved_ids: list[int] = []
+                    unresolved_after_lookup: list[str] = []
+                    for field_name in unresolved_field_names:
+                        lookup_id = existing_field_map.get(str(field_name).strip().lower())
+                        if lookup_id and str(lookup_id).isdigit():
+                            resolved_ids.append(int(str(lookup_id)))
+                        else:
+                            unresolved_after_lookup.append(field_name)
+
+                    if unresolved_after_lookup:
+                        failed += 1
+                        results.append(
+                            {
+                                "record_id": record_id,
+                                "object_type": object_type,
+                                "title": title,
+                                "deployment_status": "failed",
+                                "zendesk_object_id": None,
+                                "execution_message": (
+                                    "Ticket form references unresolved ticket fields: "
+                                    + ", ".join(unresolved_after_lookup)
+                                    + ". Create fields first or provide numeric ticket_field_ids."
+                                ),
+                                "executed_at": executed_at,
+                            }
+                        )
+                        continue
+
+                    existing_ids = payload.get("ticket_form", {}).get("ticket_field_ids", [])
+                    merged_ids: list[int] = []
+                    seen_ids: set[int] = set()
+                    for raw_id in [*existing_ids, *resolved_ids]:
+                        raw_text = str(raw_id).strip()
+                        if not raw_text.isdigit():
+                            continue
+                        numeric_id = int(raw_text)
+                        if numeric_id in seen_ids:
+                            continue
+                        seen_ids.add(numeric_id)
+                        merged_ids.append(numeric_id)
+                    if merged_ids:
+                        payload.setdefault("ticket_form", {})["ticket_field_ids"] = merged_ids
                 create_path = "/api/v2/ticket_forms.json"
                 update_path_template = "/api/v2/ticket_forms/{id}.json"
                 response_root = "ticket_form"
@@ -864,6 +1123,8 @@ async def deploy_records_to_zendesk(
             if response.is_success:
                 response_object = response_payload.get(response_root, {}) if isinstance(response_payload, dict) else {}
                 object_id = str(response_object.get("id")) if isinstance(response_object, dict) and response_object.get("id") is not None else (existing_id or None)
+                if object_id and title:
+                    existing_cache.setdefault(object_type, {})[title.strip().lower()] = object_id
                 deployed += 1
                 results.append(
                     {

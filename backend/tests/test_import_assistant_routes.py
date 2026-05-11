@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.core.settings import get_settings
-from app.services.batch_store import reset_batch_store
+from app.services.batch_store import get_batch_store, reset_batch_store
 
 
 class StubSheetsService:
@@ -107,6 +107,9 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     batch_id = payload["batch_id"]
     assert payload["status"] == "preview_ready"
     assert payload["generated_counts"]["triggers"] == 1
+    assert "llm_routes" in payload.get("metadata", {})
+    assert "clarifier" in payload["metadata"]["llm_routes"]
+    assert "llm_runtime" in payload.get("metadata", {})
 
     job_resp = client.get(f"/api/import-assistant/jobs/{batch_id}")
     assert job_resp.status_code == 200
@@ -283,3 +286,350 @@ def test_explicit_trigger_prompt_bypasses_clarification_loop(monkeypatch, tmp_pa
     assert payload["status"] == "preview_ready"
     assert payload["needs_clarification"] is False
     assert payload["generated_counts"]["triggers"] == 1
+
+
+def test_attachment_extract_endpoint_supports_text(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/attachments/extract",
+        files={"file": ("context.txt", b"line 1\nline 2", "text/plain")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["filename"] == "context.txt"
+    assert payload["mime_type"] == "text/plain"
+    assert payload["char_count"] > 0
+    assert "line 1" in payload["extracted_text"]
+    assert payload["truncated"] is False
+
+
+def test_deploy_blocks_when_all_approved_rows_are_non_deployable(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    store = get_batch_store()
+    store.save_batch(
+        {
+            "batch_id": "BATCH-SAFETY-001",
+            "status": "approved",
+            "created_at": "2026-05-10T00:00:00Z",
+            "updated_at": "2026-05-10T00:00:00Z",
+            "requester": "pytest-user",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "status_history": [],
+            "generated_counts": {"triggers": 1},
+            "validation_summary": {"passed": 0, "warnings": 0, "blocked": 1},
+            "records": [
+                {
+                    "record_id": "REC-0001",
+                    "object_type": "triggers",
+                    "title": "Fallback Trigger",
+                    "preview_summary": "Trigger configuration record.",
+                    "validation_status": "failed",
+                    "warnings": [],
+                    "blocked_reason": "Generation safety gate blocked deployment.",
+                    "import_decision": "approved",
+                    "deployable": False,
+                    "conditions": [{"field": "status", "operator": "is", "value": "new"}],
+                    "actions": [{"field": "set_tags", "value": "fallback"}],
+                    "deployment_status": "pending",
+                    "zendesk_object_id": None,
+                    "execution_message": "",
+                }
+            ],
+            "metadata": {
+                "generation_safety": {
+                    "blocked": True,
+                    "reasons": ["Generator fallback output detected. Regenerate before deployment."],
+                }
+            },
+        }
+    )
+
+    from app.main import app
+
+    client = TestClient(app)
+    deploy_response = client.post(
+        "/api/import-assistant/deploy",
+        json={
+            "batch_id": "BATCH-SAFETY-001",
+            "subdomain": "acme",
+            "email": "admin@acme.com",
+            "api_token": "tok_test_123",
+            "dry_run": False,
+        },
+    )
+    assert deploy_response.status_code == 400
+    assert "Deployment blocked" in deploy_response.json()["detail"]
+
+
+def test_generate_dropdown_field_prompt_is_canonicalized_to_tagger(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "ticket_fields", "intent": prompt, "confidence": 0.93}
+
+    async def fake_generator(plan: dict, **kwargs):
+        return [
+            {
+                "object_type": "ticket_fields",
+                "title": "Test",
+                "conditions": [],
+                "actions": [
+                    {"field": "type", "value": "dropdown"},
+                    {"field": "options", "value": "tested, not tested"},
+                ],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Make me a field called Test make it a dropdown and the 2 values are tested and not tested",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert payload["generated_counts"]["ticket_fields"] == 1
+
+    preview = client.get(f"/api/import-assistant/preview/{payload['batch_id']}")
+    assert preview.status_code == 200
+    record = preview.json()["records"][0]
+    actions = {item["field"]: item["value"] for item in record["actions"]}
+    assert actions["field_type"] == "tagger"
+    assert actions["custom_field_options"] == [
+        {"name": "tested", "value": "tested"},
+        {"name": "not tested", "value": "not_tested"},
+    ]
+    assert record["deployable"] is True
+
+
+def test_generate_single_item_prompt_stays_non_chunked(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_ENABLED", "true")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_SIZE", "6")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_MAX_CHUNKS", "12")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_TRIGGER_MIN_RECORDS", "7")
+    get_settings.cache_clear()
+    reset_batch_store()
+    call_count = {"value": 0}
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "groups", "intent": prompt, "confidence": 0.95}
+
+    async def fake_generator(plan: dict, **kwargs):
+        call_count["value"] += 1
+        return [
+            {
+                "object_type": "groups",
+                "title": "Claims Team",
+                "conditions": [],
+                "actions": [],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create one support group named Claims Team for local routing.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert call_count["value"] == 1
+    chunking = payload.get("metadata", {}).get("chunking", {})
+    assert chunking.get("activated") is False
+    assert chunking.get("final_status") == "single_pass"
+
+
+def test_generate_multi_item_prompt_runs_chunked(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_ENABLED", "true")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_SIZE", "6")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_MAX_CHUNKS", "12")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_TRIGGER_MIN_RECORDS", "7")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+    seen_chunks = []
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "groups", "intent": prompt, "confidence": 0.95}
+
+    async def fake_generator(plan: dict, **kwargs):
+        chunk_index = int(kwargs.get("chunk_index") or 1)
+        seen_chunks.append(chunk_index)
+        return [
+            {
+                "object_type": "groups",
+                "title": f"Chunk Group {chunk_index}",
+                "conditions": [],
+                "actions": [],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create 20 support groups for staged rollout with consistent naming.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert seen_chunks == [1, 2, 3, 4]
+    chunking = payload.get("metadata", {}).get("chunking", {})
+    assert chunking.get("activated") is True
+    assert chunking.get("total_chunks") == 4
+    assert len(chunking.get("chunks", [])) == 4
+    assert chunking.get("final_status") == "ok"
+
+
+def test_generate_chunk_cap_returns_clarification(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_ENABLED", "true")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_SIZE", "6")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_MAX_CHUNKS", "12")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_TRIGGER_MIN_RECORDS", "7")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "groups", "intent": prompt, "confidence": 0.95}
+
+    async def fake_generator(plan: dict, **kwargs):
+        raise AssertionError("Generator should not run when chunk cap is exceeded.")
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create 100 support groups for staged rollout with consistent naming.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "clarification_required"
+    assert payload["needs_clarification"] is True
+    assert "split this into multiple requests" in payload["clarification_questions"][0]["question"].lower()
+
+
+def test_generate_chunk_failure_aborts_whole_run(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_ENABLED", "true")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_SIZE", "6")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_MAX_CHUNKS", "12")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_TRIGGER_MIN_RECORDS", "7")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "groups", "intent": prompt, "confidence": 0.95}
+
+    async def fake_generator(plan: dict, **kwargs):
+        chunk_index = int(kwargs.get("chunk_index") or 1)
+        if chunk_index == 2:
+            raise RuntimeError("Synthetic generator chunk failure.")
+        return [
+            {
+                "object_type": "groups",
+                "title": f"Chunk Group {chunk_index}",
+                "conditions": [],
+                "actions": [],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create 20 support groups for staged rollout with consistent naming.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 502
+    assert "chunked generation aborted" in response.json()["detail"].lower()

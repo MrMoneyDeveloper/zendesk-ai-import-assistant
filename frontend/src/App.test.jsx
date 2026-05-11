@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import App from "./App";
+import * as api from "./services/api";
 
 vi.mock("./services/api", () => ({
   testApis: vi.fn(async () => ({
@@ -105,6 +106,14 @@ vi.mock("./services/api", () => ({
       sections: [],
     },
   })),
+  extractAttachment: vi.fn(async () => ({
+    filename: "notes.txt",
+    mime_type: "text/plain",
+    char_count: 20,
+    extracted_text: "hello world notes",
+    truncated: false,
+    warnings: [],
+  })),
 }));
 
 function renderApp() {
@@ -155,4 +164,43 @@ test("runs generation flow from prompt submit", async () => {
   await waitFor(() => {
     expect(screen.getByText("Review and Confirm")).toBeInTheDocument();
   });
+  await waitFor(() => {
+    expect(input.value).toBe("");
+  });
+});
+
+test("sends selected object focus in generate payload", async () => {
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+
+  await waitFor(() => {
+    expect(screen.getByText("Where should we begin?")).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Triggers" }));
+  fireEvent.click(screen.getByRole("button", { name: "Macros" }));
+  const input = screen.getByPlaceholderText("Describe the Zendesk setup you want generated...");
+  fireEvent.change(input, { target: { value: "Create a trigger and macro for claims." } });
+  fireEvent.submit(input.closest("form"));
+
+  await waitFor(() => {
+    expect(api.generateBatch).toHaveBeenCalled();
+  });
+  const lastCallArgs = api.generateBatch.mock.calls.at(-1)?.[0] || {};
+  expect(lastCallArgs.focus_object_types).toEqual(expect.arrayContaining(["triggers", "macros"]));
+});
+
+test("does not show Test APIs top action", async () => {
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+  await waitFor(() => {
+    expect(screen.getByText("Where should we begin?")).toBeInTheDocument();
+  });
+  expect(screen.queryByRole("button", { name: "Test APIs" })).not.toBeInTheDocument();
 });

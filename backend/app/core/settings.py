@@ -33,6 +33,24 @@ def _as_int(value: str | None, default: int) -> int:
         return default
 
 
+def _as_stage_bool(value: str | None, default: bool) -> bool | None:
+    if value is None:
+        return default
+    cleaned = value.strip().lower()
+    if cleaned in {"inherit", "global", "default"}:
+        return None
+    return cleaned in {"1", "true", "yes", "on"}
+
+
+def _as_choice(value: str | None, default: str, allowed: set[str]) -> str:
+    if value is None:
+        return default
+    cleaned = value.strip().lower()
+    if cleaned in allowed:
+        return cleaned
+    return default
+
+
 def _normalize_provider(value: str | None) -> str:
     if not value:
         return "auto"
@@ -94,8 +112,38 @@ class Settings:
     llm_generator_max_output_tokens: int
     llm_clarifier_max_output_tokens: int
     llm_strict_schema_mode: bool
+    llm_strict_schema_planner: bool | None
+    llm_strict_schema_clarifier: bool | None
+    llm_strict_schema_generator: bool | None
     llm_fallback_to_json_object: bool
     llm_ambiguity_threshold: float
+    llm_min_deploy_confidence: float
+    llm_retry_max_attempts: int
+    llm_retry_backoff_seconds: float
+    llm_rate_guard_enabled: bool
+    llm_rate_guard_safety_ratio: float
+    llm_rate_guard_min_headroom_tokens: int
+    llm_context_max_related_objects: int
+    llm_context_max_entries_per_catalog: int
+    llm_context_max_catalog_entries: int
+    llm_context_max_recent_items: int
+    llm_context_max_recent_chars: int
+    llm_context_max_notes_chars: int
+    llm_auto_chunk_enabled: bool
+    llm_auto_chunk_size: int
+    llm_auto_chunk_max_chunks: int
+    llm_auto_chunk_trigger_min_records: int
+    llm_auto_chunk_pacing_seconds: float
+    llm_auto_chunk_pacing_jitter_seconds: float
+    inference_policy: str
+    form_missing_field_mode: str
+    ticket_field_default_agent_can_edit: bool
+    ticket_field_default_visible_in_portal: bool
+    ticket_field_default_editable_in_portal: bool
+    ticket_field_default_required: bool
+    ticket_field_default_required_in_portal: bool
+    attachment_max_file_size_bytes: int
+    attachment_max_chars: int
     google_sheet_id: str
     google_service_account_file: str
     google_sheets_scope: str
@@ -115,6 +163,9 @@ def get_settings() -> Settings:
     provider = _resolve_provider(api_key, os.getenv("LLM_PROVIDER", "auto"))
     default_model = _resolve_model(provider, os.getenv("XAI_MODEL", ""))
     default_max_tokens = _as_int(os.getenv("XAI_MAX_OUTPUT_TOKENS"), 1800)
+    default_planner_model = "qwen/qwen3-32b" if provider == "groq" else default_model
+    default_clarifier_model = "qwen/qwen3-32b" if provider == "groq" else default_model
+    default_generator_model = "openai/gpt-oss-20b" if provider == "groq" else default_model
 
     return Settings(
         app_name=os.getenv("APP_NAME", "AI Zendesk Import Assistant"),
@@ -127,22 +178,34 @@ def get_settings() -> Settings:
         xai_max_output_tokens=default_max_tokens,
         xai_temperature=_as_float(os.getenv("XAI_TEMPERATURE"), 0.1),
         xai_enabled=_as_bool(os.getenv("XAI_ENABLED"), True),
-        llm_model_planner=os.getenv("LLM_MODEL_PLANNER", "").strip() or default_model,
-        llm_model_generator=os.getenv("LLM_MODEL_GENERATOR", "").strip() or default_model,
-        llm_model_clarifier=os.getenv("LLM_MODEL_CLARIFIER", "").strip() or default_model,
+        llm_model_planner=os.getenv("LLM_MODEL_PLANNER", "").strip() or default_planner_model,
+        llm_model_generator=os.getenv("LLM_MODEL_GENERATOR", "").strip() or default_generator_model,
+        llm_model_clarifier=os.getenv("LLM_MODEL_CLARIFIER", "").strip() or default_clarifier_model,
         llm_planner_max_output_tokens=_as_int(
             os.getenv("LLM_PLANNER_MAX_OUTPUT_TOKENS"),
-            min(default_max_tokens, 900),
+            min(default_max_tokens, 300),
         ),
         llm_generator_max_output_tokens=_as_int(
             os.getenv("LLM_GENERATOR_MAX_OUTPUT_TOKENS"),
-            default_max_tokens,
+            min(default_max_tokens, 900),
         ),
         llm_clarifier_max_output_tokens=_as_int(
             os.getenv("LLM_CLARIFIER_MAX_OUTPUT_TOKENS"),
-            min(default_max_tokens, 700),
+            min(default_max_tokens, 240),
         ),
         llm_strict_schema_mode=_as_bool(os.getenv("LLM_STRICT_SCHEMA_MODE"), True),
+        llm_strict_schema_planner=_as_stage_bool(
+            os.getenv("LLM_STRICT_SCHEMA_PLANNER"),
+            False,
+        ),
+        llm_strict_schema_clarifier=_as_stage_bool(
+            os.getenv("LLM_STRICT_SCHEMA_CLARIFIER"),
+            False,
+        ),
+        llm_strict_schema_generator=_as_stage_bool(
+            os.getenv("LLM_STRICT_SCHEMA_GENERATOR"),
+            True,
+        ),
         llm_fallback_to_json_object=_as_bool(
             os.getenv("LLM_FALLBACK_TO_JSON_OBJECT"),
             True,
@@ -150,6 +213,101 @@ def get_settings() -> Settings:
         llm_ambiguity_threshold=min(
             max(_as_float(os.getenv("LLM_AMBIGUITY_THRESHOLD"), 0.58), 0.0),
             1.0,
+        ),
+        llm_min_deploy_confidence=min(
+            max(_as_float(os.getenv("LLM_MIN_DEPLOY_CONFIDENCE"), 0.65), 0.0),
+            1.0,
+        ),
+        llm_retry_max_attempts=max(_as_int(os.getenv("LLM_RETRY_MAX_ATTEMPTS"), 2), 1),
+        llm_retry_backoff_seconds=max(
+            _as_float(os.getenv("LLM_RETRY_BACKOFF_SECONDS"), 1.0),
+            0.0,
+        ),
+        llm_rate_guard_enabled=_as_bool(os.getenv("LLM_RATE_GUARD_ENABLED"), True),
+        llm_rate_guard_safety_ratio=min(
+            max(_as_float(os.getenv("LLM_RATE_GUARD_SAFETY_RATIO"), 0.8), 0.1),
+            0.99,
+        ),
+        llm_rate_guard_min_headroom_tokens=max(
+            _as_int(os.getenv("LLM_RATE_GUARD_MIN_HEADROOM_TOKENS"), 250),
+            0,
+        ),
+        llm_context_max_related_objects=max(
+            _as_int(os.getenv("LLM_CONTEXT_MAX_RELATED_OBJECTS"), 16),
+            5,
+        ),
+        llm_context_max_entries_per_catalog=max(
+            _as_int(os.getenv("LLM_CONTEXT_MAX_ENTRIES_PER_CATALOG"), 6),
+            2,
+        ),
+        llm_context_max_catalog_entries=max(
+            _as_int(os.getenv("LLM_CONTEXT_MAX_CATALOG_ENTRIES"), 36),
+            10,
+        ),
+        llm_context_max_recent_items=max(
+            _as_int(os.getenv("LLM_CONTEXT_MAX_RECENT_ITEMS"), 4),
+            1,
+        ),
+        llm_context_max_recent_chars=max(
+            _as_int(os.getenv("LLM_CONTEXT_MAX_RECENT_CHARS"), 140),
+            60,
+        ),
+        llm_context_max_notes_chars=max(
+            _as_int(os.getenv("LLM_CONTEXT_MAX_NOTES_CHARS"), 700),
+            200,
+        ),
+        llm_auto_chunk_enabled=_as_bool(os.getenv("LLM_AUTO_CHUNK_ENABLED"), True),
+        llm_auto_chunk_size=max(_as_int(os.getenv("LLM_AUTO_CHUNK_SIZE"), 6), 1),
+        llm_auto_chunk_max_chunks=max(_as_int(os.getenv("LLM_AUTO_CHUNK_MAX_CHUNKS"), 12), 1),
+        llm_auto_chunk_trigger_min_records=max(
+            _as_int(os.getenv("LLM_AUTO_CHUNK_TRIGGER_MIN_RECORDS"), 7),
+            2,
+        ),
+        llm_auto_chunk_pacing_seconds=max(
+            _as_float(os.getenv("LLM_AUTO_CHUNK_PACING_SECONDS"), 0.35),
+            0.0,
+        ),
+        llm_auto_chunk_pacing_jitter_seconds=max(
+            _as_float(os.getenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS"), 0.25),
+            0.0,
+        ),
+        inference_policy=_as_choice(
+            os.getenv("INFERENCE_POLICY"),
+            "infer_warn",
+            {"infer_warn", "ask_once", "strict_block"},
+        ),
+        form_missing_field_mode=_as_choice(
+            os.getenv("FORM_MISSING_FIELD_MODE"),
+            "auto_create",
+            {"auto_create", "existing_only", "suggest_only"},
+        ),
+        ticket_field_default_agent_can_edit=_as_bool(
+            os.getenv("TICKET_FIELD_DEFAULT_AGENT_CAN_EDIT"),
+            True,
+        ),
+        ticket_field_default_visible_in_portal=_as_bool(
+            os.getenv("TICKET_FIELD_DEFAULT_VISIBLE_IN_PORTAL"),
+            True,
+        ),
+        ticket_field_default_editable_in_portal=_as_bool(
+            os.getenv("TICKET_FIELD_DEFAULT_EDITABLE_IN_PORTAL"),
+            False,
+        ),
+        ticket_field_default_required=_as_bool(
+            os.getenv("TICKET_FIELD_DEFAULT_REQUIRED"),
+            False,
+        ),
+        ticket_field_default_required_in_portal=_as_bool(
+            os.getenv("TICKET_FIELD_DEFAULT_REQUIRED_IN_PORTAL"),
+            False,
+        ),
+        attachment_max_file_size_bytes=_as_int(
+            os.getenv("ATTACHMENT_MAX_FILE_SIZE_BYTES"),
+            5 * 1024 * 1024,
+        ),
+        attachment_max_chars=_as_int(
+            os.getenv("ATTACHMENT_MAX_CHARS"),
+            12000,
         ),
         google_sheet_id=os.getenv("GOOGLE_SHEET_ID", "").strip(),
         google_service_account_file=os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip(),

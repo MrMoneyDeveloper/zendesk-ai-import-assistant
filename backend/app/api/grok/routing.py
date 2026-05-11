@@ -20,14 +20,22 @@ def resolve_model_route(settings: Settings, task: LLMTask) -> LLMRoute:
             task=task,
             model=settings.llm_model_planner,
             max_output_tokens=settings.llm_planner_max_output_tokens,
-            strict_schema=settings.llm_strict_schema_mode,
+            strict_schema=(
+                settings.llm_strict_schema_planner
+                if settings.llm_strict_schema_planner is not None
+                else settings.llm_strict_schema_mode
+            ),
         )
     if task == "clarifier":
         return LLMRoute(
             task=task,
             model=settings.llm_model_clarifier,
             max_output_tokens=settings.llm_clarifier_max_output_tokens,
-            strict_schema=settings.llm_strict_schema_mode,
+            strict_schema=(
+                settings.llm_strict_schema_clarifier
+                if settings.llm_strict_schema_clarifier is not None
+                else settings.llm_strict_schema_mode
+            ),
         )
     if task == "healthcheck":
         return LLMRoute(
@@ -40,5 +48,9 @@ def resolve_model_route(settings: Settings, task: LLMTask) -> LLMRoute:
         task="generator",
         model=settings.llm_model_generator,
         max_output_tokens=settings.llm_generator_max_output_tokens,
-        strict_schema=settings.llm_strict_schema_mode,
+        strict_schema=(
+            settings.llm_strict_schema_generator
+            if settings.llm_strict_schema_generator is not None
+            else settings.llm_strict_schema_mode
+        ),
     )

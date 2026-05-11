@@ -21,6 +21,11 @@ SUPPORTED_MODELS: dict[str, GrokModelInfo] = {
         purpose="Groq-hosted OpenAI-compatible OSS model.",
         docs_url="https://console.groq.com/docs/openai",
     ),
+    "qwen/qwen3-32b": GrokModelInfo(
+        model_id="qwen/qwen3-32b",
+        purpose="Groq-hosted Qwen planner/clarifier model for lower-cost orchestration.",
+        docs_url="https://console.groq.com/docs/model/qwen3-32b",
+    ),
 }
 
 RATE_LIMIT_SUMMARY = {

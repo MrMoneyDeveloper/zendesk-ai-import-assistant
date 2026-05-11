@@ -34,6 +34,35 @@ DependencyMode = Literal[
     "force_existing_only",
 ]
 OnExistingMode = Literal["create_new", "overwrite_existing", "skip_existing"]
+FocusObjectType = Literal[
+    "triggers",
+    "automations",
+    "macros",
+    "views",
+    "groups",
+    "ticket_fields",
+    "ticket_forms",
+    "articles",
+]
+
+FOCUS_OBJECT_TYPES = {
+    "trigger": "triggers",
+    "triggers": "triggers",
+    "automation": "automations",
+    "automations": "automations",
+    "macro": "macros",
+    "macros": "macros",
+    "view": "views",
+    "views": "views",
+    "group": "groups",
+    "groups": "groups",
+    "ticket_field": "ticket_fields",
+    "ticket_fields": "ticket_fields",
+    "ticket_form": "ticket_forms",
+    "ticket_forms": "ticket_forms",
+    "article": "articles",
+    "articles": "articles",
+}
 
 
 class GenerateRequest(BaseModel):
@@ -130,12 +159,39 @@ class ImportAssistantGenerateRequest(BaseModel):
     related_objects: list[ContextReference] = Field(default_factory=list)
     reference_catalog: dict[str, list[ContextReference]] = Field(default_factory=dict)
     recent_batch_context: list[str] = Field(default_factory=list)
+    focus_object_types: list[FocusObjectType] = Field(default_factory=list)
     context_notes: str | None = None
 
     @field_validator("prompt")
     @classmethod
     def trim_prompt(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("focus_object_types", mode="before")
+    @classmethod
+    def normalize_focus_object_types(cls, value: object) -> list[str]:
+        if value in (None, "", []):
+            return []
+        if isinstance(value, str):
+            source_items = [value]
+        elif isinstance(value, list):
+            source_items = value
+        else:
+            raise ValueError("focus_object_types must be a list of strings.")
+
+        normalized: list[str] = []
+        for item in source_items:
+            text = str(item).strip().lower()
+            if not text:
+                continue
+            if text == "auto":
+                return []
+            canonical = FOCUS_OBJECT_TYPES.get(text)
+            if not canonical:
+                raise ValueError(f"Unsupported focus object type: {text}")
+            if canonical not in normalized:
+                normalized.append(canonical)
+        return normalized
 
 
 class ValidationSummary(BaseModel):
@@ -161,6 +217,17 @@ class ImportAssistantGenerateResponse(BaseModel):
     needs_clarification: bool = False
     clarification_questions: list[ClarificationQuestion] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GenerationSafetySummary(BaseModel):
+    blocked: bool
+    reasons: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    min_confidence: float = 0.0
+    fallback_detected: bool = False
+    focus_violations: list[str] = Field(default_factory=list)
+    explicit_constraint_violations: list[str] = Field(default_factory=list)
+    blocked_record_ids: list[str] = Field(default_factory=list)
 
 
 class StatusHistoryItem(BaseModel):
@@ -270,6 +337,15 @@ class AppScriptActionResponse(BaseModel):
     detail: str | None = None
     http_status: int | None = None
     data: dict[str, Any] = Field(default_factory=dict)
+
+
+class AttachmentExtractResponse(BaseModel):
+    filename: str
+    mime_type: str
+    char_count: int
+    extracted_text: str
+    truncated: bool = False
+    warnings: list[str] = Field(default_factory=list)
 
 
 class IntegrationStatusResponse(BaseModel):

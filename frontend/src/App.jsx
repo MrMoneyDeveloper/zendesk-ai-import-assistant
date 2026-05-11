@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import PromptComposer from "./components/chat/PromptComposer";
@@ -15,13 +15,13 @@ import cxLogo from "./assets/cx-logo.png";
 import {
   approveBatch,
   deployBatch,
+  extractAttachment,
   generateBatch,
   getZendeskContext,
   getIntegrationsStatus,
   getJob,
   listJobs,
   getPreview,
-  testApis,
   validateZendeskCredentials,
 } from "./services/api";
 import { useImportAssistantStore } from "./store/importAssistantStore";
@@ -53,6 +53,17 @@ function sectionLabel(key) {
   return labels[key] || key;
 }
 
+const FOCUS_TO_CATALOG_KEYS = {
+  triggers: ["triggers", "groups", "ticket_forms", "brands"],
+  automations: ["automations", "groups", "ticket_forms", "brands"],
+  macros: ["macros", "groups", "ticket_forms", "ticket_fields"],
+  views: ["views", "groups", "ticket_forms", "ticket_fields"],
+  groups: ["groups", "brands"],
+  ticket_forms: ["ticket_forms", "ticket_fields", "groups", "brands"],
+  ticket_fields: ["ticket_fields", "ticket_forms"],
+  articles: ["articles", "help_centers", "categories", "sections"],
+};
+
 function readZendeskSessionCredentials() {
   try {
     const raw = sessionStorage.getItem(ZENDESK_SESSION_STORAGE_KEY);
@@ -79,18 +90,24 @@ function clearZendeskSessionCredentials() {
 
 function App() {
   const queryClient = useQueryClient();
-  const [testResult, setTestResult] = useState(null);
   const [decisions, setDecisions] = useState({});
   const [activityLogs, setActivityLogs] = useState([]);
+  const [timeline, setTimeline] = useState([]);
   const [historySearch, setHistorySearch] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [selectedContext, setSelectedContext] = useState({});
   const [dependencyMode, setDependencyMode] = useState("match_existing_or_create_new");
   const [onExistingMode, setOnExistingMode] = useState("create_new");
-  const [showSettings, setShowSettings] = useState(false);
+  const [existingItemBehavior, setExistingItemBehavior] = useState("relate_or_update");
+  const [showExistingContext, setShowExistingContext] = useState(false);
+  const [showAdvancedCatalog, setShowAdvancedCatalog] = useState(false);
+  const [showProcessingDetails, setShowProcessingDetails] = useState(false);
   const [clarificationQuestions, setClarificationQuestions] = useState([]);
+  const [focusObjectTypes, setFocusObjectTypes] = useState([]);
+  const [attachments, setAttachments] = useState([]);
   const lastContextSyncRef = useRef("");
   const lastContextErrorRef = useRef("");
+  const conversationEndRef = useRef(null);
   const [zendeskValidated, setZendeskValidated] = useState(false);
   const [bootZendeskSession] = useState(() => readZendeskSessionCredentials());
   const [zendeskCredentials, setZendeskCredentials] = useState(() =>
@@ -101,8 +118,13 @@ function App() {
     }
   );
 
-  const { batchId, setBatchId, prompt, setPrompt, resetFlow } =
-    useImportAssistantStore();
+  const { batchId, setBatchId, resetFlow } = useImportAssistantStore();
+
+  useEffect(() => {
+    if (typeof conversationEndRef.current?.scrollIntoView === "function") {
+      conversationEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [timeline.length]);
 
   const appendActivity = useCallback((level, message) => {
     setActivityLogs((prev) => [
@@ -115,24 +137,23 @@ function App() {
     ]);
   }, []);
 
-  const testMutation = useMutation({
-    mutationFn: testApis,
-    onSuccess: (data) => {
-      setTestResult(data);
-      appendActivity("success", `API test completed: ${data.provider} | ${data.model} | ${data.status}.`);
-    },
-    onError: (err) => {
-      const status = err?.response?.status;
-      const detail = err?.response?.data?.detail || err?.message || "API test failed.";
-      setTestResult({ status: "error", detail: status ? `HTTP ${status}: ${detail}` : detail });
-      appendActivity("error", `API test failed: ${status ? `HTTP ${status}` : detail}`);
-    },
-  });
+  const appendTimeline = useCallback((role, text) => {
+    setTimeline((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        role,
+        text,
+        at: new Date().toISOString(),
+      },
+    ]);
+  }, []);
 
   const generateMutation = useMutation({
     mutationFn: generateBatch,
     onMutate: () => {
       appendActivity("info", "Started generate -> stage -> validate pipeline.");
+      appendTimeline("assistant", "Processing your request...");
     },
     onSuccess: (data) => {
       setBatchId(data.batch_id);
@@ -147,10 +168,16 @@ function App() {
           "warning",
           `Clarification required before generation. Questions: ${questions.map((q) => q.question).join(" | ")}`
         );
+        appendTimeline(
+          "assistant",
+          `Clarification required: ${questions.map((q) => q.question).join(" | ")}`
+        );
         queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
         queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
         return;
       }
+
+      const generationSafety = data?.metadata?.generation_safety;
       setClarificationQuestions([]);
       setChatHistory((prev) => [
         ...prev,
@@ -160,13 +187,30 @@ function App() {
         "success",
         `Batch ${data.batch_id} ready for review. Validation summary: passed=${data.validation_summary?.passed || 0}, warnings=${data.validation_summary?.warnings || 0}, blocked=${data.validation_summary?.blocked || 0}.`
       );
+      if (generationSafety?.blocked) {
+        appendTimeline(
+          "assistant",
+          `Batch ${data.batch_id} generated, but deployment is blocked by safety checks. ${generationSafety.reasons?.join(" | ") || ""}`
+        );
+      } else {
+        appendTimeline(
+          "assistant",
+          `Batch ${data.batch_id} is ready for review (${data.validation_summary?.passed || 0} passed, ${data.validation_summary?.warnings || 0} warnings, ${data.validation_summary?.blocked || 0} blocked).`
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
       queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
       queryClient.invalidateQueries({ queryKey: ["preview", data.batch_id] });
     },
     onError: (error) => {
-      appendActivity("error", error?.response?.data?.detail || error?.message || "Generate failed.");
+      const detail = error?.response?.data?.detail || error?.message || "Generate failed.";
+      appendActivity("error", detail);
+      appendTimeline("assistant", `Generation failed: ${detail}`);
     },
+  });
+
+  const attachmentExtractMutation = useMutation({
+    mutationFn: extractAttachment,
   });
 
   const integrationsQuery = useQuery({
@@ -229,12 +273,14 @@ function App() {
     mutationFn: approveBatch,
     onMutate: () => {
       appendActivity("info", "Saving approval decisions to Apps Script.");
+      appendTimeline("assistant", "Saving approval decisions...");
     },
     onSuccess: (data) => {
       appendActivity(
         "success",
         `Approval saved. approved=${data?.summary?.approved || 0}, skipped=${data?.summary?.skipped || 0}, edit_later=${data?.summary?.edit_later || 0}.`
       );
+      appendTimeline("assistant", "Approval decisions saved.");
       if (batchId) {
         queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
         queryClient.invalidateQueries({ queryKey: ["job", batchId] });
@@ -242,7 +288,9 @@ function App() {
       }
     },
     onError: (error) => {
-      appendActivity("error", error?.response?.data?.detail || error?.message || "Approval save failed.");
+      const detail = error?.response?.data?.detail || error?.message || "Approval save failed.";
+      appendActivity("error", detail);
+      appendTimeline("assistant", `Approval failed: ${detail}`);
     },
   });
 
@@ -250,11 +298,16 @@ function App() {
     mutationFn: deployBatch,
     onMutate: () => {
       appendActivity("info", "Deploying approved records to live Zendesk instance.");
+      appendTimeline("assistant", "Deploying approved records to Zendesk...");
     },
     onSuccess: (data) => {
       appendActivity(
         data?.status === "deployed" ? "success" : "error",
         `Deploy finished. deployed=${data?.summary?.deployed || 0}, failed=${data?.summary?.failed || 0}, skipped=${data?.summary?.skipped || 0}.`
+      );
+      appendTimeline(
+        "assistant",
+        `Deploy complete. deployed=${data?.summary?.deployed || 0}, failed=${data?.summary?.failed || 0}, skipped=${data?.summary?.skipped || 0}.`
       );
       if (batchId) {
         queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
@@ -263,7 +316,9 @@ function App() {
       }
     },
     onError: (error) => {
-      appendActivity("error", error?.response?.data?.detail || error?.message || "Deploy failed.");
+      const detail = error?.response?.data?.detail || error?.message || "Deploy failed.";
+      appendActivity("error", detail);
+      appendTimeline("assistant", `Deploy failed: ${detail}`);
     },
   });
 
@@ -272,7 +327,10 @@ function App() {
     onSuccess: (data, variables) => {
       const valid = Boolean(data?.ok);
       setZendeskValidated(valid);
-      appendActivity(valid ? "success" : "error", valid ? "Zendesk session credentials validated." : (data?.detail || "Zendesk credential validation failed."));
+      appendActivity(
+        valid ? "success" : "error",
+        valid ? "Zendesk session credentials validated." : (data?.detail || "Zendesk credential validation failed.")
+      );
       if (valid) {
         const persisted = {
           subdomain: variables.subdomain,
@@ -304,9 +362,7 @@ function App() {
   } = zendeskValidateMutation;
 
   useEffect(() => {
-    if (!bootZendeskSession) {
-      return;
-    }
+    if (!bootZendeskSession) return;
     mutateZendeskValidation(bootZendeskSession);
   }, [bootZendeskSession, mutateZendeskValidation]);
 
@@ -358,7 +414,6 @@ function App() {
   const saveApproval = () => {
     if (!batchId) return;
     const records = buildDecisionPayload();
-
     if (!records.length) {
       appendActivity(
         "info",
@@ -373,33 +428,93 @@ function App() {
     });
   };
 
-  const submitPrompt = (value) => {
-    if (!zendeskValidated) return;
+  const handleExtractAttachment = async (file) => {
+    const result = await attachmentExtractMutation.mutateAsync(file);
+    const payload = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      ...result,
+    };
+    setAttachments((prev) => [...prev, payload]);
+    if (result?.warnings?.length) {
+      appendActivity("warning", `Attachment ${result.filename}: ${result.warnings.join(" | ")}`);
+    } else {
+      appendActivity("success", `Attachment extracted: ${result.filename}`);
+    }
+    return payload;
+  };
+
+  const removeAttachment = (attachmentId) => {
+    setAttachments((prev) => prev.filter((item) => item.id !== attachmentId));
+  };
+
+  const buildPromptWithAttachments = (promptValue) => {
+    const cleanedPrompt = String(promptValue || "").trim();
+    if (!attachments.length) return cleanedPrompt;
+    const context = attachments
+      .map((item, index) => `[Attachment ${index + 1}: ${item.filename}]\n${item.extracted_text}`)
+      .join("\n\n");
+    return `${cleanedPrompt}\n\nAttachment context:\n${context}`;
+  };
+
+  const submitPrompt = async (value) => {
+    if (!zendeskValidated) return false;
+    if (dependencyMode === "force_existing_only" && existingItemBehavior === "create_new") {
+      appendActivity(
+        "error",
+        "Switch Existing item behavior to 'Use existing as base' when dependency mode is 'Use existing only (strict)'."
+      );
+      appendTimeline(
+        "assistant",
+        "Existing-only dependency mode requires using existing context. Switch the Existing item behavior toggle."
+      );
+      return false;
+    }
     if (dependencyMode === "force_existing_only" && selectedRelatedObjects.length === 0) {
       appendActivity(
         "error",
         "Dependency mode requires existing context. Select one or more groups/forms/brands/sections first."
       );
-      return;
+      appendTimeline("assistant", "Select existing context first when strict existing-only mode is enabled.");
+      return false;
     }
-    const localHistory = [...chatHistory.slice(-10), `user: ${value}`];
+
+    const promptText = String(value || "").trim();
+    if (!promptText) return false;
+
+    setClarificationQuestions([]);
+    appendTimeline("user", promptText);
+    const localHistory = [...chatHistory.slice(-10), `user: ${promptText}`];
     setChatHistory(localHistory);
-    setPrompt("");
+
     const referenceCatalog = contextCatalog || {};
     const recentBatchContext = localHistory.slice(-8);
+    const promptForModel = buildPromptWithAttachments(promptText);
+    const selectedRelatedObjectsForRequest = existingItemBehavior === "create_new"
+      ? []
+      : selectedRelatedObjects;
+    const attachmentNote = attachments.length
+      ? `Attachment context included from ${attachments.length} file(s): ${attachments.map((item) => item.filename).join(", ")}.`
+      : "";
+
     generateMutation.mutate({
-      prompt: value,
+      prompt: promptForModel,
       target_environment: "sandbox",
       mode: "generate_validate_preview",
       requester: "local-user",
       dependency_mode: dependencyMode,
-      related_objects: selectedRelatedObjects,
+      focus_object_types: focusObjectTypes,
+      related_objects: selectedRelatedObjectsForRequest,
       reference_catalog: referenceCatalog,
       recent_batch_context: recentBatchContext,
-      context_notes: selectedRelatedObjects.length
-        ? `Selected context objects: ${selectedRelatedObjects.map((obj) => `${obj.object_type}:${obj.name}`).join(", ")}`
-        : "No explicit object selections were made. Use available context catalog and recent in-session context.",
+      context_notes: [
+        `Existing item behavior: ${existingItemBehavior === "create_new" ? "ignore_selected_existing_and_create_new" : "use_selected_existing_as_base_or_reference"}.`,
+        selectedRelatedObjectsForRequest.length
+          ? `Selected context objects: ${selectedRelatedObjectsForRequest.map((obj) => `${obj.object_type}:${obj.name}`).join(", ")}`
+          : "No explicit object selections were included in generation context.",
+        attachmentNote,
+      ].filter(Boolean).join(" "),
     });
+    return true;
   };
 
   const errors = [
@@ -412,6 +527,7 @@ function App() {
     jobsQuery.error,
     zendeskContextQuery.error,
     zendeskValidationError,
+    attachmentExtractMutation.error,
   ]
     .filter(Boolean)
     .map((err) => err?.response?.data?.detail || err?.message);
@@ -421,6 +537,37 @@ function App() {
   const previewData = previewQuery.data;
   const historyItems = jobsQuery.data?.jobs || [];
   const contextCatalog = zendeskContextQuery.data?.catalogs || null;
+  const selectedExistingItems = selectedRelatedObjects;
+  const selectedExistingItemKeySet = useMemo(
+    () => new Set(selectedExistingItems.map((item) => `${item.object_type}:${item.id}`)),
+    [selectedExistingItems]
+  );
+  const existingItemOptions = useMemo(() => {
+    if (!contextCatalog || !focusObjectTypes.length) return [];
+    const allowedCatalogKeys = new Set(
+      focusObjectTypes.flatMap((focus) => FOCUS_TO_CATALOG_KEYS[focus] || [])
+    );
+    const options = [];
+    for (const [catalogKey, entries] of Object.entries(contextCatalog)) {
+      if (!allowedCatalogKeys.has(catalogKey)) continue;
+      (entries || []).forEach((entry) => {
+        const key = `${entry.object_type}:${entry.id}`;
+        options.push({
+          key,
+          label: `${sectionLabel(catalogKey)}: ${entry.name}`,
+          catalogKey,
+          entry,
+        });
+      });
+    }
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    return options;
+  }, [contextCatalog, focusObjectTypes]);
+  const articleFocusSelected = focusObjectTypes.includes("articles");
+  const helpCentersLoaded = (contextCatalog?.help_centers || []).length > 0;
+  const articleHelpCenterHint = articleFocusSelected && !helpCentersLoaded
+    ? "No help centers were returned from Zendesk context sync. Refresh context in Existing Context."
+    : "";
   const normalizedHistorySearch = historySearch.trim().toLowerCase();
   const filteredHistory = historyItems.filter((item) => {
     if (!normalizedHistorySearch) return true;
@@ -440,16 +587,19 @@ function App() {
     clearZendeskSessionCredentials();
     setZendeskValidated(false);
     setZendeskCredentials({ subdomain: "", email: "", api_token: "" });
-    setPrompt("");
     setDecisions({});
-    setTestResult(null);
     setActivityLogs([]);
+    setTimeline([]);
     setClarificationQuestions([]);
     setChatHistory([]);
     setHistorySearch("");
     setSelectedContext({});
     setDependencyMode("match_existing_or_create_new");
     setOnExistingMode("create_new");
+    setExistingItemBehavior("relate_or_update");
+    setFocusObjectTypes([]);
+    setAttachments([]);
+    setShowAdvancedCatalog(false);
     lastContextSyncRef.current = "";
     lastContextErrorRef.current = "";
     resetFlow();
@@ -460,9 +610,13 @@ function App() {
     setDecisions({});
     setClarificationQuestions([]);
     setActivityLogs([]);
+    setTimeline([]);
     setHistorySearch("");
-    setPrompt("");
     setChatHistory([]);
+    setExistingItemBehavior("relate_or_update");
+    setFocusObjectTypes([]);
+    setAttachments([]);
+    setShowAdvancedCatalog(false);
     resetFlow();
     appendActivity("info", "Started a new chat. Zendesk context remains loaded for this session.");
   };
@@ -486,6 +640,26 @@ function App() {
         ...prev,
         [key]: entry,
       };
+    });
+  };
+
+  const addExistingContextSelection = (selectionKey) => {
+    if (!selectionKey) return;
+    const option = existingItemOptions.find((item) => item.key === selectionKey);
+    if (!option?.entry) return;
+    setSelectedContext((prev) => ({
+      ...prev,
+      [selectionKey]: option.entry,
+    }));
+  };
+
+  const removeExistingContextSelection = (selectionKey) => {
+    if (!selectionKey) return;
+    setSelectedContext((prev) => {
+      if (!prev[selectionKey]) return prev;
+      const next = { ...prev };
+      delete next[selectionKey];
+      return next;
     });
   };
 
@@ -596,9 +770,14 @@ function App() {
   };
 
   const isWorking =
-    generateMutation.isPending || approveMutation.isPending || deployMutation.isPending || jobQuery.isFetching;
+    generateMutation.isPending
+    || approveMutation.isPending
+    || deployMutation.isPending
+    || jobQuery.isFetching
+    || attachmentExtractMutation.isPending;
 
   const currentPhaseLabel = (() => {
+    if (attachmentExtractMutation.isPending) return "Extracting attachment context...";
     if (deployMutation.isPending) return "Deploying approved records to Zendesk...";
     if (approveMutation.isPending) return "Writing approval decisions to Apps Script...";
     if (generateMutation.isPending) return "Generating and staging records...";
@@ -627,6 +806,87 @@ function App() {
     };
     return phaseMap[status] || "Idle";
   })();
+
+  const attachmentSummaryText = useMemo(
+    () => attachments.map((item) => `${item.filename} (${item.char_count})`).join(", "),
+    [attachments]
+  );
+
+  const processingLines = useMemo(() => {
+    const nowIso = new Date().toISOString();
+    const lines = [];
+    if (attachmentExtractMutation.isPending) {
+      lines.push({
+        at: nowIso,
+        stage: "attachments",
+        text: "Extracting attachment text for prompt context.",
+      });
+    }
+    if (generateMutation.isPending || ["planning", "planned", "schemas_selected"].includes(currentStatus || "")) {
+      lines.push({
+        at: nowIso,
+        stage: "planning",
+        text: "Preparing constrained payload and calling planner model.",
+      });
+    }
+    if ((currentStatus || "") === "generating" || (currentStatus || "") === "generated") {
+      lines.push({
+        at: nowIso,
+        stage: "generating",
+        text: "Generating structured records inside selected schema.",
+      });
+    }
+    if (["staging", "staged"].includes(currentStatus || "")) {
+      lines.push({
+        at: nowIso,
+        stage: "staging",
+        text: "Syncing records to Apps Script / Sheets staging tabs.",
+      });
+    }
+    if (["validating", "validated_warning", "validated_passed", "validated_failed"].includes(currentStatus || "")) {
+      lines.push({
+        at: nowIso,
+        stage: "validating",
+        text: "Running validation and safety gates before review.",
+      });
+    }
+    if (approveMutation.isPending) {
+      lines.push({
+        at: nowIso,
+        stage: "approval",
+        text: "Writing approval decisions to Apps Script.",
+      });
+    }
+    if (deployMutation.isPending || (currentStatus || "") === "deploying") {
+      lines.push({
+        at: nowIso,
+        stage: "deploying",
+        text: "Deploying approved records to Zendesk instance.",
+      });
+    }
+    if (!lines.length && activityLogs.length > 0) {
+      lines.push({
+        at: activityLogs[0].at,
+        stage: activityLogs[0].level,
+        text: activityLogs[0].message,
+      });
+      if (activityLogs.length > 1) {
+        lines.push({
+          at: activityLogs[1].at,
+          stage: activityLogs[1].level,
+          text: activityLogs[1].message,
+        });
+      }
+    }
+    return lines.slice(0, 3);
+  }, [
+    attachmentExtractMutation.isPending,
+    generateMutation.isPending,
+    approveMutation.isPending,
+    deployMutation.isPending,
+    currentStatus,
+    activityLogs,
+  ]);
 
   if (!zendeskValidated) {
     return (
@@ -659,17 +919,9 @@ function App() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowSettings((prev) => !prev)}
+              onClick={() => setShowExistingContext((prev) => !prev)}
             >
-              {showSettings ? "Hide Settings" : "Settings"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => testMutation.mutate()}
-              disabled={testMutation.isPending}
-            >
-              {testMutation.isPending ? "Testing..." : "Test APIs"}
+              {showExistingContext ? "Hide Context" : "Existing Context"}
             </Button>
             <Button
               variant="outline"
@@ -689,23 +941,92 @@ function App() {
         </div>
         <div className="mb-4 cx-brand-divider" />
 
+        {timeline.length > 0 ? (
+          <Card className="mb-4 border-[#7B1FFF]/30 bg-[#120522]/70">
+            <CardContent className="max-h-72 overflow-y-auto p-4">
+              <div className="space-y-2">
+                {timeline.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className={`max-w-[90%] rounded-xl border px-3 py-2 text-sm ${
+                      entry.role === "user"
+                        ? "ml-auto border-[#7B1FFF]/45 bg-[#7B1FFF]/16 text-[#F4EEFF]"
+                        : "border-[#7B1FFF]/25 bg-[#07030F]/60 text-[#B9A7D9]"
+                    }`}
+                  >
+                    <p>{entry.text}</p>
+                    <p className="mt-1 text-[10px] text-slate-500">{entry.at}</p>
+                  </div>
+                ))}
+                <div ref={conversationEndRef} />
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
         <PromptComposer
           onSubmitPrompt={submitPrompt}
-          isLoading={generateMutation.isPending}
-          defaultPrompt={prompt}
+          onExtractAttachment={handleExtractAttachment}
+          onRemoveAttachment={removeAttachment}
+          onAddExistingContext={addExistingContextSelection}
+          onRemoveExistingContext={removeExistingContextSelection}
+          attachments={attachments}
+          isLoading={generateMutation.isPending || attachmentExtractMutation.isPending}
           isLocked={!zendeskValidated}
           lockReason="Validate Zendesk credentials first in Integration Diagnostics."
           dependencyMode={dependencyMode}
           onDependencyModeChange={setDependencyMode}
           onExistingMode={onExistingMode}
           onOnExistingModeChange={setOnExistingMode}
+          existingItemBehavior={existingItemBehavior}
+          onExistingItemBehaviorChange={setExistingItemBehavior}
           selectedContextCount={selectedRelatedObjects.length}
+          focusObjectTypes={focusObjectTypes}
+          onFocusObjectTypesChange={setFocusObjectTypes}
+          existingItemOptions={existingItemOptions}
+          selectedExistingItems={selectedExistingItems}
+          selectedExistingItemKeySet={selectedExistingItemKeySet}
+          articleHelpCenterHint={articleHelpCenterHint}
         />
+
+        <Card className="mb-4 border-[#7B1FFF]/28 bg-[#120522]/75">
+          <CardContent className="p-3">
+            <button
+              type="button"
+              onClick={() => setShowProcessingDetails((prev) => !prev)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <div>
+                <p className="text-sm font-semibold text-slate-200">
+                  {isWorking ? "Processing..." : "Processing details"}
+                </p>
+                <p className="text-xs text-slate-400">{currentPhaseLabel}</p>
+              </div>
+              <span className="text-xs text-[#B9A7D9]">
+                {showProcessingDetails ? "Hide" : "Show"}
+              </span>
+            </button>
+            {showProcessingDetails ? (
+              <div className="mt-3 space-y-1 border-t border-[#7B1FFF]/20 pt-2 text-xs text-slate-300">
+                {processingLines.map((line, idx) => (
+                  <p key={`${idx}-${line.at}-${line.text}`}>
+                    [{new Date(line.at).toLocaleTimeString()}] {line.stage}: {line.text}
+                  </p>
+                ))}
+                {attachments.length > 0 ? (
+                  <p className="text-[11px] text-slate-400">
+                    Attachment context: {attachmentSummaryText}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
 
         <StatusRibbon
           batchId={batchId}
           status={currentStatus}
-          testResult={testResult}
+          testResult={null}
           jobData={jobQuery.data}
           generateMetadata={effectiveGenerateMetadata}
           approvalResult={approveMutation.data}
@@ -714,17 +1035,7 @@ function App() {
           onExistingMode={onExistingMode}
         />
 
-        <Card className="mb-6 border-[#7B1FFF]/30 bg-[#120522]/70 cx-soft-glow">
-          <CardContent className="p-4 text-sm text-slate-200">
-            <div className="flex items-center justify-between">
-              <p className="font-semibold">Pipeline Activity</p>
-              {isWorking ? <span className="animate-pulse text-sky-300">Processing...</span> : <span className="text-slate-400">Ready</span>}
-            </div>
-            <p className="mt-2 text-slate-300">{currentPhaseLabel}</p>
-          </CardContent>
-        </Card>
-
-        {showSettings ? (
+        {showExistingContext ? (
           <div className="mb-6 space-y-4">
             <IntegrationPanel
               integrationsStatus={integrationsQuery.data}
@@ -778,22 +1089,31 @@ function App() {
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <p className="text-sm font-semibold text-slate-200">Context Selection</p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => zendeskContextQuery.refetch()}
-                      disabled={zendeskContextQuery.isFetching}
-                    >
-                      {zendeskContextQuery.isFetching ? "Refreshing..." : "Refresh"}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => zendeskContextQuery.refetch()}
+                        disabled={zendeskContextQuery.isFetching}
+                      >
+                        {zendeskContextQuery.isFetching ? "Refreshing..." : "Refresh"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAdvancedCatalog((prev) => !prev)}
+                      >
+                        {showAdvancedCatalog ? "Hide Advanced List" : "Advanced Catalog List"}
+                      </Button>
+                    </div>
                   </div>
                   {!contextCatalog ? (
                     <p className="text-xs text-slate-500">
                       Context will appear here after Zendesk session validation.
                     </p>
-                  ) : (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {Object.entries(contextCatalog).map(([catalogKey, entries]) => (
+                  ) : showAdvancedCatalog ? (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {Object.entries(contextCatalog).map(([catalogKey, entries]) => (
                         <div key={catalogKey} className="rounded border border-[#7B1FFF]/25 bg-[#07030F]/45 p-2">
                           <p className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
                             {sectionLabel(catalogKey)}
@@ -821,6 +1141,11 @@ function App() {
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <p className="text-xs text-slate-400">
+                      Use the prompt-level <span className="font-semibold text-slate-200">Existing item</span> picker
+                      for quick selection. Open <span className="font-semibold text-slate-200">Advanced Catalog List</span> if you need the full catalog.
+                    </p>
                   )}
                 </div>
               </CardContent>

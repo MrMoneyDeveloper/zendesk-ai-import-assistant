@@ -173,14 +173,27 @@ function validateViewRecord_(record, warnings, blocking) {
 }
 
 function validateTicketFieldRecord_(record, warnings, blocking) {
-  const typeCondition = Array.isArray(record.conditions)
-    ? record.conditions.find(function findType(item) {
-      return asString_(item.field).trim() === 'type';
-    })
-    : null;
+  const fieldTypeRaw = findRecordValueByAliases_(
+    record,
+    ['field_type', 'fieldtype', 'field_type_name', 'type']
+  );
+  const normalizedType = normalizeTicketFieldType_(fieldTypeRaw);
+  if (!normalizedType) {
+    blocking.push('Ticket field must include field_type/type.');
+    return;
+  }
 
-  if (!typeCondition) {
-    warnings.push('Ticket field type was not provided in conditions.');
+  if (normalizedType === 'tagger' || normalizedType === 'multiselect') {
+    const optionsRaw = findRecordValueByAliases_(
+      record,
+      ['custom_field_options', 'options', 'values', 'field_values', 'choices']
+    );
+    const parsedOptions = parseTicketFieldOptions_(optionsRaw);
+    if (parsedOptions.length === 0) {
+      blocking.push('Dropdown/multi-select ticket fields require custom_field_options.');
+    } else if (parsedOptions.length === 1) {
+      warnings.push('Dropdown field has only one option; two or more are recommended.');
+    }
   }
 }
 
@@ -199,4 +212,112 @@ function validateTagDictionaryRecord_(record, warnings, blocking) {
   if (normalizedTag !== record.title && record.title.indexOf(' ') >= 0) {
     warnings.push('Tag dictionary title contains spaces; snake_case is recommended.');
   }
+}
+
+function findRecordValueByAliases_(record, aliases) {
+  const normalized = {};
+  aliases.forEach(function eachAlias(alias) {
+    normalized[asString_(alias).trim().toLowerCase()] = true;
+  });
+
+  const buckets = [record.actions, record.conditions];
+  for (let b = 0; b < buckets.length; b += 1) {
+    const bucket = buckets[b];
+    if (!Array.isArray(bucket)) {
+      continue;
+    }
+    for (let i = 0; i < bucket.length; i += 1) {
+      const entry = bucket[i];
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+      const field = asString_(entry.field).trim().toLowerCase();
+      if (normalized[field]) {
+        return entry.value;
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeTicketFieldType_(value) {
+  const text = asString_(value).trim().toLowerCase();
+  if (!text) {
+    return '';
+  }
+  const aliases = {
+    'dropdown': 'tagger',
+    'drop-down': 'tagger',
+    'drop_down': 'tagger',
+    'single-select': 'tagger',
+    'single_select': 'tagger',
+    'single select': 'tagger',
+    'select': 'tagger',
+    'tagger': 'tagger',
+    'multi-select': 'multiselect',
+    'multi_select': 'multiselect',
+    'multi select': 'multiselect',
+    'multiselect': 'multiselect'
+  };
+  if (aliases[text]) {
+    return aliases[text];
+  }
+  const compact = text.replace(/\s+/g, '_');
+  if (aliases[compact]) {
+    return aliases[compact];
+  }
+  return text;
+}
+
+function parseTicketFieldOptions_(raw) {
+  const output = [];
+  const seen = {};
+
+  function addOption_(nameValue) {
+    const name = asString_(nameValue).trim();
+    if (!name) {
+      return;
+    }
+    const key = name.toLowerCase();
+    if (seen[key]) {
+      return;
+    }
+    seen[key] = true;
+    output.push(name);
+  }
+
+  if (Array.isArray(raw)) {
+    raw.forEach(function eachItem(item) {
+      if (item && typeof item === 'object') {
+        addOption_(item.name || item.label || item.value);
+      } else {
+        addOption_(item);
+      }
+    });
+    return output;
+  }
+
+  if (raw && typeof raw === 'object') {
+    addOption_(raw.name || raw.label || raw.value);
+    return output;
+  }
+
+  const text = asString_(raw).trim();
+  if (!text) {
+    return output;
+  }
+
+  if (text[0] === '[' || text[0] === '{') {
+    try {
+      const parsed = JSON.parse(text);
+      return parseTicketFieldOptions_(parsed);
+    } catch (err) {
+      // fall through to delimiter parsing
+    }
+  }
+
+  text.split(/[\n,|;]/).forEach(function eachPart(part) {
+    addOption_(part);
+  });
+  return output;
 }
