@@ -3767,6 +3767,3535 @@
         }
       },
       "approved_by": "local-user"
+    },
+    "BATCH-20260512-175827-B6BE25": {
+      "batch_id": "BATCH-20260512-175827-B6BE25",
+      "status": "deployed",
+      "prompt": "create a form called enquiry type",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T17:58:27.041749+00:00",
+      "updated_at": "2026-05-12T18:01:24.628842+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T17:58:27.041749+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T17:58:27.063772+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T17:58:27.081205+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner retrying with compact context to stay within model limits.",
+          "at": "2026-05-12T17:58:31.458263+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T17:58:54.342857+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-12T17:58:54.365163+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-12T17:58:54.387779+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-12T17:59:17.905716+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-12T17:59:17.955333+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-12T17:59:27.707144+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-12T17:59:27.735893+00:00"
+        },
+        {
+          "status": "validated_failed",
+          "message": "Validation produced blocked records.",
+          "at": "2026-05-12T17:59:43.844075+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-12T17:59:43.868780+00:00"
+        },
+        {
+          "status": "approved",
+          "message": "Record-level approval decisions saved.",
+          "at": "2026-05-12T18:00:45.992508+00:00"
+        },
+        {
+          "status": "deploying",
+          "message": "Deploying approved records to Zendesk.",
+          "at": "2026-05-12T18:01:08.231460+00:00"
+        },
+        {
+          "status": "deployed",
+          "message": "Deployment completed successfully.",
+          "at": "2026-05-12T18:01:24.628823+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "ticket_forms",
+          "title": "enquiry type",
+          "preview_summary": "Ticket Forms configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No actions defined for this record.",
+            "No existing ticket form named 'enquiry type' found; will create new."
+          ],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [],
+          "actions": [],
+          "deployment_status": "deployed",
+          "zendesk_object_id": "27419675009052",
+          "execution_message": "Ticket_Form created successfully."
+        }
+      ],
+      "generated_counts": {
+        "ticket_forms": 1
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 1
+      },
+      "planning_summary": {
+        "object_type": "ticket_forms",
+        "intent": "Create a ticket form named 'enquiry type'.",
+        "confidence": 0.95,
+        "ambiguity_score": 0.0,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "No existing ticket form named 'enquiry type' found; will create new.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 7,
+          "ticket_forms": 6,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "aggressive",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 18,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 3,
+          "max_total_catalog_entries": 18,
+          "max_recent_items": 2,
+          "max_recent_chars": 70,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": false,
+          "telemetry": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1282,
+            "used_tokens": 1404,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          }
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "validation_phase_status": "validated_failed",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [],
+          "generated_types": [
+            "ticket_forms"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.95,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 1
+        },
+        "ambiguity_score": 0.0,
+        "ambiguity_threshold": 0.58,
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1282,
+            "used_tokens": 1404,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 2560,
+            "used_tokens": 2272,
+            "pre_request_wait_ms": 20000.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator_chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ]
+        },
+        "llm_context": {
+          "planner_profile": "aggressive",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 18,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 3,
+            "max_total_catalog_entries": 18,
+            "max_recent_items": 2,
+            "max_recent_chars": 70,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "generator_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: create a form called enquiry type"
+        ],
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260512-175827-B6BE25",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Ticket Forms": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260512-175827-B6BE25",
+            "summary": {
+              "passed": 0,
+              "warnings": 0,
+              "blocked": 1
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-12T17:59:30.680Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null,
+        "zendesk_deploy": {
+          "summary": {
+            "attempted": 1,
+            "deployed": 1,
+            "failed": 0,
+            "skipped": 0
+          },
+          "results": [
+            {
+              "record_id": "REC-0001",
+              "object_type": "ticket_forms",
+              "title": "enquiry type",
+              "deployment_status": "deployed",
+              "zendesk_object_id": "27419675009052",
+              "execution_message": "Ticket_Form created successfully.",
+              "executed_at": "2026-05-12T18:01:09.215701+00:00"
+            }
+          ],
+          "base_url": "https://digify7.zendesk.com",
+          "execution_log": {
+            "mode": "appscript",
+            "status": "ok",
+            "detail": null,
+            "http_status": 200,
+            "data": {
+              "ok": true,
+              "action": "write_execution_log",
+              "batch_id": "BATCH-20260512-175827-B6BE25",
+              "written_rows": 1
+            }
+          },
+          "dependency_auto_create": {
+            "events": [],
+            "created_count": 0
+          }
+        }
+      },
+      "approved_by": "local-user"
+    },
+    "BATCH-20260512-180446-3A00FA": {
+      "batch_id": "BATCH-20260512-180446-3A00FA",
+      "status": "clarification_required",
+      "prompt": "create macro and write we'll reply in 24 hours",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T18:04:46.030451+00:00",
+      "updated_at": "2026-05-12T18:05:35.859299+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T18:04:46.030451+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T18:04:46.082688+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T18:04:46.130179+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner retrying with compact context to stay within model limits.",
+          "at": "2026-05-12T18:04:49.045367+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T18:05:35.802266+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T18:05:35.825865+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "create macro and write we'll reply in 24 hours",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 7,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "aggressive",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 18,
+          "recent_batch_context": 2
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 3,
+          "max_total_catalog_entries": 18,
+          "max_recent_items": 2,
+          "max_recent_chars": 70,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Understood so far: You want a trigger configuration.. Missing detail: Rule filter criteria. Why this is required: Trigger/automation/view objects need conditions to avoid applying to unintended tickets..",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.5,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1305,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400
+          }
+        },
+        "llm_context": {
+          "planner_profile": "aggressive",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 18,
+            "recent_batch_context": 2
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 3,
+            "max_total_catalog_entries": 18,
+            "max_recent_items": 2,
+            "max_recent_chars": 70,
+            "max_context_notes_chars": 350
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: create a form called enquiry type",
+          "assistant: batch BATCH-20260512-175827-B6BE25 ready (passed=0, warnings=0, blocked=1)",
+          "user: create macro and write we'll reply in 24 hours"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-180630-23E27D": {
+      "batch_id": "BATCH-20260512-180630-23E27D",
+      "status": "clarification_required",
+      "prompt": "macro for the enquiry type form",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T18:06:30.226930+00:00",
+      "updated_at": "2026-05-12T18:07:20.111273+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T18:06:30.226930+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T18:06:30.251312+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T18:06:30.272643+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner retrying with compact context to stay within model limits.",
+          "at": "2026-05-12T18:06:34.188222+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T18:07:20.059023+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T18:07:20.085724+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "macro for the enquiry type form",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 7,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "aggressive",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 18,
+          "recent_batch_context": 2
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 3,
+          "max_total_catalog_entries": 18,
+          "max_recent_items": 2,
+          "max_recent_chars": 70,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Understood so far: You want a trigger configuration.. Missing detail: Rule filter criteria. Why this is required: Trigger/automation/view objects need conditions to avoid applying to unintended tickets..",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.5,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1301,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400
+          }
+        },
+        "llm_context": {
+          "planner_profile": "aggressive",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 18,
+            "recent_batch_context": 2
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 3,
+            "max_total_catalog_entries": 18,
+            "max_recent_items": 2,
+            "max_recent_chars": 70,
+            "max_context_notes_chars": 350
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: create a form called enquiry type",
+          "assistant: batch BATCH-20260512-175827-B6BE25 ready (passed=0, warnings=0, blocked=1)",
+          "user: create macro and write we'll reply in 24 hours",
+          "assistant: clarification required (What conditions should this apply to (status, group, form, brand, tags)?)",
+          "user: macro for the enquiry type form"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-180942-848A99": {
+      "batch_id": "BATCH-20260512-180942-848A99",
+      "status": "clarification_required",
+      "prompt": "create macro",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T18:09:42.322465+00:00",
+      "updated_at": "2026-05-12T18:10:44.505383+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T18:09:42.322465+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T18:09:42.349047+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T18:09:42.371170+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner retrying with compact context to stay within model limits.",
+          "at": "2026-05-12T18:09:45.242396+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T18:10:44.458659+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T18:10:44.483488+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "create macro",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 7,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "aggressive",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 18,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 3,
+          "max_total_catalog_entries": 18,
+          "max_recent_items": 2,
+          "max_recent_chars": 70,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Understood so far: You want a trigger configuration.. Missing detail: Rule filter criteria. Why this is required: Trigger/automation/view objects need conditions to avoid applying to unintended tickets..",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.5,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1272,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400
+          }
+        },
+        "llm_context": {
+          "planner_profile": "aggressive",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 18,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 3,
+            "max_total_catalog_entries": 18,
+            "max_recent_items": 2,
+            "max_recent_chars": 70,
+            "max_context_notes_chars": 350
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: create macro"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-181144-802ACD": {
+      "batch_id": "BATCH-20260512-181144-802ACD",
+      "status": "clarification_required",
+      "prompt": "i want a macro",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T18:11:44.821503+00:00",
+      "updated_at": "2026-05-12T18:12:34.267215+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T18:11:44.821503+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T18:11:44.856620+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T18:11:44.880398+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner retrying with compact context to stay within model limits.",
+          "at": "2026-05-12T18:11:48.660020+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T18:12:34.208139+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T18:12:34.243377+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "i want a macro",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 7,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "aggressive",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 18,
+          "recent_batch_context": 2
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 3,
+          "max_total_catalog_entries": 18,
+          "max_recent_items": 2,
+          "max_recent_chars": 70,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Understood so far: You want a trigger configuration.. Missing detail: Rule filter criteria. Why this is required: Trigger/automation/view objects need conditions to avoid applying to unintended tickets..",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.5,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1291,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400
+          }
+        },
+        "llm_context": {
+          "planner_profile": "aggressive",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 18,
+            "recent_batch_context": 2
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 3,
+            "max_total_catalog_entries": 18,
+            "max_recent_items": 2,
+            "max_recent_chars": 70,
+            "max_context_notes_chars": 350
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: create macro",
+          "assistant: clarification required (What conditions should this apply to (status, group, form, brand, tags)?)",
+          "user: i want a macro"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-193138-014A04": {
+      "batch_id": "BATCH-20260512-193138-014A04",
+      "status": "deployed",
+      "prompt": "create group called support",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T19:31:38.421978+00:00",
+      "updated_at": "2026-05-12T19:33:34.495212+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T19:31:38.421978+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T19:31:38.449776+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T19:31:38.477754+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T19:31:41.085450+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-12T19:31:41.125775+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-12T19:31:41.150430+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-12T19:32:04.035857+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-12T19:32:04.092746+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-12T19:32:12.031046+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-12T19:32:12.062098+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-05-12T19:32:39.574487+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-12T19:32:39.613614+00:00"
+        },
+        {
+          "status": "approved",
+          "message": "Record-level approval decisions saved.",
+          "at": "2026-05-12T19:33:05.835251+00:00"
+        },
+        {
+          "status": "deploying",
+          "message": "Deploying approved records to Zendesk.",
+          "at": "2026-05-12T19:33:20.648221+00:00"
+        },
+        {
+          "status": "deployed",
+          "message": "Deployment completed successfully.",
+          "at": "2026-05-12T19:33:34.495191+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "groups",
+          "title": "support",
+          "preview_summary": "Groups configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No actions defined for this record.",
+            "No existing group named 'support' found; will create a new group."
+          ],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [],
+          "actions": [],
+          "deployment_status": "deployed",
+          "zendesk_object_id": "27421168409116",
+          "execution_message": "Group created successfully."
+        }
+      ],
+      "generated_counts": {
+        "groups": 1
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 1,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "groups",
+        "intent": "Create a new group named support",
+        "confidence": 0.95,
+        "ambiguity_score": 0.05,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "No existing group named 'support' found; will create a new group.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 7,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": false,
+          "telemetry": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1893,
+            "used_tokens": 2010,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          }
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [],
+          "generated_types": [
+            "groups"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.95,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0
+        },
+        "ambiguity_score": 0.05,
+        "ambiguity_threshold": 0.58,
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1893,
+            "used_tokens": 2010,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 2554,
+            "used_tokens": 2213,
+            "pre_request_wait_ms": 20000.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator_chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ]
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "generator_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: create group called support"
+        ],
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260512-193138-014A04",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Recommendations": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260512-193138-014A04",
+            "summary": {
+              "passed": 0,
+              "warnings": 1,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-12T19:32:19.959Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null,
+        "zendesk_deploy": {
+          "summary": {
+            "attempted": 1,
+            "deployed": 1,
+            "failed": 0,
+            "skipped": 0
+          },
+          "results": [
+            {
+              "record_id": "REC-0001",
+              "object_type": "groups",
+              "title": "support",
+              "deployment_status": "deployed",
+              "zendesk_object_id": "27421168409116",
+              "execution_message": "Group created successfully.",
+              "executed_at": "2026-05-12T19:33:21.721692+00:00"
+            }
+          ],
+          "base_url": "https://digify7.zendesk.com",
+          "execution_log": {
+            "mode": "appscript",
+            "status": "ok",
+            "detail": null,
+            "http_status": 200,
+            "data": {
+              "ok": true,
+              "action": "write_execution_log",
+              "batch_id": "BATCH-20260512-193138-014A04",
+              "written_rows": 1
+            }
+          },
+          "dependency_auto_create": {
+            "events": [],
+            "created_count": 0
+          }
+        }
+      },
+      "approved_by": "local-user"
+    },
+    "BATCH-20260512-193737-373134": {
+      "batch_id": "BATCH-20260512-193737-373134",
+      "status": "preview_ready",
+      "prompt": "create field called Query Type , make it dropdown , add values claim, membership , payments",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T19:37:37.354603+00:00",
+      "updated_at": "2026-05-12T19:38:23.983231+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T19:37:37.354603+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T19:37:37.414490+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T19:37:37.449949+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T19:37:41.158122+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-12T19:37:41.217146+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-12T19:37:41.280344+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-12T19:38:04.078647+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-12T19:38:04.298185+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-12T19:38:10.561850+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-12T19:38:10.610578+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-05-12T19:38:23.935138+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-12T19:38:23.958592+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "ticket_fields",
+          "title": "Query Type",
+          "preview_summary": "Ticket Fields configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No existing field matches the name; a new field will be created.",
+            "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "field_type",
+              "value": "tagger"
+            },
+            {
+              "field": "custom_field_options",
+              "value": [
+                {
+                  "name": "claim",
+                  "value": "claim"
+                },
+                {
+                  "name": "membership",
+                  "value": "membership"
+                },
+                {
+                  "name": "payments",
+                  "value": "payments"
+                }
+              ]
+            },
+            {
+              "field": "agent_can_edit",
+              "value": true
+            },
+            {
+              "field": "visible_in_portal",
+              "value": true
+            },
+            {
+              "field": "editable_in_portal",
+              "value": false
+            },
+            {
+              "field": "required",
+              "value": false
+            },
+            {
+              "field": "required_in_portal",
+              "value": false
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        }
+      ],
+      "generated_counts": {
+        "ticket_fields": 1
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 1,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "ticket_fields",
+        "intent": "Create a new ticket field named Query Type with dropdown values claim, membership, payments",
+        "confidence": 0.95,
+        "ambiguity_score": 0.05,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "No existing field matches the name; a new field will be created.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": false,
+          "telemetry": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1925,
+            "used_tokens": 2043,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          }
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [],
+          "generated_types": [
+            "ticket_fields"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.95,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [
+            {
+              "title": "Query Type",
+              "object_type": "ticket_fields",
+              "alias_mappings": [
+                "inferred field_type from prompt",
+                "inferred custom_field_options from prompt"
+              ],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            }
+          ],
+          "total_records": 1
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0
+        },
+        "ambiguity_score": 0.05,
+        "ambiguity_threshold": 0.58,
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1925,
+            "used_tokens": 2043,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 2587,
+            "used_tokens": 2283,
+            "pre_request_wait_ms": 20000.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator_chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ]
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "generator_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: create field called Query Type , make it dropdown , add values claim, membership , payments"
+        ],
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260512-193737-373134",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Ticket Fields": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260512-193737-373134",
+            "summary": {
+              "passed": 0,
+              "warnings": 1,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-12T19:38:14.164Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null
+      }
+    },
+    "BATCH-20260512-194454-CE89CB": {
+      "batch_id": "BATCH-20260512-194454-CE89CB",
+      "status": "deployed",
+      "prompt": "create a field called query make it dropdown add values : claims , membership ,order",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T19:44:54.603263+00:00",
+      "updated_at": "2026-05-12T19:46:47.009209+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T19:44:54.603263+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T19:44:54.617011+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T19:44:54.628679+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T19:44:56.142576+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-12T19:44:56.166467+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-12T19:44:56.178842+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-12T19:45:18.360693+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-12T19:45:18.373381+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-12T19:45:25.492646+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-12T19:45:25.504180+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-05-12T19:45:43.739449+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-12T19:45:43.764350+00:00"
+        },
+        {
+          "status": "approved",
+          "message": "Record-level approval decisions saved.",
+          "at": "2026-05-12T19:46:23.340393+00:00"
+        },
+        {
+          "status": "deploying",
+          "message": "Deploying approved records to Zendesk.",
+          "at": "2026-05-12T19:46:38.532569+00:00"
+        },
+        {
+          "status": "deployed",
+          "message": "Deployment completed successfully.",
+          "at": "2026-05-12T19:46:47.009197+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "ticket_fields",
+          "title": "query",
+          "preview_summary": "Ticket Fields configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No existing field named 'query' found; will create new dropdown field.",
+            "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+          ],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "field_type",
+              "value": "tagger"
+            },
+            {
+              "field": "custom_field_options",
+              "value": [
+                {
+                  "name": "claims",
+                  "value": "claims"
+                },
+                {
+                  "name": "membership",
+                  "value": "membership"
+                },
+                {
+                  "name": "order",
+                  "value": "order"
+                }
+              ]
+            },
+            {
+              "field": "agent_can_edit",
+              "value": true
+            },
+            {
+              "field": "visible_in_portal",
+              "value": true
+            },
+            {
+              "field": "editable_in_portal",
+              "value": false
+            },
+            {
+              "field": "required",
+              "value": false
+            },
+            {
+              "field": "required_in_portal",
+              "value": false
+            }
+          ],
+          "deployment_status": "deployed",
+          "zendesk_object_id": "27421321546012",
+          "execution_message": "Ticket_Field created successfully."
+        }
+      ],
+      "generated_counts": {
+        "ticket_fields": 1
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 1,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "ticket_fields",
+        "intent": "Create a dropdown ticket field named 'query' with values claims, membership, order",
+        "confidence": 0.95,
+        "ambiguity_score": 0.05,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "No existing field named 'query' found; will create new dropdown field.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": false,
+          "telemetry": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1922,
+            "used_tokens": 2036,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          }
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [],
+          "generated_types": [
+            "ticket_fields"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.95,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [
+            {
+              "title": "query",
+              "object_type": "ticket_fields",
+              "alias_mappings": [
+                "inferred field_type from prompt"
+              ],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            }
+          ],
+          "total_records": 1
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0
+        },
+        "ambiguity_score": 0.05,
+        "ambiguity_threshold": 0.58,
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1922,
+            "used_tokens": 2036,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 2584,
+            "used_tokens": 2798,
+            "pre_request_wait_ms": 20000.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator_chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ]
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "generator_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: create a field called query make it dropdown add values : claims , membership ,order"
+        ],
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260512-194454-CE89CB",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Ticket Fields": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260512-194454-CE89CB",
+            "summary": {
+              "passed": 0,
+              "warnings": 1,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-12T19:45:30.988Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null,
+        "zendesk_deploy": {
+          "summary": {
+            "attempted": 1,
+            "deployed": 1,
+            "failed": 0,
+            "skipped": 0
+          },
+          "results": [
+            {
+              "record_id": "REC-0001",
+              "object_type": "ticket_fields",
+              "title": "query",
+              "deployment_status": "deployed",
+              "zendesk_object_id": "27421321546012",
+              "execution_message": "Ticket_Field created successfully.",
+              "executed_at": "2026-05-12T19:46:38.879907+00:00"
+            }
+          ],
+          "base_url": "https://digify7.zendesk.com",
+          "execution_log": {
+            "mode": "appscript",
+            "status": "ok",
+            "detail": null,
+            "http_status": 200,
+            "data": {
+              "ok": true,
+              "action": "write_execution_log",
+              "batch_id": "BATCH-20260512-194454-CE89CB",
+              "written_rows": 1
+            }
+          },
+          "dependency_auto_create": {
+            "events": [],
+            "created_count": 0
+          }
+        }
+      },
+      "approved_by": "local-user"
+    },
+    "BATCH-20260512-194920-FE224A": {
+      "batch_id": "BATCH-20260512-194920-FE224A",
+      "status": "clarification_required",
+      "prompt": "Create 5 FAQ Articles :How to submit a claim How long claims take Resetting your password Checking benefit balances How to register chronic medication",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T19:49:20.931088+00:00",
+      "updated_at": "2026-05-12T19:49:22.608456+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T19:49:20.931088+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T19:49:20.951040+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T19:49:20.964148+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T19:49:22.573281+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T19:49:22.596243+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "articles",
+        "intent": "Create 5 FAQ Articles",
+        "confidence": 0.95,
+        "ambiguity_score": 0.05,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "No matching articles found; will create new articles.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 58,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": false,
+          "telemetry": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1951,
+            "used_tokens": 2062,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          }
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "article_target_location",
+              "question": "Which Help Center section/category should the article be created in?",
+              "reason": "Understood so far: You want a Help Center article created.. Missing detail: Article destination. Why this is required: Zendesk article creation requires a section/category target..",
+              "examples": [
+                "Category: Pensioners, Section: FAQ."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.05,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1951,
+            "used_tokens": 2062,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 5,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "numeric_intent"
+          ],
+          "numeric_matches": [
+            {
+              "value": 5,
+              "object_hint": "articles",
+              "raw": "5 FAQ Articles"
+            }
+          ],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create 5 FAQ Articles :How to submit a claim How long claims take Resetting your password Checking benefit balances How to register chronic medication"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-195302-D5A321": {
+      "batch_id": "BATCH-20260512-195302-D5A321",
+      "status": "clarification_required",
+      "prompt": "EPPF brand , general category , FAQ section",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T19:53:02.723071+00:00",
+      "updated_at": "2026-05-12T19:53:48.426695+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T19:53:02.723071+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T19:53:03.190352+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T19:53:03.220526+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner retrying with compact context to stay within model limits.",
+          "at": "2026-05-12T19:53:05.156902+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T19:53:48.391798+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T19:53:48.412816+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "EPPF brand , general category , FAQ section",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 58,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "aggressive",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 18,
+          "recent_batch_context": 2
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 3,
+          "max_total_catalog_entries": 18,
+          "max_recent_items": 2,
+          "max_recent_chars": 70,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Understood so far: You want a trigger configuration.. Missing detail: Rule filter criteria. Why this is required: Trigger/automation/view objects need conditions to avoid applying to unintended tickets..",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.5,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1311,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400
+          }
+        },
+        "llm_context": {
+          "planner_profile": "aggressive",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 18,
+            "recent_batch_context": 2
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 3,
+            "max_total_catalog_entries": 18,
+            "max_recent_items": 2,
+            "max_recent_chars": 70,
+            "max_context_notes_chars": 350
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create 5 FAQ Articles :How to submit a claim How long claims take Resetting your password Checking benefit balances How to register chronic medication",
+          "assistant: clarification required (Which Help Center section/category should the article be created in?)",
+          "user: EPPF brand , general category , FAQ section"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-195444-F66ACC": {
+      "batch_id": "BATCH-20260512-195444-F66ACC",
+      "status": "deploy_failed",
+      "prompt": "they are no conditions",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T19:54:44.744289+00:00",
+      "updated_at": "2026-05-12T19:58:13.487790+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T19:54:44.744289+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T19:54:44.759976+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T19:54:44.774822+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner retrying with compact context to stay within model limits.",
+          "at": "2026-05-12T19:54:46.891708+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T19:55:30.042160+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-12T19:55:30.066920+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-12T19:55:30.081559+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-12T19:55:58.885885+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-12T19:55:58.914570+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-12T19:56:05.935159+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-12T19:56:05.948491+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-05-12T19:56:21.722241+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-12T19:56:21.735432+00:00"
+        },
+        {
+          "status": "approved",
+          "message": "Record-level approval decisions saved.",
+          "at": "2026-05-12T19:57:51.596291+00:00"
+        },
+        {
+          "status": "deploying",
+          "message": "Deploying approved records to Zendesk.",
+          "at": "2026-05-12T19:58:05.524878+00:00"
+        },
+        {
+          "status": "deploy_failed",
+          "message": "Deployment failed.",
+          "at": "2026-05-12T19:58:13.487777+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "articles",
+          "title": "How to submit a claim",
+          "preview_summary": "Articles configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No actions defined for this record."
+          ],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [],
+          "actions": [],
+          "deployment_status": "failed",
+          "zendesk_object_id": null,
+          "execution_message": "Article requires a section_id in conditions/actions."
+        },
+        {
+          "record_id": "REC-0002",
+          "object_type": "articles",
+          "title": "How long claims take",
+          "preview_summary": "Articles configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No actions defined for this record."
+          ],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [],
+          "actions": [],
+          "deployment_status": "failed",
+          "zendesk_object_id": null,
+          "execution_message": "Article requires a section_id in conditions/actions."
+        },
+        {
+          "record_id": "REC-0003",
+          "object_type": "articles",
+          "title": "Resetting your password",
+          "preview_summary": "Articles configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No actions defined for this record."
+          ],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [],
+          "actions": [],
+          "deployment_status": "failed",
+          "zendesk_object_id": null,
+          "execution_message": "Article requires a section_id in conditions/actions."
+        },
+        {
+          "record_id": "REC-0004",
+          "object_type": "articles",
+          "title": "Checking benefit balances",
+          "preview_summary": "Articles configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No actions defined for this record."
+          ],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [],
+          "actions": [],
+          "deployment_status": "failed",
+          "zendesk_object_id": null,
+          "execution_message": "Article requires a section_id in conditions/actions."
+        },
+        {
+          "record_id": "REC-0005",
+          "object_type": "articles",
+          "title": "How to register",
+          "preview_summary": "Articles configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No actions defined for this record."
+          ],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [],
+          "actions": [],
+          "deployment_status": "failed",
+          "zendesk_object_id": null,
+          "execution_message": "Article requires a section_id in conditions/actions."
+        }
+      ],
+      "generated_counts": {
+        "articles": 5
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 5,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "they are no conditions",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 58,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "aggressive",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 18,
+          "recent_batch_context": 2
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 3,
+          "max_total_catalog_entries": 18,
+          "max_recent_items": 2,
+          "max_recent_chars": 70,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [],
+          "generated_types": [
+            "articles"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.7,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0
+        },
+        "ambiguity_score": 0.5,
+        "ambiguity_threshold": 0.58,
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1306,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 2595,
+            "used_tokens": 2733,
+            "pre_request_wait_ms": 11107.34,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator_chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 5,
+              "deduped_records_added": 5,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 11107.34,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ]
+        },
+        "llm_context": {
+          "planner_profile": "aggressive",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 18,
+            "recent_batch_context": 2
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 3,
+            "max_total_catalog_entries": 18,
+            "max_recent_items": 2,
+            "max_recent_chars": 70,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 4
+          },
+          "generator_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 5,
+              "deduped_records_added": 5,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 11107.34,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ],
+          "total_generated_before_dedupe": 5,
+          "total_generated_after_dedupe": 5,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create 5 FAQ Articles :How to submit a claim How long claims take Resetting your password Checking benefit balances How to register chronic medication",
+          "assistant: clarification required (Which Help Center section/category should the article be created in?)",
+          "user: EPPF brand , general category , FAQ section",
+          "assistant: clarification required (What conditions should this apply to (status, group, form, brand, tags)?)",
+          "user: they are no conditions"
+        ],
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260512-195444-F66ACC",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Recommendations": 5
+            },
+            "total_records": 5
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260512-195444-F66ACC",
+            "summary": {
+              "passed": 0,
+              "warnings": 5,
+              "blocked": 0
+            },
+            "validated_rows": 5,
+            "validated_at": "2026-05-12T19:56:12.358Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null,
+        "zendesk_deploy": {
+          "summary": {
+            "attempted": 5,
+            "deployed": 0,
+            "failed": 5,
+            "skipped": 0
+          },
+          "results": [
+            {
+              "record_id": "REC-0001",
+              "object_type": "articles",
+              "title": "How to submit a claim",
+              "deployment_status": "failed",
+              "zendesk_object_id": null,
+              "execution_message": "Article requires a section_id in conditions/actions.",
+              "executed_at": "2026-05-12T19:58:05.875295+00:00"
+            },
+            {
+              "record_id": "REC-0002",
+              "object_type": "articles",
+              "title": "How long claims take",
+              "deployment_status": "failed",
+              "zendesk_object_id": null,
+              "execution_message": "Article requires a section_id in conditions/actions.",
+              "executed_at": "2026-05-12T19:58:05.875341+00:00"
+            },
+            {
+              "record_id": "REC-0003",
+              "object_type": "articles",
+              "title": "Resetting your password",
+              "deployment_status": "failed",
+              "zendesk_object_id": null,
+              "execution_message": "Article requires a section_id in conditions/actions.",
+              "executed_at": "2026-05-12T19:58:05.875354+00:00"
+            },
+            {
+              "record_id": "REC-0004",
+              "object_type": "articles",
+              "title": "Checking benefit balances",
+              "deployment_status": "failed",
+              "zendesk_object_id": null,
+              "execution_message": "Article requires a section_id in conditions/actions.",
+              "executed_at": "2026-05-12T19:58:05.875362+00:00"
+            },
+            {
+              "record_id": "REC-0005",
+              "object_type": "articles",
+              "title": "How to register",
+              "deployment_status": "failed",
+              "zendesk_object_id": null,
+              "execution_message": "Article requires a section_id in conditions/actions.",
+              "executed_at": "2026-05-12T19:58:05.875368+00:00"
+            }
+          ],
+          "base_url": "https://digify7.zendesk.com",
+          "execution_log": {
+            "mode": "appscript",
+            "status": "ok",
+            "detail": null,
+            "http_status": 200,
+            "data": {
+              "ok": true,
+              "action": "write_execution_log",
+              "batch_id": "BATCH-20260512-195444-F66ACC",
+              "written_rows": 5
+            }
+          },
+          "dependency_auto_create": {
+            "events": [],
+            "created_count": 0
+          }
+        }
+      },
+      "approved_by": "local-user"
     }
   }
 }
