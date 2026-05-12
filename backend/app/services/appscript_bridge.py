@@ -19,6 +19,7 @@ class AppScriptBridgeService:
         action: str,
         payload: dict | None = None,
         method: str = "POST",
+        timeout_seconds: float | None = None,
     ) -> dict:
         started = time.perf_counter()
         method_upper = method.upper()
@@ -64,8 +65,13 @@ class AppScriptBridgeService:
             }
 
         try:
+            timeout = (
+                float(timeout_seconds)
+                if timeout_seconds is not None and timeout_seconds > 0
+                else self.settings.appscript_timeout_seconds
+            )
             async with httpx.AsyncClient(
-                timeout=self.settings.appscript_timeout_seconds,
+                timeout=timeout,
                 follow_redirects=True,
             ) as client:
                 if method_upper == "GET":

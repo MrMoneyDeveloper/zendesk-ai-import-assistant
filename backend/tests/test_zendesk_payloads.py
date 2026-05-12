@@ -1,7 +1,9 @@
 import asyncio
+from urllib.parse import urlparse
 
 from app.services import zendesk
 from app.services.zendesk import _build_ticket_field_payload, _build_ticket_form_payload
+from app.core.settings import get_settings
 
 
 def test_build_ticket_field_payload_accepts_aliases_and_sets_defaults():
@@ -94,6 +96,55 @@ class _FakeAsyncClient:
         return _FakeResponse(200, {})
 
 
+class _Fallback404Client:
+    fallback_hits = {
+        "/api/v2/help_center/help_center.json": 0,
+        "/api/v2/help_center.json": 0,
+    }
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url, **kwargs):
+        path = urlparse(url).path
+        if path in self.fallback_hits:
+            self.fallback_hits[path] += 1
+            return _FakeResponse(404, {"error": "Not Found"})
+        if path == "/api/v2/help_center/help_centers.json":
+            return _FakeResponse(404, {"error": "Not Found"})
+        key = path.rsplit("/", 1)[-1]
+        payload_key = key.replace(".json", "")
+        if payload_key == "articles":
+            return _FakeResponse(200, {"articles": []})
+        if payload_key == "categories":
+            return _FakeResponse(200, {"categories": []})
+        if payload_key == "sections":
+            return _FakeResponse(200, {"sections": []})
+        if payload_key == "brands":
+            return _FakeResponse(200, {"brands": []})
+        if payload_key == "groups":
+            return _FakeResponse(200, {"groups": []})
+        if payload_key == "ticket_forms":
+            return _FakeResponse(200, {"ticket_forms": []})
+        if payload_key == "triggers":
+            return _FakeResponse(200, {"triggers": []})
+        if payload_key == "automations":
+            return _FakeResponse(200, {"automations": []})
+        if payload_key == "macros":
+            return _FakeResponse(200, {"macros": []})
+        if payload_key == "views":
+            return _FakeResponse(200, {"views": []})
+        if payload_key == "ticket_fields":
+            return _FakeResponse(200, {"ticket_fields": []})
+        return _FakeResponse(200, {})
+
+
 def test_deploy_records_auto_creates_missing_group_dependency(monkeypatch):
     monkeypatch.setattr(zendesk.httpx, "AsyncClient", _FakeAsyncClient)
 
@@ -159,3 +210,35 @@ def test_deploy_records_fails_with_explicit_fix_for_non_creatable_dependency(mon
     assert result["summary"]["failed"] == 1
     assert result["results"][0]["deployment_status"] == "failed"
     assert "cannot be auto-created" in result["results"][0]["execution_message"].lower()
+
+
+def test_help_center_fallback_404_paths_are_suppressed_after_first_failure(monkeypatch):
+    monkeypatch.setenv("ZENDESK_FALLBACK_404_COOLDOWN_SECONDS", "3600")
+    get_settings.cache_clear()
+    _Fallback404Client.fallback_hits = {
+        "/api/v2/help_center/help_center.json": 0,
+        "/api/v2/help_center.json": 0,
+    }
+    monkeypatch.setattr(zendesk.httpx, "AsyncClient", _Fallback404Client)
+    zendesk._HELP_CENTER_FALLBACK_404_COOLDOWN.clear()
+
+    first = asyncio.run(
+        zendesk.fetch_zendesk_reference_catalog(
+            subdomain="acme",
+            email="admin@acme.com",
+            api_token="tok_test",
+        )
+    )
+    second = asyncio.run(
+        zendesk.fetch_zendesk_reference_catalog(
+            subdomain="acme",
+            email="admin@acme.com",
+            api_token="tok_test",
+        )
+    )
+
+    assert first["ok"] is False
+    assert second["ok"] is False
+    assert _Fallback404Client.fallback_hits["/api/v2/help_center/help_center.json"] == 1
+    assert _Fallback404Client.fallback_hits["/api/v2/help_center.json"] == 1
+    assert any("cooldown active" in warning.lower() for warning in second.get("warnings", []))

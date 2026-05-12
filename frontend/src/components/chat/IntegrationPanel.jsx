@@ -16,6 +16,7 @@ function statusToBadge(status) {
 export default function IntegrationPanel({
   integrationsStatus,
   integrationsLoading,
+  onRefreshIntegrations,
   generateMetadata,
   approvalMetadata,
   onValidateZendesk,
@@ -52,6 +53,14 @@ export default function IntegrationPanel({
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-200">Integration Diagnostics</h2>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRefreshIntegrations}
+            disabled={integrationsLoading}
+          >
+            Refresh
+          </Button>
           {zendeskValidated ? (
             <Badge variant="success">Prompt Unlocked</Badge>
           ) : (

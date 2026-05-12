@@ -113,6 +113,12 @@ TICKET_FORM_REFERENCE_FIELDS = {
     "fields",
     "ticket_field_names",
 }
+DETERMINISTIC_LLM_ERROR_MARKERS = {
+    "unsupported_response_format",
+    "schema_validation_failure",
+    "model_permission_blocked",
+    "other_invalid_request",
+}
 
 
 def _utc_now() -> str:
@@ -121,6 +127,16 @@ def _utc_now() -> str:
 
 def _new_batch_id() -> str:
     return f"BATCH-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:6].upper()}"
+
+
+def _is_deterministic_llm_error(exc: Exception) -> bool:
+    text = str(exc).strip().lower()
+    if not text:
+        return False
+    for marker in DETERMINISTIC_LLM_ERROR_MARKERS:
+        if f"[{marker}]" in text:
+            return True
+    return False
 
 
 def _normalize_object_type(raw: str) -> str:
@@ -1745,7 +1761,9 @@ async def _run_generator_with_context_fallback(
             existing_titles=existing_titles,
             allow_fallback=False,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        if _is_deterministic_llm_error(exc):
+            raise
         context_profile = aggressive_context_bundle.get("profile", "aggressive")
         try:
             generated_data = await run_generator(
@@ -1763,7 +1781,9 @@ async def _run_generator_with_context_fallback(
                 existing_titles=existing_titles,
                 allow_fallback=False,
             )
-        except RuntimeError:
+        except RuntimeError as compact_exc:
+            if _is_deterministic_llm_error(compact_exc):
+                raise
             generated_data = await run_generator(
                 plan,
                 dependency_mode=request.dependency_mode,
@@ -1863,7 +1883,9 @@ async def generate_import_assistant_batch(
             context_notes=planner_context_bundle["context_notes"],
             allow_fallback=False,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        if _is_deterministic_llm_error(exc):
+            raise
         store.append_status(
             batch_id,
             "planning",
@@ -1881,7 +1903,9 @@ async def generate_import_assistant_batch(
                 context_notes=planner_context_bundle["context_notes"],
                 allow_fallback=False,
             )
-        except RuntimeError:
+        except RuntimeError as compact_exc:
+            if _is_deterministic_llm_error(compact_exc):
+                raise
             plan = await run_planner(
                 request.prompt,
                 dependency_mode=request.dependency_mode,
@@ -2581,6 +2605,7 @@ async def deploy_batch_to_zendesk(
 ) -> dict:
     store = get_batch_store()
     appscript = AppScriptBridgeService()
+    settings = get_settings()
     batch = store.get_batch(batch_id)
     if not batch:
         raise KeyError(batch_id)
@@ -2657,20 +2682,46 @@ async def deploy_batch_to_zendesk(
 
     execution_log_result: dict = {}
     if appscript.enabled:
-        execution_log = await appscript.invoke(
-            action="write_execution_log",
-            payload={
-                "batch_id": batch_id,
-                "results": results,
-            },
-        )
-        execution_log_result = {
-            "mode": "appscript",
-            "status": execution_log.get("status"),
-            "detail": execution_log.get("detail"),
-            "http_status": execution_log.get("http_status"),
-            "data": execution_log.get("data", {}),
+        execution_payload = {
+            "batch_id": batch_id,
+            "results": results,
         }
+        bounded_timeout = max(float(settings.appscript_health_timeout_seconds), 0.5) + 1.0
+        try:
+            execution_log = await asyncio.wait_for(
+                appscript.invoke(
+                    action="write_execution_log",
+                    payload=execution_payload,
+                ),
+                timeout=bounded_timeout,
+            )
+            execution_log_result = {
+                "mode": "appscript",
+                "status": execution_log.get("status"),
+                "detail": execution_log.get("detail"),
+                "http_status": execution_log.get("http_status"),
+                "data": execution_log.get("data", {}),
+            }
+        except asyncio.TimeoutError:
+            execution_log_result = {
+                "mode": "appscript",
+                "status": "deferred",
+                "detail": "Execution log write exceeded bounded timeout; scheduled asynchronous follow-up.",
+                "http_status": None,
+                "data": {},
+            }
+
+            async def _flush_execution_log_later() -> None:
+                try:
+                    await appscript.invoke(
+                        action="write_execution_log",
+                        payload=execution_payload,
+                        timeout_seconds=settings.appscript_timeout_seconds,
+                    )
+                except Exception:
+                    return
+
+            asyncio.create_task(_flush_execution_log_later())
 
     deployed = int(summary.get("deployed", 0))
     failed = int(summary.get("failed", 0))

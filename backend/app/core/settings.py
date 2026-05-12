@@ -51,6 +51,16 @@ def _as_choice(value: str | None, default: str, allowed: set[str]) -> str:
     return default
 
 
+def _as_csv_tuple(value: str | None, default: tuple[str, ...]) -> tuple[str, ...]:
+    if value is None:
+        return default
+    cleaned = [item.strip() for item in value.split(",")]
+    normalized = tuple(item for item in cleaned if item)
+    if not normalized:
+        return default
+    return normalized
+
+
 def _normalize_provider(value: str | None) -> str:
     if not value:
         return "auto"
@@ -115,14 +125,21 @@ class Settings:
     llm_strict_schema_planner: bool | None
     llm_strict_schema_clarifier: bool | None
     llm_strict_schema_generator: bool | None
+    llm_json_schema_supported_models: tuple[str, ...]
     llm_fallback_to_json_object: bool
     llm_ambiguity_threshold: float
     llm_min_deploy_confidence: float
     llm_retry_max_attempts: int
     llm_retry_backoff_seconds: float
+    llm_circuit_breaker_enabled: bool
+    llm_circuit_breaker_failures: int
+    llm_circuit_breaker_window_seconds: int
+    llm_circuit_breaker_cooldown_seconds: int
     llm_rate_guard_enabled: bool
     llm_rate_guard_safety_ratio: float
     llm_rate_guard_min_headroom_tokens: int
+    llm_prewait_max_seconds_planner: float
+    llm_prewait_max_seconds_generator: float
     llm_context_max_related_objects: int
     llm_context_max_entries_per_catalog: int
     llm_context_max_catalog_entries: int
@@ -154,10 +171,13 @@ class Settings:
     appscript_web_app_url: str
     appscript_api_key: str
     appscript_timeout_seconds: float
+    appscript_health_timeout_seconds: float
+    integrations_health_cache_seconds: float
     zendesk_subdomain: str
     zendesk_email: str
     zendesk_api_token: str
     zendesk_target_environment: str
+    zendesk_fallback_404_cooldown_seconds: int
 
 
 @lru_cache
@@ -169,6 +189,11 @@ def get_settings() -> Settings:
     default_planner_model = "qwen/qwen3-32b" if provider == "groq" else default_model
     default_clarifier_model = "qwen/qwen3-32b" if provider == "groq" else default_model
     default_generator_model = "openai/gpt-oss-20b" if provider == "groq" else default_model
+
+    default_schema_supported_models = ("openai/gpt-oss-20b", "grok-4.3", "grok-4.20")
+
+    def _stage_prewait(default_seconds: float, env_name: str) -> float:
+        return min(max(_as_float(os.getenv(env_name), default_seconds), 0.0), 30.0)
 
     return Settings(
         app_name=os.getenv("APP_NAME", "AI Zendesk Import Assistant"),
@@ -209,6 +234,10 @@ def get_settings() -> Settings:
             os.getenv("LLM_STRICT_SCHEMA_GENERATOR"),
             True,
         ),
+        llm_json_schema_supported_models=_as_csv_tuple(
+            os.getenv("LLM_JSON_SCHEMA_SUPPORTED_MODELS"),
+            default_schema_supported_models,
+        ),
         llm_fallback_to_json_object=_as_bool(
             os.getenv("LLM_FALLBACK_TO_JSON_OBJECT"),
             True,
@@ -226,6 +255,19 @@ def get_settings() -> Settings:
             _as_float(os.getenv("LLM_RETRY_BACKOFF_SECONDS"), 1.0),
             0.0,
         ),
+        llm_circuit_breaker_enabled=_as_bool(os.getenv("LLM_CIRCUIT_BREAKER_ENABLED"), True),
+        llm_circuit_breaker_failures=max(
+            _as_int(os.getenv("LLM_CIRCUIT_BREAKER_FAILURES"), 2),
+            1,
+        ),
+        llm_circuit_breaker_window_seconds=max(
+            _as_int(os.getenv("LLM_CIRCUIT_BREAKER_WINDOW_SECONDS"), 300),
+            30,
+        ),
+        llm_circuit_breaker_cooldown_seconds=max(
+            _as_int(os.getenv("LLM_CIRCUIT_BREAKER_COOLDOWN_SECONDS"), 300),
+            30,
+        ),
         llm_rate_guard_enabled=_as_bool(os.getenv("LLM_RATE_GUARD_ENABLED"), True),
         llm_rate_guard_safety_ratio=min(
             max(_as_float(os.getenv("LLM_RATE_GUARD_SAFETY_RATIO"), 0.8), 0.1),
@@ -235,6 +277,8 @@ def get_settings() -> Settings:
             _as_int(os.getenv("LLM_RATE_GUARD_MIN_HEADROOM_TOKENS"), 250),
             0,
         ),
+        llm_prewait_max_seconds_planner=_stage_prewait(6.0, "LLM_PREWAIT_MAX_SECONDS_PLANNER"),
+        llm_prewait_max_seconds_generator=_stage_prewait(12.0, "LLM_PREWAIT_MAX_SECONDS_GENERATOR"),
         llm_context_max_related_objects=max(
             _as_int(os.getenv("LLM_CONTEXT_MAX_RELATED_OBJECTS"), 16),
             5,
@@ -328,8 +372,20 @@ def get_settings() -> Settings:
         appscript_web_app_url=os.getenv("APPS_SCRIPT_WEB_APP_URL", "").strip(),
         appscript_api_key=os.getenv("APPS_SCRIPT_API_KEY", "").strip(),
         appscript_timeout_seconds=float(os.getenv("APPS_SCRIPT_TIMEOUT_SECONDS", "20")),
+        appscript_health_timeout_seconds=max(
+            _as_float(os.getenv("APPS_SCRIPT_HEALTH_TIMEOUT_SECONDS"), 3.0),
+            0.5,
+        ),
+        integrations_health_cache_seconds=max(
+            _as_float(os.getenv("INTEGRATIONS_HEALTH_CACHE_SECONDS"), 45.0),
+            0.0,
+        ),
         zendesk_subdomain=os.getenv("ZENDESK_SUBDOMAIN", "").strip(),
         zendesk_email=os.getenv("ZENDESK_EMAIL", "").strip(),
         zendesk_api_token=os.getenv("ZENDESK_API_TOKEN", "").strip(),
         zendesk_target_environment=os.getenv("ZENDESK_TARGET_ENVIRONMENT", "sandbox").strip(),
+        zendesk_fallback_404_cooldown_seconds=max(
+            _as_int(os.getenv("ZENDESK_FALLBACK_404_COOLDOWN_SECONDS"), 1800),
+            60,
+        ),
     )

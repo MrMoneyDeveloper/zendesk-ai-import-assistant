@@ -36,6 +36,25 @@ class StubAppScriptBridgeService:
         }
 
 
+class CountingAppScriptBridgeService:
+    call_count = 0
+
+    @property
+    def enabled(self):
+        return True
+
+    async def invoke(self, action, payload=None, method="POST", timeout_seconds=None):
+        if action == "health":
+            CountingAppScriptBridgeService.call_count += 1
+        return {
+            "action": action,
+            "status": "ok",
+            "detail": None,
+            "http_status": 200,
+            "data": {},
+        }
+
+
 def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
@@ -148,6 +167,36 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     assert deploy_payload["summary"]["deployed"] == 1
 
     assert Path(store_file).exists()
+
+
+def test_integrations_status_uses_cached_health(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("INTEGRATIONS_HEALTH_CACHE_SECONDS", "60")
+    monkeypatch.setenv("APPS_SCRIPT_HEALTH_TIMEOUT_SECONDS", "1")
+    get_settings.cache_clear()
+    reset_batch_store()
+    CountingAppScriptBridgeService.call_count = 0
+
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", CountingAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.SheetsService", StubSheetsService)
+
+    from app.main import app
+    from app.routes import import_assistant as route_module
+
+    route_module._INTEGRATIONS_HEALTH_CACHE["at_monotonic"] = 0.0
+    route_module._INTEGRATIONS_HEALTH_CACHE["at_iso"] = None
+    route_module._INTEGRATIONS_HEALTH_CACHE["payload"] = None
+
+    client = TestClient(app)
+    first = client.get("/api/import-assistant/integrations/status")
+    second = client.get("/api/import-assistant/integrations/status")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert CountingAppScriptBridgeService.call_count == 1
+    second_payload = second.json()
+    assert second_payload["appscript"]["health_source"] == "cache"
 
 
 def test_generate_requires_clarification_for_vague_macro(monkeypatch, tmp_path):

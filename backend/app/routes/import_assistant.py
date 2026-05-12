@@ -1,3 +1,5 @@
+import asyncio
+import time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -70,6 +72,13 @@ SCHEMA_SYNC_MODELS = [
     "ZendeskDeployResponse",
 ]
 
+_INTEGRATIONS_HEALTH_CACHE_LOCK = asyncio.Lock()
+_INTEGRATIONS_HEALTH_CACHE: dict[str, object] = {
+    "at_monotonic": 0.0,
+    "at_iso": None,
+    "payload": None,
+}
+
 
 def _build_schema_bundle() -> dict:
     return {
@@ -106,6 +115,51 @@ async def _sync_schema_preflight_if_enabled() -> dict:
         }
     payload = {"schema_bundle": _build_schema_bundle()}
     return await service.invoke(action="sync_schema", payload=payload, method="POST")
+
+
+async def _get_appscript_health_with_cache(
+    *,
+    appscript: AppScriptBridgeService,
+    settings,
+) -> tuple[dict, str, str | None, float]:
+    ttl_seconds = max(float(settings.integrations_health_cache_seconds), 0.0)
+    now_mono = time.monotonic()
+    cached_payload = _INTEGRATIONS_HEALTH_CACHE.get("payload")
+    cached_at_mono = float(_INTEGRATIONS_HEALTH_CACHE.get("at_monotonic") or 0.0)
+    cached_at_iso = _INTEGRATIONS_HEALTH_CACHE.get("at_iso")
+    if (
+        ttl_seconds > 0
+        and isinstance(cached_payload, dict)
+        and cached_at_mono > 0
+        and (now_mono - cached_at_mono) <= ttl_seconds
+    ):
+        age_ms = max((now_mono - cached_at_mono) * 1000.0, 0.0)
+        return cached_payload, "cache", str(cached_at_iso or ""), round(age_ms, 2)
+
+    async with _INTEGRATIONS_HEALTH_CACHE_LOCK:
+        now_mono = time.monotonic()
+        cached_payload = _INTEGRATIONS_HEALTH_CACHE.get("payload")
+        cached_at_mono = float(_INTEGRATIONS_HEALTH_CACHE.get("at_monotonic") or 0.0)
+        cached_at_iso = _INTEGRATIONS_HEALTH_CACHE.get("at_iso")
+        if (
+            ttl_seconds > 0
+            and isinstance(cached_payload, dict)
+            and cached_at_mono > 0
+            and (now_mono - cached_at_mono) <= ttl_seconds
+        ):
+            age_ms = max((now_mono - cached_at_mono) * 1000.0, 0.0)
+            return cached_payload, "cache", str(cached_at_iso or ""), round(age_ms, 2)
+
+        live_payload = await appscript.invoke(
+            action="health",
+            method="GET",
+            timeout_seconds=settings.appscript_health_timeout_seconds,
+        )
+        now_iso = datetime.now(UTC).isoformat()
+        _INTEGRATIONS_HEALTH_CACHE["payload"] = live_payload
+        _INTEGRATIONS_HEALTH_CACHE["at_monotonic"] = now_mono
+        _INTEGRATIONS_HEALTH_CACHE["at_iso"] = now_iso
+        return live_payload, "live", now_iso, 0.0
 
 
 @router.post("/generate", response_model=ImportAssistantGenerateResponse)
@@ -246,13 +300,19 @@ async def integrations_status() -> IntegrationStatusResponse:
     appscript = AppScriptBridgeService()
     sheets = SheetsService()
 
-    appscript_health = await appscript.invoke(action="health", method="GET")
+    appscript_health, health_source, health_cached_at, health_cache_age_ms = await _get_appscript_health_with_cache(
+        appscript=appscript,
+        settings=settings,
+    )
     appscript_status = {
         "configured": appscript.enabled,
         "web_app_url_configured": bool(settings.appscript_web_app_url),
         "api_key_configured": bool(settings.appscript_api_key),
         "health": appscript_health.get("status"),
         "health_detail": appscript_health.get("detail"),
+        "health_cached_at": health_cached_at,
+        "health_cache_age_ms": health_cache_age_ms,
+        "health_source": health_source,
     }
 
     sheets_status = {

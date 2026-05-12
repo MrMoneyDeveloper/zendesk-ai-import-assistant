@@ -3,8 +3,7 @@ import json
 import random
 import time
 from copy import deepcopy
-from typing import ClassVar
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 
@@ -16,6 +15,21 @@ from app.services.perf_capture import emit_perf_event
 logger = get_logger(__name__)
 
 
+class LLMRequestError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_class: str,
+        http_status: int | None = None,
+        provider_detail: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_class = error_class
+        self.http_status = http_status
+        self.provider_detail = provider_detail or message
+
+
 class GrokClient:
     _MODEL_TPM_DEFAULTS: ClassVar[dict[str, int]] = {
         "qwen/qwen3-32b": 3000,
@@ -23,6 +37,13 @@ class GrokClient:
     }
     _MODEL_USAGE_STATE: ClassVar[dict[str, dict[str, float | int | None]]] = {}
     _LAST_CALL_METRICS: ClassVar[dict[str, dict[str, Any]]] = {}
+    _CIRCUIT_STATE: ClassVar[dict[tuple[str, str, str], dict[str, Any]]] = {}
+    _DETERMINISTIC_ERROR_CLASSES: ClassVar[set[str]] = {
+        "unsupported_response_format",
+        "schema_validation_failure",
+        "model_permission_blocked",
+        "other_invalid_request",
+    }
 
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -108,7 +129,6 @@ class GrokClient:
         if parsed < 0:
             return None
         now_epoch = time.time()
-        # Some APIs return epoch timestamps for reset headers.
         if parsed > now_epoch + 60:
             return max(parsed - now_epoch, 0.0)
         return parsed
@@ -134,6 +154,60 @@ class GrokClient:
         input_estimate = max(1, len(serialized) // 4)
         reserved_output = int(max(float(payload.get("max_tokens", 0) or 0.0), 0.0) * 0.7)
         return input_estimate + reserved_output
+
+    @staticmethod
+    def _as_error_text(payload: dict[str, Any], detail: str) -> str:
+        error = payload.get("error")
+        if isinstance(error, dict):
+            return str(error.get("message") or error.get("code") or detail or "")
+        if error:
+            return str(error)
+        return str(payload.get("message") or detail or "")
+
+    def _classify_http_error(self, response: httpx.Response) -> tuple[str, str]:
+        status = int(response.status_code)
+        detail = self._extract_error_detail(response)
+        text = detail.lower()
+        if status == 429:
+            return "rate_limited", detail
+
+        if status == 403 and "model" in text and (
+            "permission" in text or "not allowed" in text or "not available" in text
+        ):
+            return "model_permission_blocked", detail
+
+        if status == 400:
+            if ("response_format" in text or "json_schema" in text) and (
+                "unsupported" in text or "not support" in text or "invalid" in text
+            ):
+                return "unsupported_response_format", detail
+            if "schema" in text and (
+                "validation" in text or "invalid" in text or "expected" in text
+            ):
+                return "schema_validation_failure", detail
+            if "model" in text and (
+                "permission" in text
+                or "not allowed" in text
+                or "not available" in text
+                or "not found" in text
+            ):
+                return "model_permission_blocked", detail
+            return "other_invalid_request", detail
+
+        if 400 <= status < 500:
+            return "other_invalid_request", detail
+        return "http_error", detail
+
+    def _model_supports_json_schema(self, model: str) -> bool:
+        allowed = tuple(item.strip() for item in self.settings.llm_json_schema_supported_models if item.strip())
+        if not allowed:
+            return False
+        for entry in allowed:
+            if entry.endswith("*") and model.startswith(entry[:-1]):
+                return True
+            if model == entry:
+                return True
+        return False
 
     def _get_model_usage_state(self, model: str) -> dict[str, float | int | None]:
         now_mono = time.monotonic()
@@ -199,9 +273,20 @@ class GrokClient:
         if isinstance(remaining, (int, float)):
             state["remaining_tokens"] = max(int(remaining) - int(tokens_used), 0)
 
-    def _compute_pre_request_wait_seconds(self, model: str, estimated_tokens: int) -> float:
+    def _wait_cap_for_task(self, task: str | None) -> float:
+        if task in {"planner", "clarifier"}:
+            return self.settings.llm_prewait_max_seconds_planner
+        return self.settings.llm_prewait_max_seconds_generator
+
+    def _compute_pre_request_wait_seconds(
+        self,
+        model: str,
+        estimated_tokens: int,
+        *,
+        task: str | None,
+    ) -> tuple[float, str | None]:
         if not self.settings.llm_rate_guard_enabled:
-            return 0.0
+            return 0.0, None
 
         state = self._get_model_usage_state(model)
         now_mono = time.monotonic()
@@ -215,9 +300,11 @@ class GrokClient:
         local_threshold = max(safe_budget - min_headroom, min_headroom)
 
         local_wait = 0.0
+        wait_reason: str | None = None
         if local_projected > local_threshold:
             elapsed = now_mono - float(state.get("window_started_at") or now_mono)
             local_wait = max(60.0 - elapsed, 0.0)
+            wait_reason = "local_budget"
 
         header_wait = 0.0
         remaining = state.get("remaining_tokens")
@@ -229,11 +316,60 @@ class GrokClient:
                     header_wait = max(float(reset_seconds), 0.0)
                 elif local_wait <= 0.0:
                     header_wait = 0.35
+                wait_reason = "header_budget"
 
         wait_seconds = max(local_wait, header_wait, 0.0)
         if wait_seconds <= 0.0:
-            return 0.0
-        return min(wait_seconds + random.uniform(0.05, 0.3), 20.0)
+            return 0.0, None
+        max_cap = max(self._wait_cap_for_task(task), 0.0)
+        jittered = wait_seconds + random.uniform(0.05, 0.3)
+        if max_cap <= 0:
+            return 0.0, None
+        return min(jittered, max_cap), wait_reason
+
+    def _breaker_key(self, task: str | None, model: str, error_class: str) -> tuple[str, str, str]:
+        return (str(task or "default"), model, error_class)
+
+    def _breaker_entry(self, key: tuple[str, str, str]) -> dict[str, Any]:
+        entry = self._CIRCUIT_STATE.get(key)
+        if entry is None:
+            entry = {"failures": [], "cooldown_until": 0.0}
+            self._CIRCUIT_STATE[key] = entry
+        return entry
+
+    def _record_breaker_failure(self, task: str | None, model: str, error_class: str) -> None:
+        if not self.settings.llm_circuit_breaker_enabled:
+            return
+        key = self._breaker_key(task, model, error_class)
+        entry = self._breaker_entry(key)
+        now = time.monotonic()
+        failures = [ts for ts in entry.get("failures", []) if now - float(ts) <= self.settings.llm_circuit_breaker_window_seconds]
+        failures.append(now)
+        entry["failures"] = failures
+        threshold = max(self.settings.llm_circuit_breaker_failures, 1)
+        if len(failures) >= threshold:
+            entry["cooldown_until"] = now + float(self.settings.llm_circuit_breaker_cooldown_seconds)
+
+    def _is_breaker_open(self, task: str | None, model: str, error_class: str) -> bool:
+        if not self.settings.llm_circuit_breaker_enabled:
+            return False
+        key = self._breaker_key(task, model, error_class)
+        entry = self._breaker_entry(key)
+        now = time.monotonic()
+        cooldown_until = float(entry.get("cooldown_until") or 0.0)
+        return cooldown_until > now
+
+    def _record_breaker_success(self, task: str | None, model: str) -> None:
+        if not self.settings.llm_circuit_breaker_enabled:
+            return
+        task_name = str(task or "default")
+        keys_to_delete = [
+            key
+            for key in self._CIRCUIT_STATE.keys()
+            if key[0] == task_name and key[1] == model
+        ]
+        for key in keys_to_delete:
+            self._CIRCUIT_STATE.pop(key, None)
 
     def _record_call_metrics(self, task: str | None, metrics: dict[str, Any]) -> None:
         if task:
@@ -250,15 +386,19 @@ class GrokClient:
                 "used_tokens": metrics.get("used_tokens"),
                 "retry_count": metrics.get("retry_count"),
                 "pre_request_wait_ms": metrics.get("pre_request_wait_ms"),
+                "wait_reason": metrics.get("wait_reason"),
+                "error_class": metrics.get("error_class"),
+                "breaker_state": metrics.get("breaker_state"),
             },
         )
 
     async def _post_completion(
         self,
-        payload: dict,
+        payload: dict[str, Any],
         headers: dict[str, str],
         *,
         task: str | None = None,
+        initial_breaker_state: str = "closed",
     ) -> dict[str, Any]:
         attempts = max(self.settings.llm_retry_max_attempts, 1)
         backoff = max(self.settings.llm_retry_backoff_seconds, 0.0)
@@ -267,9 +407,17 @@ class GrokClient:
         estimated_tokens = self._estimate_payload_tokens(payload)
         total_wait_seconds = 0.0
         retry_count = 0
+        wait_reason: str | None = None
+        breaker_state = initial_breaker_state
 
         for attempt in range(1, attempts + 1):
-            pre_wait_seconds = self._compute_pre_request_wait_seconds(model, estimated_tokens)
+            pre_wait_seconds, pre_wait_reason = self._compute_pre_request_wait_seconds(
+                model,
+                estimated_tokens,
+                task=task,
+            )
+            if pre_wait_reason:
+                wait_reason = pre_wait_reason
             if pre_wait_seconds > 0:
                 logger.info(
                     "%s proactive rate guard delaying %.2fs before %s request.",
@@ -288,6 +436,8 @@ class GrokClient:
                 )
             last_response = response
             self._apply_rate_headers(model, response)
+
+            error_class, detail = self._classify_http_error(response)
             if response.status_code == 429 and attempt < attempts:
                 retry_count += 1
                 retry_after_header = response.headers.get("Retry-After")
@@ -305,14 +455,17 @@ class GrokClient:
                     sleep_seconds,
                 )
                 total_wait_seconds += sleep_seconds
+                wait_reason = "retry_after" if retry_after is not None else "backoff_retry"
                 self._record_usage(model, estimated_tokens)
                 await asyncio.sleep(sleep_seconds)
                 continue
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                detail = self._extract_error_detail(response)
-                self._record_usage(model, estimated_tokens)
+
+            if not response.is_success:
+                self._record_breaker_failure(task, model, error_class)
+                if self._is_breaker_open(task, model, error_class):
+                    breaker_state = f"open:{error_class}"
+                else:
+                    breaker_state = f"closed:{error_class}"
                 self._record_call_metrics(
                     task,
                     {
@@ -323,14 +476,22 @@ class GrokClient:
                         "retry_count": retry_count,
                         "final_status": "http_error",
                         "http_status": response.status_code,
+                        "wait_reason": wait_reason,
+                        "error_class": error_class,
+                        "breaker_state": breaker_state,
                     },
                 )
-                raise RuntimeError(
-                    f"{self.provider_name} API request failed ({response.status_code}): {detail}"
-                ) from exc
+                raise LLMRequestError(
+                    f"{self.provider_name} API request failed ({response.status_code}) [{error_class}]: {detail}",
+                    error_class=error_class,
+                    http_status=response.status_code,
+                    provider_detail=detail,
+                )
+
             data = response.json()
             used_tokens = self._extract_usage_tokens(data) or estimated_tokens
             self._record_usage(model, used_tokens)
+            self._record_breaker_success(task, model)
             self._record_call_metrics(
                 task,
                 {
@@ -342,6 +503,9 @@ class GrokClient:
                     "retry_count": retry_count,
                     "final_status": "ok",
                     "http_status": response.status_code,
+                    "wait_reason": wait_reason,
+                    "error_class": "none",
+                    "breaker_state": breaker_state,
                 },
             )
             return data
@@ -357,11 +521,17 @@ class GrokClient:
                     "retry_count": retry_count,
                     "final_status": "error",
                     "http_status": None,
+                    "wait_reason": wait_reason,
+                    "error_class": "transport_error",
+                    "breaker_state": breaker_state,
                 },
             )
-            raise RuntimeError(f"{self.provider_name} API request failed: no response received.")
-        detail = self._extract_error_detail(last_response)
-        self._record_usage(model, estimated_tokens)
+            raise LLMRequestError(
+                f"{self.provider_name} API request failed: no response received.",
+                error_class="transport_error",
+                http_status=None,
+            )
+        error_class, detail = self._classify_http_error(last_response)
         self._record_call_metrics(
             task,
             {
@@ -372,15 +542,21 @@ class GrokClient:
                 "retry_count": retry_count,
                 "final_status": "http_error",
                 "http_status": last_response.status_code,
+                "wait_reason": wait_reason,
+                "error_class": error_class,
+                "breaker_state": breaker_state,
             },
         )
-        raise RuntimeError(
-            f"{self.provider_name} API request failed ({last_response.status_code}): {detail}"
+        raise LLMRequestError(
+            f"{self.provider_name} API request failed ({last_response.status_code}) [{error_class}]: {detail}",
+            error_class=error_class,
+            http_status=last_response.status_code,
+            provider_detail=detail,
         )
 
     async def chat(
         self,
-        messages: list[dict],
+        messages: list[dict[str, Any]],
         temperature: float | None = None,
         *,
         model: str | None = None,
@@ -396,25 +572,52 @@ class GrokClient:
             raise RuntimeError("XAI_API_KEY is missing from environment.")
 
         selected_model = model or self.settings.xai_model or RECOMMENDED_MODEL
+        breaker_state = "closed"
+
+        if self._is_breaker_open(task, selected_model, "model_permission_blocked"):
+            if task in {"planner", "clarifier"} and selected_model != self.settings.llm_model_generator:
+                logger.warning(
+                    "Circuit breaker open for %s/%s model_permission_blocked. Routing to fallback model '%s'.",
+                    task,
+                    selected_model,
+                    self.settings.llm_model_generator,
+                )
+                selected_model = self.settings.llm_model_generator
+                breaker_state = "open:model_permission_blocked"
+
         if selected_model not in SUPPORTED_MODELS:
             logger.warning(
                 "Model '%s' is not in SUPPORTED_MODELS metadata, continuing anyway.",
                 selected_model,
             )
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": selected_model,
             "messages": messages,
             "temperature": temperature if temperature is not None else self.settings.xai_temperature,
             "max_tokens": max_output_tokens or self.settings.xai_max_output_tokens,
         }
         strict = self.settings.llm_strict_schema_mode if strict_schema is None else strict_schema
+        response_format_mode = "none"
         if response_schema:
-            payload["response_format"] = self._build_response_format(
-                response_schema_name,
-                response_schema,
-                strict=strict,
-            )
+            if self._model_supports_json_schema(selected_model):
+                payload["response_format"] = self._build_response_format(
+                    response_schema_name,
+                    response_schema,
+                    strict=strict,
+                )
+                response_format_mode = "json_schema"
+            else:
+                payload["response_format"] = {"type": "json_object"}
+                response_format_mode = "json_object"
+                breaker_state = "open:unsupported_response_format"
+                if self.settings.llm_circuit_breaker_enabled:
+                    self._record_breaker_failure(task, selected_model, "unsupported_response_format")
+                logger.info(
+                    "Model '%s' does not use json_schema in current config. Using json_object for task '%s'.",
+                    selected_model,
+                    task or "default",
+                )
 
         headers = {
             "Authorization": f"Bearer {self.settings.xai_api_key}",
@@ -422,22 +625,45 @@ class GrokClient:
         }
 
         try:
-            data = await self._post_completion(payload, headers, task=task)
+            data = await self._post_completion(
+                payload,
+                headers,
+                task=task,
+                initial_breaker_state=breaker_state,
+            )
+            if task:
+                latest = deepcopy(self._LAST_CALL_METRICS.get(task, {}))
+                latest["response_format_mode"] = response_format_mode
+                latest["model"] = selected_model
+                self._LAST_CALL_METRICS[task] = latest
             return self._extract_response_text(data)
-        except RuntimeError as exc:
+        except LLMRequestError as exc:
             if not (
                 response_schema
-                and strict
                 and self.settings.llm_fallback_to_json_object
-                and "400" in str(exc)
+                and exc.error_class in {"unsupported_response_format", "schema_validation_failure"}
+                and response_format_mode == "json_schema"
             ):
                 raise
+
             logger.warning(
-                "Strict schema request failed for model '%s'. Retrying with json_object mode. Error: %s",
+                "Structured response failed for model '%s' task '%s' (%s). Retrying with json_object.",
                 selected_model,
-                exc,
+                task or "default",
+                exc.error_class,
             )
             relaxed_payload = dict(payload)
             relaxed_payload["response_format"] = {"type": "json_object"}
-            data = await self._post_completion(relaxed_payload, headers, task=task)
+            data = await self._post_completion(
+                relaxed_payload,
+                headers,
+                task=task,
+                initial_breaker_state=f"open:{exc.error_class}",
+            )
+            if task:
+                latest = deepcopy(self._LAST_CALL_METRICS.get(task, {}))
+                latest["response_format_mode"] = "json_object_fallback"
+                latest["model"] = selected_model
+                latest["error_class"] = exc.error_class
+                self._LAST_CALL_METRICS[task] = latest
             return self._extract_response_text(data)

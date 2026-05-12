@@ -1,6 +1,7 @@
 import argparse
 import csv
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -51,6 +52,7 @@ def summarize(session_dir: Path) -> dict:
     events_file = session_dir / "events.jsonl"
     events = _load_events(events_file)
     grouped: dict[tuple[str, str, str], list[dict]] = {}
+    error_class_counts: dict[str, int] = {}
     for event in events:
         payload = event.get("payload", {})
         if not isinstance(payload, dict):
@@ -60,6 +62,9 @@ def summarize(session_dir: Path) -> dict:
         path = str(payload.get("path", "")).strip()
         key = (event_type, operation, path)
         grouped.setdefault(key, []).append(event)
+        error_class = str(payload.get("error_class", "")).strip().lower()
+        if error_class and error_class not in {"none", "ok"}:
+            error_class_counts[error_class] = error_class_counts.get(error_class, 0) + 1
 
     summary_rows: list[dict] = []
     for (event_type, operation, path), rows in sorted(grouped.items()):
@@ -102,13 +107,42 @@ def summarize(session_dir: Path) -> dict:
         )
 
     bottlenecks = sorted(summary_rows, key=lambda row: row.get("avg_duration_ms", 0.0), reverse=True)[:30]
+
+    request_rows = [row for row in summary_rows if row.get("event_type") == "request" and row.get("path")]
+    request_rows.sort(key=lambda row: row.get("avg_duration_ms", 0.0), reverse=True)
+    top_bottleneck_path = request_rows[0]["path"] if request_rows else ""
+    top_failure_class = ""
+    if error_class_counts:
+        top_failure_class = max(error_class_counts.items(), key=lambda item: item[1])[0]
+
+    recommended_profile = "balanced_default"
+    if top_failure_class in {"unsupported_response_format", "schema_validation_failure", "model_permission_blocked"}:
+        recommended_profile = "compatibility_safe"
+    elif top_failure_class == "rate_limited":
+        recommended_profile = "rate_limited_conservative"
+    elif top_bottleneck_path == "/api/import-assistant/integrations/status":
+        recommended_profile = "cached_status_light_polling"
+
+    verdict = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "top_failure_class": top_failure_class or "none",
+        "top_bottleneck_path": top_bottleneck_path or "none",
+        "recommended_immediate_config_profile": recommended_profile,
+    }
     _write_csv(session_dir / "summary.csv", summary_rows)
     _write_csv(session_dir / "bottlenecks_top30.csv", bottlenecks)
+    (session_dir / "session_verdict.json").write_text(
+        json.dumps(verdict, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
     return {
         "session_dir": str(session_dir),
         "events": len(events),
         "summary_rows": len(summary_rows),
         "bottlenecks": len(bottlenecks),
+        "top_failure_class": verdict["top_failure_class"],
+        "top_bottleneck_path": verdict["top_bottleneck_path"],
+        "recommended_immediate_config_profile": verdict["recommended_immediate_config_profile"],
     }
 
 

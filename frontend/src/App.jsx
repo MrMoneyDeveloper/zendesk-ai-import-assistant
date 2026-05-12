@@ -234,7 +234,23 @@ function App() {
   const integrationsQuery = useQuery({
     queryKey: ["integrations-status"],
     queryFn: getIntegrationsStatus,
-    refetchInterval: 15000,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const appscriptHealth = data?.appscript?.health;
+      const appscriptSource = data?.appscript?.health_source;
+      if (generateMutation.isPending) {
+        return 15_000;
+      }
+      if (appscriptHealth === "ok" && appscriptSource === "cache") {
+        return false;
+      }
+      if (appscriptHealth === "ok") {
+        return 60_000;
+      }
+      return 20_000;
+    },
   });
 
   const jobsQuery = useQuery({
@@ -1061,6 +1077,7 @@ function App() {
             <IntegrationPanel
               integrationsStatus={integrationsQuery.data}
               integrationsLoading={integrationsQuery.isLoading}
+              onRefreshIntegrations={() => integrationsQuery.refetch()}
               generateMetadata={effectiveGenerateMetadata}
               approvalMetadata={approveMutation.data?.metadata}
               onValidateZendesk={(payload) => mutateZendeskValidation(payload)}

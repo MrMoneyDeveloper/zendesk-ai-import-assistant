@@ -4,6 +4,7 @@ import time
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
+from app.core.settings import get_settings
 from app.services.perf_capture import emit_perf_event
 
 TICKET_FIELD_TYPE_ALIASES = {
@@ -39,6 +40,8 @@ TICKET_FORM_REFERENCE_FIELDS = {
     "ticket_field_names",
 }
 
+_HELP_CENTER_FALLBACK_404_COOLDOWN: dict[str, float] = {}
+
 
 def _build_base_url(subdomain: str) -> str:
     return f"https://{subdomain}.zendesk.com"
@@ -46,6 +49,20 @@ def _build_base_url(subdomain: str) -> str:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _fallback_probe_allowed(path: str, cooldown_seconds: int) -> bool:
+    if cooldown_seconds <= 0:
+        return True
+    now = time.monotonic()
+    blocked_until = float(_HELP_CENTER_FALLBACK_404_COOLDOWN.get(path, 0.0) or 0.0)
+    return blocked_until <= now
+
+
+def _mark_fallback_404(path: str, cooldown_seconds: int) -> None:
+    if cooldown_seconds <= 0:
+        return
+    _HELP_CENTER_FALLBACK_404_COOLDOWN[path] = time.monotonic() + float(cooldown_seconds)
 
 
 def _sanitize_path(url_or_path: str) -> str:
@@ -173,7 +190,7 @@ async def fetch_zendesk_reference_catalog(
     }
 
     async with httpx.AsyncClient(timeout=25) as client:
-        async def _safe_get(path: str) -> dict:
+        async def _safe_get(path: str) -> tuple[dict, int | None]:
             started = time.perf_counter()
             try:
                 response = await client.get(
@@ -192,7 +209,7 @@ async def fetch_zendesk_reference_catalog(
                     error=str(exc),
                 )
                 warnings.append(f"{path}: request failed ({exc})")
-                return {}
+                return {}, None
             _emit_zendesk_http_event(
                 operation="reference_catalog_fetch",
                 method="GET",
@@ -204,12 +221,12 @@ async def fetch_zendesk_reference_catalog(
             )
             if not response.is_success:
                 warnings.append(f"{path}: HTTP {response.status_code}")
-                return {}
+                return {}, response.status_code
             try:
-                return response.json() if response.text else {}
+                return (response.json() if response.text else {}), response.status_code
             except ValueError:
                 warnings.append(f"{path}: response was not valid JSON.")
-                return {}
+                return {}, response.status_code
 
         endpoint_map = {
             "brands": "/api/v2/brands.json",
@@ -225,10 +242,13 @@ async def fetch_zendesk_reference_catalog(
             "categories": "/api/v2/help_center/categories.json?per_page=100",
             "sections": "/api/v2/help_center/sections.json?per_page=100",
         }
-        payloads = await asyncio.gather(
+        payload_pairs = await asyncio.gather(
             *[_safe_get(path) for path in endpoint_map.values()]
         )
-        payload_by_key = dict(zip(endpoint_map.keys(), payloads))
+        payload_by_key: dict[str, dict] = {}
+        for key, pair in zip(endpoint_map.keys(), payload_pairs):
+            payload, _status_code = pair
+            payload_by_key[key] = payload
 
         help_center_entries = []
         help_center_payload = payload_by_key.get("help_centers")
@@ -242,8 +262,17 @@ async def fetch_zendesk_reference_catalog(
                 "/api/v2/help_center/help_center.json",
                 "/api/v2/help_center.json",
             ]
+            settings = get_settings()
+            cooldown_seconds = max(int(settings.zendesk_fallback_404_cooldown_seconds), 0)
             for fallback_path in fallback_paths:
-                fallback_payload = await _safe_get(fallback_path)
+                if not _fallback_probe_allowed(fallback_path, cooldown_seconds):
+                    warnings.append(
+                        f"{fallback_path}: skipped due to recent 404 (cooldown active)."
+                    )
+                    continue
+                fallback_payload, fallback_status = await _safe_get(fallback_path)
+                if fallback_status == 404:
+                    _mark_fallback_404(fallback_path, cooldown_seconds)
                 if not isinstance(fallback_payload, dict):
                     continue
                 raw_list = fallback_payload.get("help_centers")

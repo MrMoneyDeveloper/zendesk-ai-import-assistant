@@ -49,6 +49,7 @@ Telemetry output from each run is stored in:
 - `backend/data/perf-sessions/<timestamp>/events.jsonl`
 - `backend/data/perf-sessions/<timestamp>/summary.csv`
 - `backend/data/perf-sessions/<timestamp>/bottlenecks_top30.csv`
+- `backend/data/perf-sessions/<timestamp>/session_verdict.json`
 
 The active telemetry path is also written to `.local-dev-state.json` as `perf_session_dir`.
 
@@ -183,10 +184,20 @@ Set these in `backend/.env` to tune model behavior:
 - `LLM_MODEL_GENERATOR` task model for record generation
 - `LLM_MODEL_CLARIFIER` task model for clarification follow-ups
 - `LLM_STRICT_SCHEMA_MODE=true|false` enable JSON-schema constrained output
+- `LLM_JSON_SCHEMA_SUPPORTED_MODELS=openai/gpt-oss-20b,grok-4.3` models allowed to use `json_schema` response format
 - `LLM_FALLBACK_TO_JSON_OBJECT=true|false` fallback if strict schema is rejected
+- `LLM_CIRCUIT_BREAKER_ENABLED=true|false`
+- `LLM_CIRCUIT_BREAKER_FAILURES=2`
+- `LLM_CIRCUIT_BREAKER_WINDOW_SECONDS=300`
+- `LLM_CIRCUIT_BREAKER_COOLDOWN_SECONDS=300`
+- `LLM_PREWAIT_MAX_SECONDS_PLANNER=6`
+- `LLM_PREWAIT_MAX_SECONDS_GENERATOR=12`
 - `LLM_AMBIGUITY_THRESHOLD=0.58` score above this triggers clarification flow
 - `LLM_PLANNER_MAX_OUTPUT_TOKENS=900`
 - `LLM_GENERATOR_MAX_OUTPUT_TOKENS=1800`
 - `LLM_CLARIFIER_MAX_OUTPUT_TOKENS=700`
+- `APPS_SCRIPT_HEALTH_TIMEOUT_SECONDS=3`
+- `INTEGRATIONS_HEALTH_CACHE_SECONDS=45`
+- `ZENDESK_FALLBACK_404_COOLDOWN_SECONDS=1800`
 
 Default behavior is safe for free-tier PoC usage: smaller planner token budget, strict structured outputs, and ambiguity gating before generation.
