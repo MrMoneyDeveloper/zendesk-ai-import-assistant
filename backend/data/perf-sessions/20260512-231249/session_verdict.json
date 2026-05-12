@@ -1,0 +1,6 @@
+{
+  "generated_at": "2026-05-12T21:32:14.065185+00:00",
+  "top_failure_class": "other_invalid_request",
+  "top_bottleneck_path": "/api/import-assistant/generate",
+  "recommended_immediate_config_profile": "balanced_default"
+}

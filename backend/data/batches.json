@@ -7296,6 +7296,1301 @@
         }
       },
       "approved_by": "local-user"
+    },
+    "BATCH-20260512-211010-B7732E": {
+      "batch_id": "BATCH-20260512-211010-B7732E",
+      "status": "planning",
+      "prompt": "Create billing views for high priority unresolved tickets",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T21:10:10.667303+00:00",
+      "updated_at": "2026-05-12T21:10:10.743381+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T21:10:10.667303+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T21:10:10.707838+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T21:10:10.743358+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {},
+      "metadata": {}
+    },
+    "BATCH-20260512-211550-C6B59F": {
+      "batch_id": "BATCH-20260512-211550-C6B59F",
+      "status": "planning",
+      "prompt": "Create billing views for high priority unresolved tickets",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T21:15:50.929221+00:00",
+      "updated_at": "2026-05-12T21:15:51.072717+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T21:15:50.929221+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T21:15:51.015132+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T21:15:51.072695+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {},
+      "metadata": {}
+    },
+    "BATCH-20260512-213438-194157": {
+      "batch_id": "BATCH-20260512-213438-194157",
+      "status": "clarification_required",
+      "prompt": "Create billing views for high priority unresolved tickets",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T21:34:38.258000+00:00",
+      "updated_at": "2026-05-12T21:34:42.330885+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T21:34:38.258000+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T21:34:38.322539+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T21:34:38.362948+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T21:34:42.252654+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T21:34:42.294252+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "views",
+        "intent": "Create billing views for high priority unresolved tickets",
+        "confidence": 0.95,
+        "ambiguity_score": 0.0,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "No existing view matches the criteria; a new view will be created.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 58,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": true,
+          "telemetry": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1908,
+            "used_tokens": 2056,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200,
+            "wait_reason": null,
+            "error_class": "none",
+            "breaker_state": "closed",
+            "response_format_mode": "json_schema"
+          }
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Understood so far: You want a view configuration.. Missing detail: Rule filter criteria. Why this is required: Trigger/automation/view objects need conditions to avoid applying to unintended tickets..",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.0,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1908,
+            "used_tokens": 2056,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200,
+            "wait_reason": null,
+            "error_class": "none",
+            "breaker_state": "closed",
+            "response_format_mode": "json_schema"
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create billing views for high priority unresolved tickets"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-213707-4D4001": {
+      "batch_id": "BATCH-20260512-213707-4D4001",
+      "status": "clarification_required",
+      "prompt": "support group",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T21:37:07.143875+00:00",
+      "updated_at": "2026-05-12T21:37:15.306395+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T21:37:07.143875+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T21:37:07.195921+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T21:37:07.235619+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner returned deterministic JSON failure; switching to heuristic planner fallback.",
+          "at": "2026-05-12T21:37:12.892647+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T21:37:15.241603+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T21:37:15.284267+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "groups",
+        "intent": "support group",
+        "confidence": 0.7,
+        "ambiguity_score": 0.7,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 58,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 3
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "estimated_tokens": 1745,
+            "used_tokens": 2136,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200,
+            "wait_reason": null,
+            "error_class": "none",
+            "breaker_state": "open:unsupported_response_format",
+            "response_format_mode": "json_object"
+          }
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "ambiguity_scope",
+              "question": "What exact scope should this apply to (object target + conditions + expected actions)?",
+              "reason": "Understood so far: support group. Missing detail: explicit scope and action mapping. Why this is required: The request appears ambiguous for a reliable one-shot deployment..",
+              "examples": [
+                "For trigger X: status=new, group=Claims; action=set tag test_ticket and assign group Billing."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.7,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "estimated_tokens": 1745,
+            "used_tokens": 2136,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200,
+            "wait_reason": null,
+            "error_class": "none",
+            "breaker_state": "open:unsupported_response_format",
+            "response_format_mode": "json_object"
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 3
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create billing views for high priority unresolved tickets",
+          "assistant: clarification required (What conditions should this apply to (status, group, form, brand, tags)?)",
+          "user: support group"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-213806-BD762E": {
+      "batch_id": "BATCH-20260512-213806-BD762E",
+      "status": "clarification_required",
+      "prompt": "High priority tickets , which are open",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T21:38:06.226031+00:00",
+      "updated_at": "2026-05-12T21:38:23.822551+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T21:38:06.226031+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T21:38:06.259394+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T21:38:06.277061+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner returned deterministic JSON failure; switching to heuristic planner fallback.",
+          "at": "2026-05-12T21:38:18.275426+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T21:38:23.731159+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T21:38:23.784934+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "High priority tickets , which are open",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 58,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 4
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Understood so far: You want a trigger configuration.. Missing detail: Rule filter criteria. Why this is required: Trigger/automation/view objects need conditions to avoid applying to unintended tickets..",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.5,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1784,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400,
+            "wait_reason": null,
+            "error_class": "schema_validation_failure",
+            "breaker_state": "open:schema_validation_failure"
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 4
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create billing views for high priority unresolved tickets",
+          "assistant: clarification required (What conditions should this apply to (status, group, form, brand, tags)?)",
+          "user: support group",
+          "assistant: clarification required (What exact scope should this apply to (object target + conditions + expected actions)?)",
+          "user: High priority tickets , which are open"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-213943-559D9E": {
+      "batch_id": "BATCH-20260512-213943-559D9E",
+      "status": "clarification_required",
+      "prompt": "enquiry type form , eppf brand",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T21:39:43.741209+00:00",
+      "updated_at": "2026-05-12T21:40:00.956780+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T21:39:43.741209+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T21:39:43.809679+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T21:39:43.848502+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner returned deterministic JSON failure; switching to heuristic planner fallback.",
+          "at": "2026-05-12T21:39:55.289305+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T21:40:00.835675+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T21:40:00.904536+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "enquiry type form , eppf brand",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 58,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 4
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Understood so far: You want a trigger configuration.. Missing detail: Rule filter criteria. Why this is required: Trigger/automation/view objects need conditions to avoid applying to unintended tickets..",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.5,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1782,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400,
+            "wait_reason": null,
+            "error_class": "schema_validation_failure",
+            "breaker_state": "open:schema_validation_failure"
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 4
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create billing views for high priority unresolved tickets",
+          "assistant: clarification required (What conditions should this apply to (status, group, form, brand, tags)?)",
+          "user: support group",
+          "assistant: clarification required (What exact scope should this apply to (object target + conditions + expected actions)?)",
+          "user: High priority tickets , which are open",
+          "assistant: clarification required (What conditions should this apply to (status, group, form, brand, tags)?)",
+          "user: enquiry type form , eppf brand"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-214053-773F12": {
+      "batch_id": "BATCH-20260512-214053-773F12",
+      "status": "clarification_required",
+      "prompt": "Create escalation triggers for finance tickets older than 48 hours",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T21:40:53.466852+00:00",
+      "updated_at": "2026-05-12T21:41:10.446255+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T21:40:53.466852+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T21:40:53.500443+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T21:40:53.523132+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner returned deterministic JSON failure; switching to heuristic planner fallback.",
+          "at": "2026-05-12T21:41:05.027736+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T21:41:10.366316+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-12T21:41:10.404207+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Create escalation triggers for finance tickets older than 48 hours",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 58,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "conditions_needed",
+              "question": "What conditions should this apply to (status, group, form, brand, tags)?",
+              "reason": "Understood so far: You want a trigger configuration.. Missing detail: Rule filter criteria. Why this is required: Trigger/automation/view objects need conditions to avoid applying to unintended tickets..",
+              "examples": [
+                "Only for status=new and form=Claim & Payouts."
+              ]
+            }
+          ],
+          "ambiguity_score": 0.5,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1727,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400,
+            "wait_reason": null,
+            "error_class": "schema_validation_failure",
+            "breaker_state": "open:schema_validation_failure"
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create escalation triggers for finance tickets older than 48 hours"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "clarification_required",
+          "failure_reason": "Additional details are required before generation can continue.",
+          "next_step": "Answer the clarification question and submit again."
+        }
+      }
+    },
+    "BATCH-20260512-214208-A4285E": {
+      "batch_id": "BATCH-20260512-214208-A4285E",
+      "status": "failed",
+      "prompt": "Create escalation triggers for finance tickets older than 48 hours.  Conditions: - group is Finance Support - status is open or pending - tickets older than 48 hours - priority is high or urgent - tags include finance  Actions: - assign to Escalation Team - add tag escalated - notify finance managers",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-12T21:42:08.393557+00:00",
+      "updated_at": "2026-05-12T21:42:48.781145+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-12T21:42:08.393557+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-12T21:42:08.462258+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-12T21:42:08.548155+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-12T21:42:21.112173+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-12T21:42:21.158417+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-12T21:42:21.197981+00:00"
+        },
+        {
+          "status": "failed",
+          "message": "Generation failed during chunking: Generator model call failed: Groq API request failed (400) [schema_validation_failure]: Failed to validate JSON. Please adjust your prompt. See 'failed_generation' for more details.",
+          "at": "2026-05-12T21:42:48.738620+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Create an escalation trigger for finance tickets older than 48 hours with specified conditions and actions",
+        "confidence": 0.8,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 8,
+          "ticket_forms": 7,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 58,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 3
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": true,
+          "telemetry": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1850,
+            "used_tokens": 1984,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200,
+            "wait_reason": null,
+            "error_class": "schema_validation_failure",
+            "breaker_state": "open:schema_validation_failure",
+            "response_format_mode": "json_object_fallback"
+          }
+        }
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "failed",
+          "abort_reason": "Generator model call failed: Groq API request failed (400) [schema_validation_failure]: Failed to validate JSON. Please adjust your prompt. See 'failed_generation' for more details."
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1850,
+            "used_tokens": 1984,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200,
+            "wait_reason": null,
+            "error_class": "schema_validation_failure",
+            "breaker_state": "open:schema_validation_failure",
+            "response_format_mode": "json_object_fallback"
+          },
+          "generator_chunks": []
+        },
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "chunk_generation_failed",
+          "failure_reason": "Generator model call failed: Groq API request failed (400) [schema_validation_failure]: Failed to validate JSON. Please adjust your prompt. See 'failed_generation' for more details.",
+          "next_step": "Retry generation or reduce request scope/chunk size."
+        }
+      }
     }
   }
 }
