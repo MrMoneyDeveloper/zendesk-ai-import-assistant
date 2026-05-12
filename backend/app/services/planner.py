@@ -68,6 +68,19 @@ def _is_model_availability_error(exc: Exception) -> bool:
     return any(marker in text for marker in markers)
 
 
+def _is_json_generation_error(exc: Exception) -> bool:
+    text = str(exc).strip().lower()
+    if not text:
+        return False
+    return (
+        "failed to generate json" in text
+        or "failed_generation" in text
+        or "json_validate_failed" in text
+        or "[schema_validation_failure]" in text
+        or "[other_invalid_request]" in text
+    )
+
+
 def _resolve_fallback_object_type(focus_object_types: list[str] | None) -> str:
     if not isinstance(focus_object_types, list):
         return "triggers"
@@ -162,11 +175,11 @@ async def run_planner(
         return _build_plan_from_payload(payload, cleaned_prompt, route)
     except Exception as exc:
         if (
-            _is_model_availability_error(exc)
+            (_is_model_availability_error(exc) or _is_json_generation_error(exc))
             and route.model != settings.llm_model_generator
         ):
             logger.warning(
-                "Planner model '%s' unavailable, retrying with fallback model '%s'.",
+                "Planner model '%s' unavailable/unstable for this request, retrying with fallback model '%s'.",
                 route.model,
                 settings.llm_model_generator,
             )
@@ -178,7 +191,7 @@ async def run_planner(
                     settings.llm_planner_max_output_tokens,
                     settings.llm_generator_max_output_tokens,
                 ),
-                strict_schema=fallback_route.strict_schema,
+                strict_schema=True,
             )
             try:
                 raw = await client.chat(

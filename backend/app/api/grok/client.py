@@ -177,6 +177,13 @@ class GrokClient:
             return "model_permission_blocked", detail
 
         if status == 400:
+            if (
+                "failed to generate json" in text
+                or "failed_generation" in text
+                or "json_validate_failed" in text
+                or "generated json does not match the expected schema" in text
+            ):
+                return "schema_validation_failure", detail
             if ("response_format" in text or "json_schema" in text) and (
                 "unsupported" in text or "not support" in text or "invalid" in text
             ):

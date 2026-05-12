@@ -1885,27 +1885,11 @@ async def generate_import_assistant_batch(
         )
     except RuntimeError as exc:
         if _is_deterministic_llm_error(exc):
-            raise
-        store.append_status(
-            batch_id,
-            "planning",
-            "Planner retrying with compact context to stay within model limits.",
-        )
-        planner_context_bundle = llm_context_aggressive
-        try:
-            plan = await run_planner(
-                request.prompt,
-                dependency_mode=request.dependency_mode,
-                focus_object_types=focus_object_types,
-                related_objects=planner_context_bundle["related_objects"],
-                reference_catalog=planner_context_bundle["reference_catalog"],
-                recent_batch_context=planner_context_bundle["recent_batch_context"],
-                context_notes=planner_context_bundle["context_notes"],
-                allow_fallback=False,
+            store.append_status(
+                batch_id,
+                "planning",
+                "Planner returned deterministic JSON failure; switching to heuristic planner fallback.",
             )
-        except RuntimeError as compact_exc:
-            if _is_deterministic_llm_error(compact_exc):
-                raise
             plan = await run_planner(
                 request.prompt,
                 dependency_mode=request.dependency_mode,
@@ -1916,6 +1900,52 @@ async def generate_import_assistant_batch(
                 context_notes=planner_context_bundle["context_notes"],
                 allow_fallback=True,
             )
+        else:
+            store.append_status(
+                batch_id,
+                "planning",
+                "Planner retrying with compact context to stay within model limits.",
+            )
+            planner_context_bundle = llm_context_aggressive
+            try:
+                plan = await run_planner(
+                    request.prompt,
+                    dependency_mode=request.dependency_mode,
+                    focus_object_types=focus_object_types,
+                    related_objects=planner_context_bundle["related_objects"],
+                    reference_catalog=planner_context_bundle["reference_catalog"],
+                    recent_batch_context=planner_context_bundle["recent_batch_context"],
+                    context_notes=planner_context_bundle["context_notes"],
+                    allow_fallback=False,
+                )
+            except RuntimeError as compact_exc:
+                if _is_deterministic_llm_error(compact_exc):
+                    store.append_status(
+                        batch_id,
+                        "planning",
+                        "Compact planner attempt hit deterministic JSON failure; using heuristic planner fallback.",
+                    )
+                    plan = await run_planner(
+                        request.prompt,
+                        dependency_mode=request.dependency_mode,
+                        focus_object_types=focus_object_types,
+                        related_objects=planner_context_bundle["related_objects"],
+                        reference_catalog=planner_context_bundle["reference_catalog"],
+                        recent_batch_context=planner_context_bundle["recent_batch_context"],
+                        context_notes=planner_context_bundle["context_notes"],
+                        allow_fallback=True,
+                    )
+                else:
+                    plan = await run_planner(
+                        request.prompt,
+                        dependency_mode=request.dependency_mode,
+                        focus_object_types=focus_object_types,
+                        related_objects=planner_context_bundle["related_objects"],
+                        reference_catalog=planner_context_bundle["reference_catalog"],
+                        recent_batch_context=planner_context_bundle["recent_batch_context"],
+                        context_notes=planner_context_bundle["context_notes"],
+                        allow_fallback=True,
+                    )
     planner_telemetry = (
         plan.get("llm", {}).get("telemetry", {})
         if isinstance(plan, dict)

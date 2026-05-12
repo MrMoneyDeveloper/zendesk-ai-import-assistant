@@ -169,6 +169,71 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     assert Path(store_file).exists()
 
 
+def test_generate_recovers_from_planner_failed_generation(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+    planner_calls = {"count": 0}
+
+    async def flaky_planner(prompt: str, **kwargs):
+        planner_calls["count"] += 1
+        if kwargs.get("allow_fallback") is False:
+            raise RuntimeError(
+                "Planner model call failed: Groq API request failed (400) [other_invalid_request]: "
+                "Failed to generate JSON. See failed_generation for more details."
+            )
+        return {
+            "object_type": "groups",
+            "intent": prompt,
+            "confidence": 0.92,
+            "ambiguity_score": 0.1,
+            "ambiguity_reasons": [],
+            "clarification_questions": [],
+            "dependency_notes": "",
+        }
+
+    async def fake_generator(plan: dict, **kwargs):
+        return [
+            {
+                "object_type": "groups",
+                "title": "Recovered Ops Group",
+                "conditions": [],
+                "actions": [],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", flaky_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create one support group named Recovered Ops Group.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert payload["generated_counts"]["groups"] == 1
+    assert planner_calls["count"] >= 2
+
+    job = client.get(f"/api/import-assistant/jobs/{payload['batch_id']}")
+    assert job.status_code == 200
+    messages = [item.get("message", "") for item in job.json().get("status_history", [])]
+    assert any("deterministic JSON failure" in message for message in messages)
+
+
 def test_integrations_status_uses_cached_health(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
