@@ -85,7 +85,7 @@ def test_clarification_questions_capped_to_one():
     assert len(questions) == 1
 
 
-def test_focus_object_constraint_blocks_out_of_focus_rows():
+def test_focus_object_constraint_marks_soft_preference_mismatch():
     rows = [
         {
             "object_type": "views",
@@ -95,13 +95,14 @@ def test_focus_object_constraint_blocks_out_of_focus_rows():
         }
     ]
 
-    patched, violations = _annotate_focus_object_constraints(
+    patched, diagnostics = _annotate_focus_object_constraints(
         rows,
         focus_object_types={"triggers"},
     )
 
-    assert len(violations) == 1
-    assert "outside selected focus" in patched[0]["validation_overrides"]["blocked_reason"].lower()
+    assert diagnostics["mismatch_count"] == 1
+    assert diagnostics["mode"] == "soft_prefer"
+    assert any("Focus preference mismatch" in note for note in patched[0]["dependency_notes"])
 
 
 def test_generation_safety_blocks_fallback_and_constraint_mismatch():

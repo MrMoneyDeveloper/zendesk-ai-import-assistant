@@ -1,6 +1,10 @@
 import httpx
 import asyncio
+import time
 from datetime import UTC, datetime
+from urllib.parse import urlparse
+
+from app.services.perf_capture import emit_perf_event
 
 TICKET_FIELD_TYPE_ALIASES = {
     "dropdown": "tagger",
@@ -42,6 +46,40 @@ def _build_base_url(subdomain: str) -> str:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _sanitize_path(url_or_path: str) -> str:
+    text = str(url_or_path or "").strip()
+    if not text:
+        return "/"
+    if text.startswith("http://") or text.startswith("https://"):
+        parsed = urlparse(text)
+        return parsed.path or "/"
+    return text
+
+
+def _emit_zendesk_http_event(
+    *,
+    operation: str,
+    method: str,
+    url_or_path: str,
+    status_code: int | None,
+    duration_ms: float,
+    success: bool,
+    error: str | None = None,
+) -> None:
+    emit_perf_event(
+        "zendesk_http",
+        {
+            "operation": operation,
+            "method": method.upper(),
+            "path": _sanitize_path(url_or_path),
+            "http_status": status_code,
+            "success": success,
+            "duration_ms": round(duration_ms, 2),
+            "error": error or "",
+        },
+    )
 
 
 def _normalize_subdomain(subdomain: str) -> str:
@@ -136,6 +174,7 @@ async def fetch_zendesk_reference_catalog(
 
     async with httpx.AsyncClient(timeout=25) as client:
         async def _safe_get(path: str) -> dict:
+            started = time.perf_counter()
             try:
                 response = await client.get(
                     f"{base_url}{path}",
@@ -143,8 +182,26 @@ async def fetch_zendesk_reference_catalog(
                     headers={"Content-Type": "application/json"},
                 )
             except httpx.HTTPError as exc:
+                _emit_zendesk_http_event(
+                    operation="reference_catalog_fetch",
+                    method="GET",
+                    url_or_path=path,
+                    status_code=None,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    success=False,
+                    error=str(exc),
+                )
                 warnings.append(f"{path}: request failed ({exc})")
                 return {}
+            _emit_zendesk_http_event(
+                operation="reference_catalog_fetch",
+                method="GET",
+                url_or_path=path,
+                status_code=response.status_code,
+                duration_ms=(time.perf_counter() - started) * 1000.0,
+                success=response.is_success,
+                error=None if response.is_success else f"HTTP {response.status_code}",
+            )
             if not response.is_success:
                 warnings.append(f"{path}: HTTP {response.status_code}")
                 return {}
@@ -624,6 +681,7 @@ async def validate_zendesk_credentials(subdomain: str, email: str, api_token: st
     base_url = _build_base_url(subdomain)
     url = f"{base_url}/api/v2/users/me.json"
     auth_user = f"{email}/token"
+    started = time.perf_counter()
 
     try:
         async with httpx.AsyncClient(timeout=20) as client:
@@ -633,6 +691,15 @@ async def validate_zendesk_credentials(subdomain: str, email: str, api_token: st
                 headers={"Content-Type": "application/json"},
             )
     except httpx.HTTPError as exc:
+        _emit_zendesk_http_event(
+            operation="validate_credentials",
+            method="GET",
+            url_or_path=url,
+            status_code=None,
+            duration_ms=(time.perf_counter() - started) * 1000.0,
+            success=False,
+            error=str(exc),
+        )
         return {
             "ok": False,
             "detail": f"Zendesk request failed: {exc}",
@@ -643,6 +710,15 @@ async def validate_zendesk_credentials(subdomain: str, email: str, api_token: st
             "authenticated_user_role": None,
             "http_status": None,
         }
+    _emit_zendesk_http_event(
+        operation="validate_credentials",
+        method="GET",
+        url_or_path=url,
+        status_code=response.status_code,
+        duration_ms=(time.perf_counter() - started) * 1000.0,
+        success=response.is_success,
+        error=None if response.is_success else f"HTTP {response.status_code}",
+    )
 
     payload: dict = {}
     try:
@@ -703,8 +779,8 @@ async def deploy_records_to_zendesk(
     deployed = 0
     failed = 0
     skipped = 0
-    group_lookup_cache: dict[str, str] | None = None
     existing_cache: dict[str, dict[str, str]] = {}
+    dependency_events: list[dict] = []
 
     object_mappings = {
         "trigger": "triggers",
@@ -729,6 +805,17 @@ async def deploy_records_to_zendesk(
         "ticket_fields": 20,
         "ticket_forms": 30,
     }
+    reference_field_to_object_type = {
+        "group_id": "groups",
+        "ticket_form_id": "ticket_forms",
+        "form_id": "ticket_forms",
+        "ticket_field_id": "ticket_fields",
+        "brand_id": "brands",
+        "section_id": "sections",
+        "category_id": "categories",
+        "help_center_id": "help_centers",
+    }
+    creatable_dependency_types = {"groups", "ticket_fields", "ticket_forms"}
 
     def _record_deploy_priority(record: dict) -> tuple[int, str]:
         raw = str(record.get("object_type", "")).strip().lower()
@@ -737,16 +824,35 @@ async def deploy_records_to_zendesk(
 
     async with httpx.AsyncClient(timeout=30) as client:
         async def _safe_list(path: str) -> dict:
+            started = time.perf_counter()
             try:
                 response = await client.get(
                     f"{base_url}{path}",
                     auth=(auth_user, api_token),
                     headers={"Content-Type": "application/json"},
                 )
+                _emit_zendesk_http_event(
+                    operation="deploy_list_existing",
+                    method="GET",
+                    url_or_path=path,
+                    status_code=response.status_code,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    success=response.is_success,
+                    error=None if response.is_success else f"HTTP {response.status_code}",
+                )
                 if not response.is_success:
                     return {}
                 return response.json() if response.text else {}
-            except Exception:
+            except Exception as exc:
+                _emit_zendesk_http_event(
+                    operation="deploy_list_existing",
+                    method="GET",
+                    url_or_path=path,
+                    status_code=None,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    success=False,
+                    error=str(exc),
+                )
                 return {}
 
         async def _load_existing_map(object_type: str) -> dict[str, str]:
@@ -798,40 +904,139 @@ async def deploy_records_to_zendesk(
             existing_cache[object_type] = match_map
             return match_map
 
-        async def resolve_group_id(raw_value) -> str | None:
-            nonlocal group_lookup_cache
+        async def _create_dependency(
+            *,
+            object_type: str,
+            title: str,
+        ) -> tuple[str | None, str | None]:
+            if dry_run:
+                dry_id = "99999999"
+                dependency_events.append(
+                    {
+                        "object_type": object_type,
+                        "title": title,
+                        "created_id": dry_id,
+                        "status": "simulated",
+                        "reason": "dry_run mode",
+                    }
+                )
+                return dry_id, None
+
+            payload_by_type = {
+                "groups": {"group": {"name": title}},
+                "ticket_fields": {"ticket_field": {"title": title, "type": "text"}},
+                "ticket_forms": {"ticket_form": {"name": title}},
+            }
+            endpoint_by_type = {
+                "groups": "/api/v2/groups.json",
+                "ticket_fields": "/api/v2/ticket_fields.json",
+                "ticket_forms": "/api/v2/ticket_forms.json",
+            }
+            root_by_type = {
+                "groups": "group",
+                "ticket_fields": "ticket_field",
+                "ticket_forms": "ticket_form",
+            }
+
+            payload = payload_by_type.get(object_type)
+            endpoint = endpoint_by_type.get(object_type)
+            response_root = root_by_type.get(object_type)
+            if not payload or not endpoint or not response_root:
+                return None, f"Auto-create not supported for dependency type '{object_type}'."
+
+            try:
+                started = time.perf_counter()
+                response = await client.post(
+                    f"{base_url}{endpoint}",
+                    auth=(auth_user, api_token),
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                )
+                _emit_zendesk_http_event(
+                    operation="deploy_auto_create_dependency",
+                    method="POST",
+                    url_or_path=endpoint,
+                    status_code=response.status_code,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    success=response.is_success,
+                    error=None if response.is_success else f"HTTP {response.status_code}",
+                )
+            except httpx.HTTPError as exc:
+                _emit_zendesk_http_event(
+                    operation="deploy_auto_create_dependency",
+                    method="POST",
+                    url_or_path=endpoint,
+                    status_code=None,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    success=False,
+                    error=str(exc),
+                )
+                return None, f"Dependency auto-create request failed: {exc}"
+
+            response_payload: dict = {}
+            try:
+                response_payload = response.json()
+            except ValueError:
+                response_payload = {}
+
+            if not response.is_success:
+                error = response_payload.get("error") if isinstance(response_payload, dict) else None
+                description = response_payload.get("description") if isinstance(response_payload, dict) else None
+                detail = f"Dependency auto-create failed ({response.status_code})"
+                if error:
+                    detail += f": {error}"
+                if description:
+                    detail += f" - {description}"
+                return None, detail
+
+            response_object = response_payload.get(response_root, {}) if isinstance(response_payload, dict) else {}
+            created_id = str(response_object.get("id", "")).strip() if isinstance(response_object, dict) else ""
+            if not created_id:
+                return None, "Dependency auto-create succeeded but no ID was returned."
+            existing_cache.setdefault(object_type, {})[title.strip().lower()] = created_id
+            dependency_events.append(
+                {
+                    "object_type": object_type,
+                    "title": title,
+                    "created_id": created_id,
+                    "status": "created",
+                }
+            )
+            return created_id, None
+
+        async def _ensure_dependency_id(
+            *,
+            object_type: str,
+            raw_value: object,
+        ) -> tuple[str | None, str | None]:
             if raw_value is None:
-                return None
+                return None, "Missing dependency value."
             raw = str(raw_value).strip()
             if not raw:
-                return None
+                return None, "Missing dependency value."
             if raw.isdigit():
-                return raw
+                return raw, None
 
-            if group_lookup_cache is None:
-                group_lookup_cache = {}
-                try:
-                    groups_response = await client.get(
-                        f"{base_url}/api/v2/groups.json",
-                        auth=(auth_user, api_token),
-                        headers={"Content-Type": "application/json"},
-                    )
-                    if groups_response.is_success:
-                        groups_payload = groups_response.json() if groups_response.text else {}
-                        groups = (
-                            groups_payload.get("groups", [])
-                            if isinstance(groups_payload, dict)
-                            else []
-                        )
-                        for group in groups:
-                            name = str(group.get("name", "")).strip().lower()
-                            group_id = str(group.get("id", "")).strip()
-                            if name and group_id:
-                                group_lookup_cache[name] = group_id
-                except Exception:
-                    group_lookup_cache = {}
+            if object_type not in creatable_dependency_types:
+                return None, (
+                    f"Dependency '{raw}' requires object type '{object_type}', which cannot be auto-created. "
+                    f"Provide an existing {object_type.rstrip('s')} ID or exact existing name."
+                )
 
-            return group_lookup_cache.get(raw.lower())
+            existing_map = await _load_existing_map(object_type)
+            existing_id = existing_map.get(raw.lower())
+            if existing_id:
+                return existing_id, None
+
+            created_id, create_error = await _create_dependency(
+                object_type=object_type,
+                title=raw,
+            )
+            if create_error:
+                return None, (
+                    f"Missing dependency '{raw}' ({object_type}) could not be auto-created. {create_error}"
+                )
+            return created_id, None
 
         ordered_records = sorted(
             enumerate(records),
@@ -921,33 +1126,33 @@ async def deploy_records_to_zendesk(
             elif object_type == "ticket_forms":
                 payload, unresolved_field_names = _build_ticket_form_payload(record)
                 if unresolved_field_names:
-                    existing_field_map = await _load_existing_map("ticket_fields")
                     resolved_ids: list[int] = []
-                    unresolved_after_lookup: list[str] = []
                     for field_name in unresolved_field_names:
-                        lookup_id = existing_field_map.get(str(field_name).strip().lower())
-                        if lookup_id and str(lookup_id).isdigit():
-                            resolved_ids.append(int(str(lookup_id)))
-                        else:
-                            unresolved_after_lookup.append(field_name)
-
-                    if unresolved_after_lookup:
-                        failed += 1
-                        results.append(
-                            {
-                                "record_id": record_id,
-                                "object_type": object_type,
-                                "title": title,
-                                "deployment_status": "failed",
-                                "zendesk_object_id": None,
-                                "execution_message": (
-                                    "Ticket form references unresolved ticket fields: "
-                                    + ", ".join(unresolved_after_lookup)
-                                    + ". Create fields first or provide numeric ticket_field_ids."
-                                ),
-                                "executed_at": executed_at,
-                            }
+                        resolved_id, resolve_error = await _ensure_dependency_id(
+                            object_type="ticket_fields",
+                            raw_value=field_name,
                         )
+                        if resolve_error:
+                            failed += 1
+                            results.append(
+                                {
+                                    "record_id": record_id,
+                                    "object_type": object_type,
+                                    "title": title,
+                                    "deployment_status": "failed",
+                                    "zendesk_object_id": None,
+                                    "execution_message": (
+                                        "Ticket form references unresolved ticket fields and auto-create failed: "
+                                        + str(resolve_error)
+                                    ),
+                                    "executed_at": executed_at,
+                                }
+                            )
+                            resolved_ids = []
+                            break
+                        if resolved_id and str(resolved_id).isdigit():
+                            resolved_ids.append(int(str(resolved_id)))
+                    if not resolved_ids and unresolved_field_names:
                         continue
 
                     existing_ids = payload.get("ticket_form", {}).get("ticket_field_ids", [])
@@ -992,10 +1197,21 @@ async def deploy_records_to_zendesk(
                 update_path_template = "/api/v2/help_center/articles/{id}.json"
                 response_root = "article"
 
-            if object_type in {"triggers", "automations"}:
-                rule_key = "trigger" if object_type == "triggers" else "automation"
-                actions = payload.get(rule_key, {}).get("actions", [])
-                if not actions:
+            if object_type in {"triggers", "automations", "macros", "views"}:
+                if object_type == "triggers":
+                    entry_actions = payload.get("trigger", {}).get("actions", [])
+                    entry_conditions = payload.get("trigger", {}).get("conditions", {}).get("all", [])
+                elif object_type == "automations":
+                    entry_actions = payload.get("automation", {}).get("actions", [])
+                    entry_conditions = payload.get("automation", {}).get("conditions", {}).get("all", [])
+                elif object_type == "macros":
+                    entry_actions = payload.get("macro", {}).get("actions", [])
+                    entry_conditions = []
+                else:  # views
+                    entry_actions = []
+                    entry_conditions = payload.get("view", {}).get("all", [])
+
+                if object_type in {"triggers", "automations", "macros"} and not entry_actions:
                     failed += 1
                     results.append(
                         {
@@ -1010,20 +1226,27 @@ async def deploy_records_to_zendesk(
                     )
                     continue
 
-                unresolved_group = None
-                for action in actions:
-                    if action.get("field") != "group_id":
+                unresolved_reference_error = None
+                for entry in [*entry_conditions, *entry_actions]:
+                    if not isinstance(entry, dict):
                         continue
-                    resolved_group_id = await resolve_group_id(action.get("value"))
-                    if resolved_group_id:
-                        action["value"] = resolved_group_id
+                    field = str(entry.get("field", "")).strip().lower()
+                    if field not in reference_field_to_object_type:
                         continue
-                    raw_group = str(action.get("value", "")).strip()
-                    if raw_group and not raw_group.isdigit():
-                        unresolved_group = raw_group
+                    expected_object_type = reference_field_to_object_type[field]
+                    resolved_id, resolve_error = await _ensure_dependency_id(
+                        object_type=expected_object_type,
+                        raw_value=entry.get("value"),
+                    )
+                    if resolve_error:
+                        unresolved_reference_error = (
+                            f"{field}: {resolve_error}"
+                        )
                         break
+                    if resolved_id:
+                        entry["value"] = resolved_id
 
-                if unresolved_group:
+                if unresolved_reference_error:
                     failed += 1
                     results.append(
                         {
@@ -1033,8 +1256,8 @@ async def deploy_records_to_zendesk(
                             "deployment_status": "failed",
                             "zendesk_object_id": None,
                             "execution_message": (
-                                f"Could not resolve group '{unresolved_group}' to a Zendesk group_id. "
-                                "Use a numeric group_id or an existing exact group name."
+                                "Could not resolve dependency reference. "
+                                f"{unresolved_reference_error}"
                             ),
                             "executed_at": executed_at,
                         }
@@ -1085,6 +1308,7 @@ async def deploy_records_to_zendesk(
                 continue
 
             try:
+                started = time.perf_counter()
                 if method == "POST":
                     response = await client.post(
                         f"{base_url}{request_path}",
@@ -1099,7 +1323,25 @@ async def deploy_records_to_zendesk(
                         headers={"Content-Type": "application/json"},
                         json=payload,
                     )
+                _emit_zendesk_http_event(
+                    operation="deploy_record",
+                    method=method,
+                    url_or_path=request_path,
+                    status_code=response.status_code,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    success=response.is_success,
+                    error=None if response.is_success else f"HTTP {response.status_code}",
+                )
             except httpx.HTTPError as exc:
+                _emit_zendesk_http_event(
+                    operation="deploy_record",
+                    method=method,
+                    url_or_path=request_path,
+                    status_code=None,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    success=False,
+                    error=str(exc),
+                )
                 failed += 1
                 results.append(
                     {
@@ -1170,4 +1412,8 @@ async def deploy_records_to_zendesk(
         },
         "results": results,
         "base_url": base_url,
+        "dependency_auto_create": {
+            "events": dependency_events,
+            "created_count": len([item for item in dependency_events if item.get("status") in {"created", "simulated"}]),
+        },
     }

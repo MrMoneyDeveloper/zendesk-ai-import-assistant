@@ -4,6 +4,7 @@ from contextvars import ContextVar
 import logging
 
 from starlette.middleware.base import BaseHTTPMiddleware
+from app.services.perf_capture import emit_perf_event
 
 request_id_context: ContextVar[str] = ContextVar("request_id", default="-")
 logger = logging.getLogger(__name__)
@@ -31,6 +32,15 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 response.status_code,
                 duration_ms,
             )
+            emit_perf_event(
+                "request",
+                {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": int(response.status_code),
+                    "duration_ms": round(duration_ms, 2),
+                },
+            )
             return response
         except Exception:
             duration_ms = (time.perf_counter() - start) * 1000
@@ -39,6 +49,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 request.method,
                 request.url.path,
                 duration_ms,
+            )
+            emit_perf_event(
+                "request",
+                {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": 500,
+                    "duration_ms": round(duration_ms, 2),
+                    "exception": True,
+                },
             )
             raise
         finally:

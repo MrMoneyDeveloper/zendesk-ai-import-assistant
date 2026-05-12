@@ -12,6 +12,8 @@ $frontendJob = $null
 $activeBackendPort = $BackendPort
 $activeFrontendPort = $FrontendPort
 $autoPortFallback = -not $DisableAutoPortFallback
+$perfSessionId = ""
+$perfSessionDir = ""
 
 function Get-ListeningPidsByPort {
   param([int]$Port)
@@ -128,12 +130,14 @@ function Resolve-UsablePort {
 function Save-State {
   param(
     [int]$Backend,
-    [int]$Frontend
+    [int]$Frontend,
+    [string]$PerfSessionDir
   )
 
   $state = @{
     backend_port = $Backend
     frontend_port = $Frontend
+    perf_session_dir = $PerfSessionDir
     started_at = (Get-Date).ToString("o")
   }
 
@@ -159,6 +163,17 @@ function Cleanup {
 
   Stop-ProcessByCommandPattern -Pattern "*uvicorn app.main:app*--port $activeBackendPort*"
   Stop-ProcessByCommandPattern -Pattern "*vite*--port $activeFrontendPort*"
+
+  if ($perfSessionDir -and (Test-Path $perfSessionDir)) {
+    try {
+      $summaryScript = Join-Path $repoRoot "backend\\summarize-perf-session.py"
+      if (Test-Path $summaryScript) {
+        python $summaryScript --session-dir $perfSessionDir | Out-Null
+      }
+      Write-Host "Performance telemetry saved to: $perfSessionDir"
+    } catch {
+    }
+  }
 
   if (Test-Path $stateFile) {
     Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue
@@ -212,13 +227,18 @@ try {
 
   $activeBackendPort = Resolve-UsablePort -PreferredPort $BackendPort -Candidates @($BackendPort, 8016, 8000, 8020, 8080) -Label "Backend"
   $activeFrontendPort = Resolve-UsablePort -PreferredPort $FrontendPort -Candidates @($FrontendPort, 5176, 5173, 5180, 5273) -Label "Frontend"
+  $perfSessionId = (Get-Date).ToString("yyyyMMdd-HHmmss")
+  $perfSessionDir = Join-Path (Join-Path $repoRoot "backend\\data\\perf-sessions") $perfSessionId
+  New-Item -ItemType Directory -Path $perfSessionDir -Force | Out-Null
 
-  Save-State -Backend $activeBackendPort -Frontend $activeFrontendPort
+  Save-State -Backend $activeBackendPort -Frontend $activeFrontendPort -PerfSessionDir $perfSessionDir
 
   Write-Host "Starting backend on http://127.0.0.1:$activeBackendPort"
-  $backendJob = Start-Job -Name "backend-dev" -ArgumentList $repoRoot, $activeBackendPort -ScriptBlock {
-    param($root, $port)
+  $backendJob = Start-Job -Name "backend-dev" -ArgumentList $repoRoot, $activeBackendPort, $perfSessionDir -ScriptBlock {
+    param($root, $port, $sessionDir)
     Set-Location (Join-Path $root "backend")
+    $env:PERF_CAPTURE_ENABLED = "true"
+    $env:PERF_CAPTURE_DIR = $sessionDir
     python -m uvicorn app.main:app --host 127.0.0.1 --port $port --reload
   }
 
@@ -239,6 +259,7 @@ try {
   }
 
   Write-Host "Pipeline running. Backend: $activeBackendPort | Frontend: $activeFrontendPort"
+  Write-Host "Performance capture enabled: $perfSessionDir"
   Write-Host "Press Ctrl+C to stop both services."
 
   while ($true) {

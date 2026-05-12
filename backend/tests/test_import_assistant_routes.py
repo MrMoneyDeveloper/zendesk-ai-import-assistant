@@ -185,6 +185,63 @@ def test_generate_requires_clarification_for_vague_macro(monkeypatch, tmp_path):
     assert payload["status"] == "clarification_required"
     assert payload["needs_clarification"] is True
     assert len(payload["clarification_questions"]) >= 1
+    first_question = payload["clarification_questions"][0]
+    assert "understood so far" in first_question["reason"].lower()
+    assert len(first_question.get("examples", [])) == 1
+
+
+def test_benchmark_mode_bypasses_clarification_and_generation_safety(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("BENCHMARK_MODE", "true")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {
+            "object_type": "triggers",
+            "intent": prompt,
+            "confidence": 0.2,
+            "ambiguity_score": 0.99,
+            "ambiguity_reasons": ["Synthetic ambiguity for benchmark test."],
+            "clarification_questions": [],
+        }
+
+    async def fake_generator(plan: dict, **kwargs):
+        return [
+            {
+                "title": "BENCH Trigger 1",
+                "object_type": "triggers",
+                "conditions": [{"field": "status", "operator": "is", "value": "new"}],
+                "actions": [{"field": "set_tags", "value": "bench_tag"}],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "benchmark prompt intentionally vague",
+            "mode": "benchmark",
+            "target_environment": "sandbox",
+            "requester": "pytest-benchmark",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert payload["needs_clarification"] is False
+    assert payload["metadata"]["benchmark"]["enabled"] is True
+    assert payload["metadata"]["generation_safety"]["blocked"] is False
+    assert payload["metadata"]["generation_safety"]["bypassed"] is True
 
 
 def test_generate_requires_clarification_on_high_ambiguity_score(monkeypatch, tmp_path):
@@ -372,7 +429,9 @@ def test_deploy_blocks_when_all_approved_rows_are_non_deployable(monkeypatch, tm
         },
     )
     assert deploy_response.status_code == 400
-    assert "Deployment blocked" in deploy_response.json()["detail"]
+    detail = deploy_response.json()["detail"]
+    assert detail["failure_stage"] == "deploy"
+    assert "Deployment blocked" in detail["failure_reason"]
 
 
 def test_generate_dropdown_field_prompt_is_canonicalized_to_tagger(monkeypatch, tmp_path):
@@ -632,4 +691,6 @@ def test_generate_chunk_failure_aborts_whole_run(monkeypatch, tmp_path):
         },
     )
     assert response.status_code == 502
-    assert "chunked generation aborted" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert detail["failure_stage"] == "generate"
+    assert "chunked generation aborted" in detail["failure_reason"].lower()

@@ -128,6 +128,7 @@ function renderApp() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   window.sessionStorage.clear();
 });
 
@@ -203,4 +204,58 @@ test("does not show Test APIs top action", async () => {
     expect(screen.getByText("Where should we begin?")).toBeInTheDocument();
   });
   expect(screen.queryByRole("button", { name: "Test APIs" })).not.toBeInTheDocument();
+});
+
+test("approve with client saves skipped decisions and does not deploy when no rows are approved", async () => {
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+
+  await waitFor(() => {
+    expect(screen.getByText("Where should we begin?")).toBeInTheDocument();
+  });
+
+  const input = screen.getByPlaceholderText("Describe the Zendesk setup you want generated...");
+  fireEvent.change(input, { target: { value: "Create claims trigger flow for broker routing" } });
+  fireEvent.submit(input.closest("form"));
+
+  await waitFor(() => {
+    expect(screen.getByText("Review and Confirm")).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+  fireEvent.click(screen.getByRole("button", { name: "Approve with Client" }));
+
+  await waitFor(() => {
+    expect(api.approveBatch).toHaveBeenCalled();
+  });
+  expect(api.deployBatch).not.toHaveBeenCalled();
+});
+
+test("new chat resets active batch workspace state", async () => {
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+
+  await waitFor(() => {
+    expect(screen.getByText("Where should we begin?")).toBeInTheDocument();
+  });
+
+  const input = screen.getByPlaceholderText("Describe the Zendesk setup you want generated...");
+  fireEvent.change(input, { target: { value: "Create claims trigger flow for broker routing" } });
+  fireEvent.submit(input.closest("form"));
+
+  await waitFor(() => {
+    expect(screen.getByText("Review and Confirm")).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "New Chat" }));
+
+  await waitFor(() => {
+    expect(screen.queryByText("Review and Confirm")).not.toBeInTheDocument();
+  });
 });

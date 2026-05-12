@@ -135,6 +135,9 @@ class Settings:
     llm_auto_chunk_trigger_min_records: int
     llm_auto_chunk_pacing_seconds: float
     llm_auto_chunk_pacing_jitter_seconds: float
+    benchmark_mode_enabled: bool
+    perf_capture_enabled: bool
+    perf_capture_dir: str
     inference_policy: str
     form_missing_field_mode: str
     ticket_field_default_agent_can_edit: bool
@@ -271,6 +274,9 @@ def get_settings() -> Settings:
             _as_float(os.getenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS"), 0.25),
             0.0,
         ),
+        benchmark_mode_enabled=_as_bool(os.getenv("BENCHMARK_MODE"), False),
+        perf_capture_enabled=_as_bool(os.getenv("PERF_CAPTURE_ENABLED"), False),
+        perf_capture_dir=os.getenv("PERF_CAPTURE_DIR", "").strip(),
         inference_policy=_as_choice(
             os.getenv("INFERENCE_POLICY"),
             "infer_warn",

@@ -82,6 +82,21 @@ def _build_schema_bundle() -> dict:
     }
 
 
+def _build_failure_detail(
+    *,
+    stage: str,
+    code: str,
+    reason: str,
+    next_step: str,
+) -> dict:
+    return {
+        "failure_stage": stage,
+        "failure_code": code,
+        "failure_reason": reason,
+        "next_step": next_step,
+    }
+
+
 async def _sync_schema_preflight_if_enabled() -> dict:
     service = AppScriptBridgeService()
     if not service.enabled:
@@ -101,7 +116,13 @@ async def generate(request: ImportAssistantGenerateRequest) -> ImportAssistantGe
             raise RuntimeError(preflight.get("detail") or "Apps Script schema sync preflight failed.")
         return await generate_import_assistant_batch(request)
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        detail = _build_failure_detail(
+            stage="generate",
+            code="generate_runtime_error",
+            reason=str(exc),
+            next_step="Retry generation after fixing the reported prerequisite or runtime issue.",
+        )
+        raise HTTPException(status_code=502, detail=detail) from exc
 
 
 @router.get("/jobs/{batch_id}", response_model=JobStatusResponse)
@@ -140,7 +161,13 @@ async def approve(request: ApprovalRequest) -> ApprovalResponse:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Batch not found.") from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        detail = _build_failure_detail(
+            stage="approve",
+            code="approval_sync_error",
+            reason=str(exc),
+            next_step="Retry approval save after resolving Apps Script/Sheets connectivity issues.",
+        )
+        raise HTTPException(status_code=502, detail=detail) from exc
 
 
 @router.post("/deploy", response_model=ZendeskDeployResponse)
@@ -162,9 +189,21 @@ async def deploy_to_zendesk(request: ZendeskDeployRequest) -> ZendeskDeployRespo
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Batch not found.") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        detail = _build_failure_detail(
+            stage="deploy",
+            code="deploy_validation_error",
+            reason=str(exc),
+            next_step="Resolve the listed dependency/validation issue, then deploy again.",
+        )
+        raise HTTPException(status_code=400, detail=detail) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        detail = _build_failure_detail(
+            stage="deploy",
+            code="deploy_runtime_error",
+            reason=str(exc),
+            next_step="Retry deployment after resolving Zendesk/API runtime errors.",
+        )
+        raise HTTPException(status_code=502, detail=detail) from exc
 
 
 @router.get("/appscript/health", response_model=AppScriptActionResponse)

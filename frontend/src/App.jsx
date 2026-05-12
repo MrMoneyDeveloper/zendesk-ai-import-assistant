@@ -28,6 +28,17 @@ import { useImportAssistantStore } from "./store/importAssistantStore";
 
 const ZENDESK_SESSION_STORAGE_KEY = "zendesk_session_credentials_v1";
 
+function parseFailureDetail(error) {
+  const detail = error?.response?.data?.detail;
+  if (detail && typeof detail === "object") {
+    const reason = detail.failure_reason || "Request failed.";
+    const stage = detail.failure_stage ? `[${detail.failure_stage}] ` : "";
+    const next = detail.next_step ? ` Next: ${detail.next_step}` : "";
+    return `${stage}${reason}${next}`;
+  }
+  return detail || error?.message || "Request failed.";
+}
+
 function statusBadgeVariant(status) {
   if (["deployed", "approved", "preview_ready"].includes(status)) return "success";
   if (["deploy_failed", "failed", "validated_failed"].includes(status)) return "danger";
@@ -178,6 +189,7 @@ function App() {
       }
 
       const generationSafety = data?.metadata?.generation_safety;
+      const focusDiagnostics = data?.metadata?.focus_diagnostics;
       setClarificationQuestions([]);
       setChatHistory((prev) => [
         ...prev,
@@ -198,12 +210,18 @@ function App() {
           `Batch ${data.batch_id} is ready for review (${data.validation_summary?.passed || 0} passed, ${data.validation_summary?.warnings || 0} warnings, ${data.validation_summary?.blocked || 0} blocked).`
         );
       }
+      if ((focusDiagnostics?.mismatch_count || 0) > 0) {
+        appendActivity(
+          "warning",
+          `Object focus mismatch: ${focusDiagnostics.mismatch_count} generated records are outside selected focus (${(focusDiagnostics.generated_types || []).join(", ")}).`
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
       queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
       queryClient.invalidateQueries({ queryKey: ["preview", data.batch_id] });
     },
     onError: (error) => {
-      const detail = error?.response?.data?.detail || error?.message || "Generate failed.";
+      const detail = parseFailureDetail(error);
       appendActivity("error", detail);
       appendTimeline("assistant", `Generation failed: ${detail}`);
     },
@@ -288,7 +306,7 @@ function App() {
       }
     },
     onError: (error) => {
-      const detail = error?.response?.data?.detail || error?.message || "Approval save failed.";
+      const detail = parseFailureDetail(error);
       appendActivity("error", detail);
       appendTimeline("assistant", `Approval failed: ${detail}`);
     },
@@ -301,13 +319,15 @@ function App() {
       appendTimeline("assistant", "Deploying approved records to Zendesk...");
     },
     onSuccess: (data) => {
+      const firstFailure = (data?.results || []).find((item) => item?.deployment_status === "failed");
+      const failureSuffix = firstFailure?.execution_message ? ` First failure: ${firstFailure.execution_message}` : "";
       appendActivity(
         data?.status === "deployed" ? "success" : "error",
-        `Deploy finished. deployed=${data?.summary?.deployed || 0}, failed=${data?.summary?.failed || 0}, skipped=${data?.summary?.skipped || 0}.`
+        `Deploy finished. deployed=${data?.summary?.deployed || 0}, failed=${data?.summary?.failed || 0}, skipped=${data?.summary?.skipped || 0}.${failureSuffix}`
       );
       appendTimeline(
         "assistant",
-        `Deploy complete. deployed=${data?.summary?.deployed || 0}, failed=${data?.summary?.failed || 0}, skipped=${data?.summary?.skipped || 0}.`
+        `Deploy complete. deployed=${data?.summary?.deployed || 0}, failed=${data?.summary?.failed || 0}, skipped=${data?.summary?.skipped || 0}.${failureSuffix}`
       );
       if (batchId) {
         queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
@@ -316,7 +336,7 @@ function App() {
       }
     },
     onError: (error) => {
-      const detail = error?.response?.data?.detail || error?.message || "Deploy failed.";
+      const detail = parseFailureDetail(error);
       appendActivity("error", detail);
       appendTimeline("assistant", `Deploy failed: ${detail}`);
     },
@@ -398,11 +418,7 @@ function App() {
   const buildReviewDecisionPayload = () => {
     return (previewRecords || []).map((row) => {
       const local = decisions[row.record_id];
-      const current = local || row.import_decision || "pending_review";
-      let resolved = current;
-      if (current === "pending_review") {
-        resolved = row.deployable ? "approved" : "skipped";
-      }
+      const resolved = local || row.import_decision || "pending_review";
       return {
         record_id: row.record_id,
         import_decision: resolved,
@@ -530,7 +546,7 @@ function App() {
     attachmentExtractMutation.error,
   ]
     .filter(Boolean)
-    .map((err) => err?.response?.data?.detail || err?.message);
+    .map((err) => parseFailureDetail(err));
 
   const generatedData = generateMutation.data;
   const effectiveGenerateMetadata = generatedData?.metadata || jobQuery.data?.metadata || {};
@@ -607,6 +623,7 @@ function App() {
   };
 
   const startNewChat = () => {
+    const previousBatchId = batchId;
     setDecisions({});
     setClarificationQuestions([]);
     setActivityLogs([]);
@@ -614,10 +631,17 @@ function App() {
     setHistorySearch("");
     setChatHistory([]);
     setExistingItemBehavior("relate_or_update");
+    setOnExistingMode("create_new");
     setFocusObjectTypes([]);
     setAttachments([]);
     setShowAdvancedCatalog(false);
+    setShowProcessingDetails(false);
+    setShowExistingContext(false);
     resetFlow();
+    if (previousBatchId) {
+      queryClient.removeQueries({ queryKey: ["job", previousBatchId] });
+      queryClient.removeQueries({ queryKey: ["preview", previousBatchId] });
+    }
     appendActivity("info", "Started a new chat. Zendesk context remains loaded for this session.");
   };
 
@@ -709,9 +733,7 @@ function App() {
     } catch (error) {
       appendActivity(
         "error",
-        error?.response?.data?.detail
-          || error?.message
-          || "Could not save approval decisions before deploy."
+        parseFailureDetail(error) || "Could not save approval decisions before deploy."
       );
     }
   };
@@ -748,7 +770,8 @@ function App() {
       });
       const hasApprovedRecords = reviewPayload.some((item) => item.import_decision === "approved");
       if (!hasApprovedRecords) {
-        appendActivity("error", "No approved rows available to deploy.");
+        appendActivity("info", "Decisions saved. Nothing to deploy because no rows are approved.");
+        appendTimeline("assistant", "Decisions saved. No approved rows selected, so deployment was skipped.");
         return;
       }
       deployMutation.mutate({
@@ -762,9 +785,7 @@ function App() {
     } catch (error) {
       appendActivity(
         "error",
-        error?.response?.data?.detail
-          || error?.message
-          || "Could not complete approve-and-deploy action."
+        parseFailureDetail(error) || "Could not complete approve-and-deploy action."
       );
     }
   };

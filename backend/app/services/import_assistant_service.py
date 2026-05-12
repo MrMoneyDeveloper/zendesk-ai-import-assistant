@@ -128,10 +128,21 @@ def _normalize_object_type(raw: str) -> str:
     return TAB_OBJECT_TYPES.get(normalized, "triggers")
 
 
-def _normalize_focus_object_types(raw: list[str] | None) -> set[str]:
+def _normalize_focus_object_types(raw: list[str] | None) -> list[str]:
     if not raw:
-        return set()
-    return {_normalize_object_type(item) for item in raw if str(item).strip()}
+        return []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = str(item).strip()
+        if not text:
+            continue
+        canonical = _normalize_object_type(text)
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        normalized.append(canonical)
+    return normalized
 
 
 def _is_numeric_string(value: object) -> bool:
@@ -611,27 +622,49 @@ def _annotate_focus_object_constraints(
     rows: list[dict],
     *,
     focus_object_types: set[str],
-) -> tuple[list[dict], list[str]]:
+) -> tuple[list[dict], dict]:
     if not focus_object_types:
-        return rows, []
+        generated_types = sorted(
+            {
+                _normalize_object_type(str(row.get("object_type", "triggers")))
+                for row in rows
+                if isinstance(row, dict)
+            }
+        )
+        return rows, {
+            "requested_focus": [],
+            "generated_types": generated_types,
+            "mismatch_count": 0,
+            "mismatches": [],
+            "mode": "soft_prefer",
+        }
 
-    violations: list[str] = []
+    mismatches: list[str] = []
     patched: list[dict] = []
+    generated_types: set[str] = set()
     for row in rows:
         if not isinstance(row, dict):
             continue
         object_type = _normalize_object_type(str(row.get("object_type", "triggers")))
         row["object_type"] = object_type
+        generated_types.add(object_type)
         if object_type not in focus_object_types:
-            violations.append(
+            mismatches.append(
                 f"{row.get('title', 'Untitled')}: generated {object_type}, expected one of {sorted(focus_object_types)}"
             )
-            row.setdefault("validation_overrides", {})
-            row["validation_overrides"]["blocked_reason"] = (
-                f"Generated object type '{object_type}' is outside selected focus: {', '.join(sorted(focus_object_types))}."
+            notes = list(row.get("dependency_notes", []) or [])
+            notes.append(
+                f"Focus preference mismatch: generated '{object_type}' while selected focus is {', '.join(sorted(focus_object_types))}."
             )
+            row["dependency_notes"] = notes
         patched.append(row)
-    return patched, violations
+    return patched, {
+        "requested_focus": sorted(focus_object_types),
+        "generated_types": sorted(generated_types),
+        "mismatch_count": len(mismatches),
+        "mismatches": mismatches,
+        "mode": "soft_prefer",
+    }
 
 
 def _extract_explicit_constraints(prompt: str) -> dict:
@@ -736,8 +769,6 @@ def _evaluate_generation_safety(
                 focus_violations.append(
                     f"{row.get('title', 'Untitled')}: {row_type} is outside selected focus."
                 )
-        if focus_violations:
-            reasons.append("One or more generated records violate selected object focus.")
 
     constraints = _extract_explicit_constraints(prompt)
     requested_title = str(constraints.get("title") or "").strip().lower()
@@ -1480,6 +1511,28 @@ def _build_clarification_questions(
     ambiguity_score: float,
     ambiguity_threshold: float,
 ) -> list[dict]:
+    def _finalize_question(
+        *,
+        qid: str,
+        question: str,
+        missing_detail: str,
+        why_required: str,
+        example_answer: str,
+        understood_hint: str,
+    ) -> list[dict]:
+        return [
+            {
+                "id": qid,
+                "question": question,
+                "reason": (
+                    f"Understood so far: {understood_hint}. "
+                    f"Missing detail: {missing_detail}. "
+                    f"Why this is required: {why_required}."
+                ),
+                "examples": [example_answer],
+            }
+        ]
+
     text = prompt.strip().lower()
     object_type = _normalize_object_type(str(plan.get("object_type", "triggers")))
     questions: list[dict] = []
@@ -1503,8 +1556,10 @@ def _build_clarification_questions(
                 {
                     "id": f"planner_question_{index}",
                     "question": question_text,
-                    "reason": "Planner flagged this as missing detail for reliable generation.",
-                    "examples": [],
+                    "missing_detail": "Planner-detected missing scope",
+                    "why_required": "The plan confidence is low enough that generation would likely be unreliable.",
+                    "example_answer": "Apply this only to group=Finance & Investments and form=Claim & Payouts.",
+                    "understood_hint": str(plan.get("intent", prompt)).strip()[:220],
                 }
             )
 
@@ -1546,11 +1601,10 @@ def _build_clarification_questions(
                 {
                     "id": "macro_vs_automation",
                     "question": "Do you want a manual macro or a timed automation?",
-                    "reason": "Macros run manually, while timed behavior requires an automation/trigger flow.",
-                    "examples": [
-                        "Manual macro only",
-                        "Timed automation after 25 hours",
-                    ],
+                    "missing_detail": "Execution mode",
+                    "why_required": "Macros run manually and cannot execute by elapsed time on their own.",
+                    "example_answer": "Timed automation after 25 hours.",
+                    "understood_hint": "You want a 25-hour follow-up behavior.",
                 }
             )
         if not mentions_message_content:
@@ -1558,11 +1612,10 @@ def _build_clarification_questions(
                 {
                     "id": "macro_content",
                     "question": "What exact reply/comment text should the macro add?",
-                    "reason": "Macro output is ambiguous without message content.",
-                    "examples": [
-                        "Please share your policy number and claim reference.",
-                        "We are following up on your request and will respond within 1 business day.",
-                    ],
+                    "missing_detail": "Message content",
+                    "why_required": "Macro outputs must include the exact text to apply to tickets.",
+                    "example_answer": "Please share your policy number and claim reference.",
+                    "understood_hint": "You want a macro for ticket replies/updates.",
                 }
             )
         if not mentions_action_target:
@@ -1570,11 +1623,10 @@ def _build_clarification_questions(
                 {
                     "id": "macro_side_effects",
                     "question": "Should this macro also set tags, status, assignee group, or priority?",
-                    "reason": "No ticket update actions were specified.",
-                    "examples": [
-                        "Set tag follow_up_25h and status open",
-                        "Only add comment, no ticket field changes",
-                    ],
+                    "missing_detail": "Ticket side-effects",
+                    "why_required": "Without side-effects, the macro may not perform the operational update you expect.",
+                    "example_answer": "Set tag follow_up_25h and status open.",
+                    "understood_hint": "You want a macro response flow.",
                 }
             )
 
@@ -1588,11 +1640,10 @@ def _build_clarification_questions(
             {
                 "id": "conditions_needed",
                 "question": "What conditions should this apply to (status, group, form, brand, tags)?",
-                "reason": "Rule-like objects need clear filter criteria.",
-                "examples": [
-                    "Only for status=new and form=Claim & Payouts",
-                    "Only for group=Finance & Investments and priority=high",
-                ],
+                "missing_detail": "Rule filter criteria",
+                "why_required": "Trigger/automation/view objects need conditions to avoid applying to unintended tickets.",
+                "example_answer": "Only for status=new and form=Claim & Payouts.",
+                "understood_hint": f"You want a {object_type.rstrip('s')} configuration.",
             }
         )
 
@@ -1605,11 +1656,10 @@ def _build_clarification_questions(
             {
                 "id": "article_target_location",
                 "question": "Which Help Center section/category should the article be created in?",
-                "reason": "Article placement requires section/category context.",
-                "examples": [
-                    "Section: Claim Process",
-                    "Category: Pensioners, Section: FAQ",
-                ],
+                "missing_detail": "Article destination",
+                "why_required": "Zendesk article creation requires a section/category target.",
+                "example_answer": "Category: Pensioners, Section: FAQ.",
+                "understood_hint": "You want a Help Center article created.",
             }
         )
 
@@ -1622,13 +1672,24 @@ def _build_clarification_questions(
             continue
         seen.add(key)
         deduped.append(item)
-    return deduped[:1]
+    if not deduped:
+        return []
+    highest = deduped[0]
+    return _finalize_question(
+        qid=str(highest.get("id", "clarification_needed")),
+        question=str(highest.get("question", "Please clarify this request.")),
+        missing_detail=str(highest.get("missing_detail", "Required generation detail")),
+        why_required=str(highest.get("why_required", "Needed for reliable generation and deployment safety.")),
+        example_answer=str(highest.get("example_answer", "Provide exact scope and expected action.")),
+        understood_hint=str(highest.get("understood_hint", str(plan.get("intent", prompt)).strip()[:220])),
+    )
 
 
 def _build_planning_summary(
     *,
     plan: dict,
     request: ImportAssistantGenerateRequest,
+    normalized_focus_object_types: list[str],
     related_objects: list[dict],
     reference_catalog: dict[str, list[dict]],
     prompt_explicit: bool,
@@ -1642,7 +1703,7 @@ def _build_planning_summary(
         "prompt_explicit": prompt_explicit,
         "ambiguity_reasons": plan.get("ambiguity_reasons", []),
         "dependency_mode": request.dependency_mode,
-        "focus_object_types": request.focus_object_types,
+        "focus_object_types": normalized_focus_object_types,
         "dependency_notes": plan.get("dependency_notes", ""),
         "related_objects_selected": len(related_objects),
         "reference_catalog_counts": {key: len(values) for key, values in reference_catalog.items()},
@@ -1657,7 +1718,7 @@ async def _run_generator_with_context_fallback(
     *,
     plan: dict,
     request: ImportAssistantGenerateRequest,
-    focus_object_types: set[str],
+    focus_object_types: list[str],
     standard_context_bundle: dict,
     aggressive_context_bundle: dict,
     chunk_instruction: str | None = None,
@@ -1672,7 +1733,7 @@ async def _run_generator_with_context_fallback(
         generated_data = await run_generator(
             plan,
             dependency_mode=request.dependency_mode,
-            focus_object_types=list(focus_object_types),
+            focus_object_types=focus_object_types,
             related_objects=standard_context_bundle["related_objects"],
             reference_catalog=standard_context_bundle["reference_catalog"],
             recent_batch_context=standard_context_bundle["recent_batch_context"],
@@ -1690,7 +1751,7 @@ async def _run_generator_with_context_fallback(
             generated_data = await run_generator(
                 plan,
                 dependency_mode=request.dependency_mode,
-                focus_object_types=list(focus_object_types),
+                focus_object_types=focus_object_types,
                 related_objects=aggressive_context_bundle["related_objects"],
                 reference_catalog=aggressive_context_bundle["reference_catalog"],
                 recent_batch_context=aggressive_context_bundle["recent_batch_context"],
@@ -1706,7 +1767,7 @@ async def _run_generator_with_context_fallback(
             generated_data = await run_generator(
                 plan,
                 dependency_mode=request.dependency_mode,
-                focus_object_types=list(focus_object_types),
+                focus_object_types=focus_object_types,
                 related_objects=aggressive_context_bundle["related_objects"],
                 reference_catalog=aggressive_context_bundle["reference_catalog"],
                 recent_batch_context=aggressive_context_bundle["recent_batch_context"],
@@ -1729,11 +1790,16 @@ async def generate_import_assistant_batch(
     sheets = SheetsService()
     appscript = AppScriptBridgeService()
     settings = get_settings()
+    benchmark_mode = bool(
+        settings.benchmark_mode_enabled
+        and str(request.mode or "").strip().lower() == "benchmark"
+    )
     planner_route = resolve_model_route(settings, "planner")
     clarifier_route = resolve_model_route(settings, "clarifier")
     generator_route = resolve_model_route(settings, "generator")
     related_objects = [item.model_dump() for item in request.related_objects]
     focus_object_types = _normalize_focus_object_types(request.focus_object_types)
+    focus_object_type_set = set(focus_object_types)
     reference_catalog = {
         key: [item.model_dump() for item in values]
         for key, values in (request.reference_catalog or {}).items()
@@ -1763,7 +1829,7 @@ async def generate_import_assistant_batch(
 
     llm_context_standard = _build_llm_context_bundle(
         settings=settings,
-        focus_object_types=focus_object_types,
+        focus_object_types=focus_object_type_set,
         related_objects=related_objects,
         reference_catalog=reference_catalog,
         recent_batch_context=request.recent_batch_context,
@@ -1772,7 +1838,7 @@ async def generate_import_assistant_batch(
     )
     llm_context_aggressive = _build_llm_context_bundle(
         settings=settings,
-        focus_object_types=focus_object_types,
+        focus_object_types=focus_object_type_set,
         related_objects=related_objects,
         reference_catalog=reference_catalog,
         recent_batch_context=request.recent_batch_context,
@@ -1790,7 +1856,7 @@ async def generate_import_assistant_batch(
         plan = await run_planner(
             request.prompt,
             dependency_mode=request.dependency_mode,
-            focus_object_types=list(focus_object_types),
+            focus_object_types=focus_object_types,
             related_objects=planner_context_bundle["related_objects"],
             reference_catalog=planner_context_bundle["reference_catalog"],
             recent_batch_context=planner_context_bundle["recent_batch_context"],
@@ -1808,7 +1874,7 @@ async def generate_import_assistant_batch(
             plan = await run_planner(
                 request.prompt,
                 dependency_mode=request.dependency_mode,
-                focus_object_types=list(focus_object_types),
+                focus_object_types=focus_object_types,
                 related_objects=planner_context_bundle["related_objects"],
                 reference_catalog=planner_context_bundle["reference_catalog"],
                 recent_batch_context=planner_context_bundle["recent_batch_context"],
@@ -1819,7 +1885,7 @@ async def generate_import_assistant_batch(
             plan = await run_planner(
                 request.prompt,
                 dependency_mode=request.dependency_mode,
-                focus_object_types=list(focus_object_types),
+                focus_object_types=focus_object_types,
                 related_objects=planner_context_bundle["related_objects"],
                 reference_catalog=planner_context_bundle["reference_catalog"],
                 recent_batch_context=planner_context_bundle["recent_batch_context"],
@@ -1845,7 +1911,12 @@ async def generate_import_assistant_batch(
         ambiguity_score=ambiguity_score,
         ambiguity_threshold=ambiguity_threshold,
     )
-    if ambiguity_score >= ambiguity_threshold and not clarification_questions and not prompt_explicit:
+    if (
+        not benchmark_mode
+        and ambiguity_score >= ambiguity_threshold
+        and not clarification_questions
+        and not prompt_explicit
+    ):
         ambiguity_reasons = plan.get("ambiguity_reasons", [])
         reason_text = (
             str(ambiguity_reasons[0]).strip()
@@ -1855,11 +1926,14 @@ async def generate_import_assistant_batch(
         clarification_questions = [
             {
                 "id": "ambiguity_scope",
-                "question": "Please provide specific scope, conditions, and expected actions for this request.",
-                "reason": reason_text,
+                "question": "What exact scope should this apply to (object target + conditions + expected actions)?",
+                "reason": (
+                    f"Understood so far: {str(plan.get('intent', request.prompt)).strip()[:220]}. "
+                    "Missing detail: explicit scope and action mapping. "
+                    f"Why this is required: {reason_text}."
+                ),
                 "examples": [
-                    "Applies to which group/form/brand?",
-                    "What exact action should be applied when conditions match?",
+                    "For trigger X: status=new, group=Claims; action=set tag test_ticket and assign group Billing.",
                 ],
             }
         ]
@@ -1867,9 +1941,13 @@ async def generate_import_assistant_batch(
         # Deterministic override: explicit, actionable prompts should not be trapped in clarification loops.
         clarification_questions = []
     needs_clarification = bool(clarification_questions)
+    if benchmark_mode and needs_clarification:
+        clarification_questions = []
+        needs_clarification = False
     planning_summary = _build_planning_summary(
         plan=plan,
         request=request,
+        normalized_focus_object_types=focus_object_types,
         related_objects=related_objects,
         reference_catalog=reference_catalog,
         prompt_explicit=prompt_explicit,
@@ -1925,6 +2003,9 @@ async def generate_import_assistant_batch(
                 "status": "clarification_required",
                 "planning_summary": planning_summary,
                 "metadata": {
+                    "benchmark": {
+                        "enabled": benchmark_mode,
+                    },
                     "clarification": {
                         "required": True,
                         "questions": clarification_questions,
@@ -1947,6 +2028,12 @@ async def generate_import_assistant_batch(
                     "chunking": chunking_metadata,
                     "context_notes": request.context_notes or "",
                     "recent_batch_context": request.recent_batch_context,
+                    "failure": {
+                        "failure_stage": "generate",
+                        "failure_code": "clarification_required",
+                        "failure_reason": "Additional details are required before generation can continue.",
+                        "next_step": "Answer the clarification question and submit again.",
+                    },
                 },
             },
         )
@@ -2101,6 +2188,9 @@ async def generate_import_assistant_batch(
             {
                 "planning_summary": planning_summary,
                 "metadata": {
+                    "benchmark": {
+                        "enabled": benchmark_mode,
+                    },
                     "chunking": chunking_metadata,
                     "llm_routes": {
                         "planner": planner_route.__dict__,
@@ -2110,6 +2200,12 @@ async def generate_import_assistant_batch(
                     "llm_runtime": {
                         "planner": planner_telemetry,
                         "generator_chunks": generator_chunk_telemetry,
+                    },
+                    "failure": {
+                        "failure_stage": "generate",
+                        "failure_code": "chunk_generation_failed",
+                        "failure_reason": str(exc),
+                        "next_step": "Retry generation or reduce request scope/chunk size.",
                     },
                 },
             },
@@ -2146,9 +2242,9 @@ async def generate_import_assistant_batch(
         related_lookup=related_lookup,
         dependency_mode=request.dependency_mode,
     )
-    generated_data, focus_violations = _annotate_focus_object_constraints(
+    generated_data, focus_diagnostics = _annotate_focus_object_constraints(
         generated_data,
-        focus_object_types=focus_object_types,
+        focus_object_types=focus_object_type_set,
     )
     generated_data, duplicate_candidates = _annotate_duplicate_candidates(
         generated_data,
@@ -2159,9 +2255,23 @@ async def generate_import_assistant_batch(
         prompt=request.prompt,
         plan=plan,
         generated_rows=generated_data,
-        focus_object_types=focus_object_types,
+        focus_object_types=focus_object_type_set,
         min_confidence=settings.llm_min_deploy_confidence,
     )
+    if benchmark_mode:
+        generation_safety = {
+            "blocked": False,
+            "reasons": ["Generation safety checks bypassed in benchmark mode."],
+            "confidence": float(plan.get("confidence", 0.0) or 0.0),
+            "min_confidence": settings.llm_min_deploy_confidence,
+            "fallback_detected": bool(generation_safety.get("fallback_detected")),
+            "focus_violations": list(generation_safety.get("focus_violations", [])),
+            "explicit_constraint_violations": list(
+                generation_safety.get("explicit_constraint_violations", [])
+            ),
+            "blocked_record_ids": [],
+            "bypassed": True,
+        }
 
     preview_records, validation_summary = _build_preview_records(plan, generated_data)
     preview_records = _apply_generation_safety_to_preview(preview_records, generation_safety)
@@ -2287,9 +2397,13 @@ async def generate_import_assistant_batch(
             "validation_summary": validation_summary.model_dump(),
             "planning_summary": planning_summary,
             "metadata": {
+                "benchmark": {
+                    "enabled": benchmark_mode,
+                },
                 "validation_phase_status": final_status,
                 "dependency_resolution": dependency_resolution,
-                "focus_violations": focus_violations,
+                "focus_violations": focus_diagnostics.get("mismatches", []),
+                "focus_diagnostics": focus_diagnostics,
                 "duplicate_candidates": duplicate_candidates,
                 "generation_safety": generation_safety,
                 "field_inference": field_inference_metadata,
@@ -2320,6 +2434,7 @@ async def generate_import_assistant_batch(
                 "staging": staging_metadata,
                 "validation": validation_metadata,
                 "preview_roundtrip": appscript_preview_metadata,
+                "failure": None,
             },
         },
     )
@@ -2448,7 +2563,10 @@ async def apply_approval(batch_id: str, approved_by: str, decisions: list[dict])
         status=status,  # type: ignore[arg-type]
         summary=ApprovalSummary(**counts),
         message="Approval decisions saved.",
-        metadata={"approval_sync": approval_sync_metadata},
+        metadata={
+            "approval_sync": approval_sync_metadata,
+            "failure": None,
+        },
     )
 
 
@@ -2504,6 +2622,26 @@ async def deploy_batch_to_zendesk(
         dry_run=dry_run,
         on_existing=on_existing,
     )
+    dependency_auto_create = deployment.get("dependency_auto_create", {}) if isinstance(deployment, dict) else {}
+    dependency_events = (
+        dependency_auto_create.get("events", [])
+        if isinstance(dependency_auto_create, dict)
+        else []
+    )
+    if isinstance(dependency_events, list) and dependency_events:
+        for item in dependency_events[:6]:
+            if not isinstance(item, dict):
+                continue
+            event_status = str(item.get("status", "created")).strip()
+            object_type = str(item.get("object_type", "dependency")).strip()
+            title = str(item.get("title", "untitled")).strip()
+            created_id = str(item.get("created_id", "")).strip()
+            suffix = f" (id={created_id})" if created_id else ""
+            store.append_status(
+                batch_id,
+                "deploying",
+                f"Dependency {event_status}: {object_type.rstrip('s')} '{title}'{suffix}.",
+            )
     summary = deployment.get("summary", {})
     results = deployment.get("results", [])
 
@@ -2564,6 +2702,7 @@ async def deploy_batch_to_zendesk(
                     "results": results,
                     "base_url": deployment.get("base_url"),
                     "execution_log": execution_log_result,
+                    "dependency_auto_create": dependency_auto_create,
                 },
             },
         },
@@ -2581,5 +2720,16 @@ async def deploy_batch_to_zendesk(
             "execution_log": execution_log_result,
             "dry_run": dry_run,
             "on_existing": on_existing,
+            "dependency_auto_create": dependency_auto_create,
+            "failure": (
+                {
+                    "failure_stage": "deploy",
+                    "failure_code": "deploy_failed",
+                    "failure_reason": final_message,
+                    "next_step": "Review failed rows in execution details and resolve those issues before redeploying.",
+                }
+                if final_status in {"deploy_failed", "deployed_partial"} and failed > 0
+                else None
+            ),
         },
     }

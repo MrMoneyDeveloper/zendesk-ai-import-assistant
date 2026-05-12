@@ -35,6 +35,7 @@ What this does:
 - starts frontend (default preferred `5176`, auto-fallback if busy)
 - sets `VITE_BACKEND_URL` automatically
 - cleans listeners when stopped
+- enables performance telemetry capture for the full session
 
 To stop:
 
@@ -42,6 +43,14 @@ To stop:
 cd C:\Workspace\zendesk-ai-import-assistant-1
 .\stop-local.cmd
 ```
+
+Telemetry output from each run is stored in:
+
+- `backend/data/perf-sessions/<timestamp>/events.jsonl`
+- `backend/data/perf-sessions/<timestamp>/summary.csv`
+- `backend/data/perf-sessions/<timestamp>/bottlenecks_top30.csv`
+
+The active telemetry path is also written to `.local-dev-state.json` as `perf_session_dir`.
 
 ## First Test Flow
 

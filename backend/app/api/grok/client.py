@@ -11,6 +11,7 @@ import httpx
 from app.api.grok.models import RECOMMENDED_MODEL, SUPPORTED_MODELS
 from app.core.settings import get_settings
 from app.loggers.logger import get_logger
+from app.services.perf_capture import emit_perf_event
 
 logger = get_logger(__name__)
 
@@ -237,6 +238,20 @@ class GrokClient:
     def _record_call_metrics(self, task: str | None, metrics: dict[str, Any]) -> None:
         if task:
             self._LAST_CALL_METRICS[task] = metrics
+        emit_perf_event(
+            "llm_call",
+            {
+                "provider": self.provider_name,
+                "task": task,
+                "model": metrics.get("model"),
+                "http_status": metrics.get("http_status"),
+                "final_status": metrics.get("final_status"),
+                "estimated_tokens": metrics.get("estimated_tokens"),
+                "used_tokens": metrics.get("used_tokens"),
+                "retry_count": metrics.get("retry_count"),
+                "pre_request_wait_ms": metrics.get("pre_request_wait_ms"),
+            },
+        )
 
     async def _post_completion(
         self,

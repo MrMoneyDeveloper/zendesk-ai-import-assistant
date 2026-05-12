@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "SilentlyContinue"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stateFile = Join-Path $repoRoot ".local-dev-state.json"
+$perfSessionDir = ""
 
 function Get-ListeningPidsByPort {
   param([int]$Port)
@@ -93,6 +94,7 @@ if (Test-Path $stateFile) {
     $state = Get-Content $stateFile -Raw | ConvertFrom-Json
     if ($state.backend_port) { $portsToStop.Add([int]$state.backend_port) }
     if ($state.frontend_port) { $portsToStop.Add([int]$state.frontend_port) }
+    $perfSessionDir = $state.perf_session_dir
   } catch {
   }
 }
@@ -110,3 +112,13 @@ if (Test-Path $stateFile) {
 }
 
 Write-Host "Stopped listeners on known local dev ports (backend/frontend) and cleared pipeline state."
+if ($perfSessionDir) {
+  try {
+    $summaryScript = Join-Path $repoRoot "backend\\summarize-perf-session.py"
+    if (Test-Path $summaryScript) {
+      python $summaryScript --session-dir $perfSessionDir | Out-Null
+    }
+  } catch {
+  }
+  Write-Host "Latest performance telemetry folder: $perfSessionDir"
+}

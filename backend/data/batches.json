@@ -2738,6 +2738,1035 @@
         }
       },
       "approved_by": "local-user"
+    },
+    "BATCH-20260511-143236-880625": {
+      "batch_id": "BATCH-20260511-143236-880625",
+      "status": "deployed",
+      "prompt": "build me a trigger that closes all open tickets",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-11T14:32:36.872950+00:00",
+      "updated_at": "2026-05-11T14:35:22.167626+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-11T14:32:36.872950+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-11T14:32:36.891418+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-11T14:32:36.901681+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner retrying with compact context to stay within model limits.",
+          "at": "2026-05-11T14:32:39.007912+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-11T14:33:22.639352+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-11T14:33:22.657798+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-11T14:33:22.671176+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-11T14:33:50.955567+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-11T14:33:50.973204+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-11T14:34:01.090108+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-11T14:34:01.099622+00:00"
+        },
+        {
+          "status": "validated_passed",
+          "message": "Validation passed.",
+          "at": "2026-05-11T14:34:27.504895+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-11T14:34:27.518245+00:00"
+        },
+        {
+          "status": "approved",
+          "message": "Record-level approval decisions saved.",
+          "at": "2026-05-11T14:34:50.355373+00:00"
+        },
+        {
+          "status": "deploying",
+          "message": "Deploying approved records to Zendesk.",
+          "at": "2026-05-11T14:35:08.529259+00:00"
+        },
+        {
+          "status": "deployed",
+          "message": "Deployment completed successfully.",
+          "at": "2026-05-11T14:35:22.167616+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "triggers",
+          "title": "Close all open tickets",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "passed",
+          "warnings": [],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "operator": "is",
+              "value": "open"
+            }
+          ],
+          "actions": [
+            {
+              "field": "status",
+              "value": "closed"
+            }
+          ],
+          "deployment_status": "deployed",
+          "zendesk_object_id": "27388436751132",
+          "execution_message": "Trigger created successfully."
+        }
+      ],
+      "generated_counts": {
+        "triggers": 1
+      },
+      "validation_summary": {
+        "passed": 1,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "build me a trigger that closes all open tickets",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 7,
+          "ticket_forms": 6,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 30,
+          "ticket_fields": 54,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "aggressive",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 18,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 3,
+          "max_total_catalog_entries": 18,
+          "max_recent_items": 2,
+          "max_recent_chars": 70,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "validation_phase_status": "validated_passed",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.7,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0
+        },
+        "ambiguity_score": 0.5,
+        "ambiguity_threshold": 0.58,
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1289,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 2510,
+            "used_tokens": 2202,
+            "pre_request_wait_ms": 10961.05,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator_chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 10961.05,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ]
+        },
+        "llm_context": {
+          "planner_profile": "aggressive",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 18,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 3,
+            "max_total_catalog_entries": 18,
+            "max_recent_items": 2,
+            "max_recent_chars": 70,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "generator_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 10961.05,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: build me a trigger that closes all open tickets"
+        ],
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260511-143236-880625",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Triggers": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260511-143236-880625",
+            "summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-11T14:34:12.263Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "zendesk_deploy": {
+          "summary": {
+            "attempted": 1,
+            "deployed": 1,
+            "failed": 0,
+            "skipped": 0
+          },
+          "results": [
+            {
+              "record_id": "REC-0001",
+              "object_type": "triggers",
+              "title": "Close all open tickets",
+              "deployment_status": "deployed",
+              "zendesk_object_id": "27388436751132",
+              "execution_message": "Trigger created successfully.",
+              "executed_at": "2026-05-11T14:35:09.135235+00:00"
+            }
+          ],
+          "base_url": "https://digify7.zendesk.com",
+          "execution_log": {
+            "mode": "appscript",
+            "status": "ok",
+            "detail": null,
+            "http_status": 200,
+            "data": {
+              "ok": true,
+              "action": "write_execution_log",
+              "batch_id": "BATCH-20260511-143236-880625",
+              "written_rows": 1
+            }
+          }
+        }
+      },
+      "approved_by": "local-user"
+    },
+    "BATCH-20260511-233120-012F25": {
+      "batch_id": "BATCH-20260511-233120-012F25",
+      "status": "clarification_required",
+      "prompt": "Make a macro called crabs and have it make a message that says hi im a crab",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-11T23:31:20.156039+00:00",
+      "updated_at": "2026-05-11T23:31:21.557889+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-11T23:31:20.156039+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-11T23:31:20.171544+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-11T23:31:20.178748+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-11T23:31:21.537994+00:00"
+        },
+        {
+          "status": "clarification_required",
+          "message": "Additional details required before generation.",
+          "at": "2026-05-11T23:31:21.551428+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "macros",
+        "intent": "Create a macro named crabs that posts the message \"hi im a crab\"",
+        "confidence": 0.95,
+        "ambiguity_score": 0.05,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [],
+        "dependency_mode": "force_create_new",
+        "focus_object_types": [
+          "macros"
+        ],
+        "dependency_notes": "Creating a new macro named crabs with the specified message.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 7,
+          "ticket_forms": 6,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 36,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 16,
+          "max_entries_per_catalog": 6,
+          "max_total_catalog_entries": 36,
+          "max_recent_items": 4,
+          "max_recent_chars": 140,
+          "max_context_notes_chars": 700
+        },
+        "llm": {
+          "task": "planner",
+          "model": "openai/gpt-oss-20b",
+          "strict_schema": false,
+          "telemetry": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1926,
+            "used_tokens": 2026,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          }
+        }
+      },
+      "metadata": {
+        "clarification": {
+          "required": true,
+          "questions": [
+            {
+              "id": "macro_side_effects",
+              "question": "Should this macro also set tags, status, assignee group, or priority?",
+              "reason": "No ticket update actions were specified.",
+              "examples": [
+                "Set tag follow_up_25h and status open",
+                "Only add comment, no ticket field changes"
+              ]
+            }
+          ],
+          "ambiguity_score": 0.05,
+          "ambiguity_threshold": 0.58
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1926,
+            "used_tokens": 2026,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "pending",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: ignore_selected_existing_and_create_new. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Make a macro called crabs and have it make a message that says hi im a crab"
+        ]
+      }
+    },
+    "BATCH-20260511-233152-67351D": {
+      "batch_id": "BATCH-20260511-233152-67351D",
+      "status": "deploy_failed",
+      "prompt": "set tag to crab only",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-11T23:31:52.329775+00:00",
+      "updated_at": "2026-05-11T23:34:35.999213+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-11T23:31:52.329775+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-11T23:31:52.339939+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-11T23:31:52.346461+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner retrying with compact context to stay within model limits.",
+          "at": "2026-05-11T23:32:13.877380+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-11T23:32:43.344589+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-11T23:32:43.352004+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-11T23:32:43.357275+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-11T23:33:04.914706+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-11T23:33:04.928972+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-11T23:33:10.611809+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-11T23:33:10.627845+00:00"
+        },
+        {
+          "status": "validated_passed",
+          "message": "Validation passed.",
+          "at": "2026-05-11T23:33:24.155224+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-11T23:33:24.163982+00:00"
+        },
+        {
+          "status": "approved",
+          "message": "Record-level approval decisions saved.",
+          "at": "2026-05-11T23:34:09.531850+00:00"
+        },
+        {
+          "status": "deploying",
+          "message": "Deploying approved records to Zendesk.",
+          "at": "2026-05-11T23:34:24.949910+00:00"
+        },
+        {
+          "status": "deploy_failed",
+          "message": "Deployment failed.",
+          "at": "2026-05-11T23:34:35.999182+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "macros",
+          "title": "crabs",
+          "preview_summary": "Macros configuration record.",
+          "validation_status": "passed",
+          "warnings": [],
+          "blocked_reason": null,
+          "import_decision": "approved",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "crab"
+            },
+            {
+              "field": "comment",
+              "value": "hi im a crab"
+            }
+          ],
+          "deployment_status": "failed",
+          "zendesk_object_id": null,
+          "execution_message": "Zendesk deployment failed (422): RecordInvalid - Record validation errors"
+        }
+      ],
+      "generated_counts": {
+        "macros": 1
+      },
+      "validation_summary": {
+        "passed": 1,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "macros",
+        "intent": "set tag to crab only",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "force_create_new",
+        "focus_object_types": [
+          "macros"
+        ],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 7,
+          "ticket_forms": 6,
+          "triggers": 23,
+          "automations": 17,
+          "macros": 3,
+          "views": 31,
+          "ticket_fields": 57,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "aggressive",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 18,
+          "recent_batch_context": 2
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 3,
+          "max_total_catalog_entries": 18,
+          "max_recent_items": 2,
+          "max_recent_chars": 70,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        }
+      },
+      "metadata": {
+        "validation_phase_status": "validated_passed",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.7,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0
+        },
+        "ambiguity_score": 0.5,
+        "ambiguity_threshold": 0.58,
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 300,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 240,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 900,
+            "strict_schema": true
+          }
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1299,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 2554,
+            "used_tokens": 2441,
+            "pre_request_wait_ms": 20000.0,
+            "retry_count": 0,
+            "final_status": "ok",
+            "http_status": 200
+          },
+          "generator_chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ]
+        },
+        "llm_context": {
+          "planner_profile": "aggressive",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 18,
+            "recent_batch_context": 2
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 3,
+            "max_total_catalog_entries": 18,
+            "max_recent_items": 2,
+            "max_recent_chars": 70,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 36,
+            "recent_batch_context": 3
+          },
+          "generator_limits": {
+            "max_related_objects": 16,
+            "max_entries_per_catalog": 6,
+            "max_total_catalog_entries": 36,
+            "max_recent_items": 4,
+            "max_recent_chars": 140,
+            "max_context_notes_chars": 700
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 20000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b"
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null
+        },
+        "context_notes": "Existing item behavior: ignore_selected_existing_and_create_new. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Make a macro called crabs and have it make a message that says hi im a crab",
+          "assistant: clarification required (Should this macro also set tags, status, assignee group, or priority?)",
+          "user: set tag to crab only"
+        ],
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260511-233152-67351D",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Macros": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260511-233152-67351D",
+            "summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-11T23:33:16.349Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "zendesk_deploy": {
+          "summary": {
+            "attempted": 1,
+            "deployed": 0,
+            "failed": 1,
+            "skipped": 0
+          },
+          "results": [
+            {
+              "record_id": "REC-0001",
+              "object_type": "macros",
+              "title": "crabs",
+              "deployment_status": "failed",
+              "zendesk_object_id": null,
+              "execution_message": "Zendesk deployment failed (422): RecordInvalid - Record validation errors",
+              "executed_at": "2026-05-11T23:34:25.171559+00:00"
+            }
+          ],
+          "base_url": "https://digify7.zendesk.com",
+          "execution_log": {
+            "mode": "appscript",
+            "status": "ok",
+            "detail": null,
+            "http_status": 200,
+            "data": {
+              "ok": true,
+              "action": "write_execution_log",
+              "batch_id": "BATCH-20260511-233152-67351D",
+              "written_rows": 1
+            }
+          }
+        }
+      },
+      "approved_by": "local-user"
     }
   }
 }
