@@ -1,0 +1,6 @@
+{
+  "generated_at": "2026-05-13T14:01:00.541808+00:00",
+  "top_failure_class": "none",
+  "top_bottleneck_path": "/api/import-assistant/integrations/status",
+  "recommended_immediate_config_profile": "cached_status_light_polling"
+}
