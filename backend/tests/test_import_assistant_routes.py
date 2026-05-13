@@ -264,7 +264,7 @@ def test_integrations_status_uses_cached_health(monkeypatch, tmp_path):
     assert second_payload["appscript"]["health_source"] == "cache"
 
 
-def test_generate_requires_clarification_for_vague_macro(monkeypatch, tmp_path):
+def test_generate_infers_vague_macro_without_clarification(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
     get_settings.cache_clear()
@@ -274,7 +274,15 @@ def test_generate_requires_clarification_for_vague_macro(monkeypatch, tmp_path):
         return {"object_type": "macros", "intent": prompt, "confidence": 0.88}
 
     async def fake_generator(plan: dict, **kwargs):
-        raise AssertionError("Generator should not run when clarification is required.")
+        return [
+            {
+                "object_type": "macros",
+                "title": "Reply in 25 hours",
+                "conditions": [],
+                "actions": [{"field": "set_tags", "value": "follow_up_25h"}],
+                "dependency_notes": [],
+            }
+        ]
 
     monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
     monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
@@ -296,12 +304,10 @@ def test_generate_requires_clarification_for_vague_macro(monkeypatch, tmp_path):
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "clarification_required"
-    assert payload["needs_clarification"] is True
-    assert len(payload["clarification_questions"]) >= 1
-    first_question = payload["clarification_questions"][0]
-    assert "understood so far" in first_question["reason"].lower()
-    assert len(first_question.get("examples", [])) == 1
+    assert payload["status"] == "preview_ready"
+    assert payload["needs_clarification"] is False
+    assumptions = payload.get("metadata", {}).get("inference_assumptions", [])
+    assert isinstance(assumptions, list)
 
 
 def test_benchmark_mode_bypasses_clarification_and_generation_safety(monkeypatch, tmp_path):
@@ -358,7 +364,7 @@ def test_benchmark_mode_bypasses_clarification_and_generation_safety(monkeypatch
     assert payload["metadata"]["generation_safety"]["bypassed"] is True
 
 
-def test_generate_requires_clarification_on_high_ambiguity_score(monkeypatch, tmp_path):
+def test_generate_continues_on_high_ambiguity_score(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
     monkeypatch.setenv("LLM_AMBIGUITY_THRESHOLD", "0.55")
@@ -376,7 +382,15 @@ def test_generate_requires_clarification_on_high_ambiguity_score(monkeypatch, tm
         }
 
     async def fake_generator(plan: dict, **kwargs):
-        raise AssertionError("Generator should not run when ambiguity threshold is exceeded.")
+        return [
+            {
+                "object_type": "triggers",
+                "title": "Tag new tickets",
+                "conditions": [{"field": "status", "operator": "is", "value": "new"}],
+                "actions": [{"field": "set_tags", "value": "test"}],
+                "dependency_notes": [],
+            }
+        ]
 
     monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
     monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
@@ -398,9 +412,9 @@ def test_generate_requires_clarification_on_high_ambiguity_score(monkeypatch, tm
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "clarification_required"
-    assert payload["needs_clarification"] is True
-    assert len(payload["clarification_questions"]) >= 1
+    assert payload["status"] == "preview_ready"
+    assert payload["needs_clarification"] is False
+    assert payload["generated_counts"]["triggers"] == 1
 
 
 def test_explicit_trigger_prompt_bypasses_clarification_loop(monkeypatch, tmp_path):
@@ -716,7 +730,7 @@ def test_generate_multi_item_prompt_runs_chunked(monkeypatch, tmp_path):
     assert chunking.get("final_status") == "ok"
 
 
-def test_generate_chunk_cap_returns_clarification(monkeypatch, tmp_path):
+def test_generate_chunk_cap_returns_failed_with_split_guidance(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
     monkeypatch.setenv("LLM_AUTO_CHUNK_ENABLED", "true")
@@ -750,11 +764,10 @@ def test_generate_chunk_cap_returns_clarification(monkeypatch, tmp_path):
             "requester": "pytest-user",
         },
     )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "clarification_required"
-    assert payload["needs_clarification"] is True
-    assert "split this into multiple requests" in payload["clarification_questions"][0]["question"].lower()
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["failure_stage"] == "generate"
+    assert "split this into multiple requests" in detail["failure_reason"].lower()
 
 
 def test_generate_chunk_failure_aborts_whole_run(monkeypatch, tmp_path):

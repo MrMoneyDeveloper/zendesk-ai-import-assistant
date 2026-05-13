@@ -517,6 +517,230 @@ def _build_related_lookup(related_objects: list[dict]) -> dict[str, dict[str, st
     return lookup
 
 
+def _normalize_lookup_name(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    normalized = re.sub(r"[_\-\s]+", " ", normalized)
+    normalized = re.sub(r"[^a-z0-9 ]+", "", normalized)
+    return normalized.strip()
+
+
+CATALOG_LOOKUP_OBJECT_TYPE = {
+    "groups": "group",
+    "group": "group",
+    "ticket_forms": "ticket_form",
+    "ticket_form": "ticket_form",
+    "brands": "brand",
+    "brand": "brand",
+    "sections": "section",
+    "section": "section",
+    "categories": "category",
+    "category": "category",
+    "help_centers": "help_center",
+    "help_center": "help_center",
+    "ticket_fields": "ticket_field",
+    "ticket_field": "ticket_field",
+}
+
+
+def _build_catalog_lookup(reference_catalog: dict[str, list[dict]]) -> dict[str, dict[str, str]]:
+    lookup: dict[str, dict[str, str]] = {}
+    for raw_key, rows in (reference_catalog or {}).items():
+        canonical_key = CATALOG_LOOKUP_OBJECT_TYPE.get(str(raw_key).strip().lower(), "")
+        if not canonical_key or not isinstance(rows, list):
+            continue
+        bucket = lookup.setdefault(canonical_key, {})
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id", "")).strip()
+            name = str(item.get("name", "")).strip()
+            if not item_id or not name:
+                continue
+            lower_name = name.lower()
+            normalized_name = _normalize_lookup_name(name)
+            if lower_name:
+                bucket[lower_name] = item_id
+            if normalized_name and normalized_name not in bucket:
+                bucket[normalized_name] = item_id
+    return lookup
+
+
+def _extract_title_hints(prompt: str) -> list[str]:
+    text = str(prompt or "").strip()
+    if not text:
+        return []
+    hints: list[str] = []
+    patterns = [
+        r"\b(?:named|called|titled)\s+[\"“']([^\"”']{2,200})[\"”']",
+        r"\b(?:named|called|titled)\s+([A-Za-z0-9][A-Za-z0-9 _&\-/]{2,120})",
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            hint = str(match.group(1) or "").strip(" .,:;")
+            if hint and hint not in hints:
+                hints.append(hint)
+    return hints[:4]
+
+
+def _match_existing_base_object(
+    *,
+    prompt: str,
+    object_type: str,
+    existing_index: dict[str, dict[str, dict]],
+) -> dict | None:
+    bucket = existing_index.get(object_type, {})
+    if not bucket:
+        return None
+
+    normalized_bucket: dict[str, dict] = {}
+    for row in bucket.values():
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name", "")).strip()
+        if not name:
+            continue
+        normalized_bucket.setdefault(_normalize_lookup_name(name), row)
+
+    for hint in _extract_title_hints(prompt):
+        exact = bucket.get(hint.lower())
+        if isinstance(exact, dict):
+            return {
+                "object_type": object_type,
+                "match_type": "exact_title",
+                "id": str(exact.get("id", "")).strip(),
+                "name": str(exact.get("name", "")).strip(),
+                "description": str(exact.get("description", "")).strip(),
+            }
+        normalized = normalized_bucket.get(_normalize_lookup_name(hint))
+        if isinstance(normalized, dict):
+            return {
+                "object_type": object_type,
+                "match_type": "normalized_title",
+                "id": str(normalized.get("id", "")).strip(),
+                "name": str(normalized.get("name", "")).strip(),
+                "description": str(normalized.get("description", "")).strip(),
+            }
+
+    normalized_prompt = _normalize_lookup_name(prompt)
+    if normalized_prompt:
+        fuzzy_matches: list[dict] = []
+        for row in bucket.values():
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name", "")).strip()
+            if not name:
+                continue
+            normalized_name = _normalize_lookup_name(name)
+            if not normalized_name:
+                continue
+            if normalized_name in normalized_prompt or normalized_prompt in normalized_name:
+                fuzzy_matches.append(row)
+        if len(fuzzy_matches) == 1:
+            row = fuzzy_matches[0]
+            return {
+                "object_type": object_type,
+                "match_type": "unique_fuzzy",
+                "id": str(row.get("id", "")).strip(),
+                "name": str(row.get("name", "")).strip(),
+                "description": str(row.get("description", "")).strip(),
+            }
+
+    return None
+
+
+def _build_inference_assumptions(
+    *,
+    prompt: str,
+    plan: dict,
+    focus_object_types: list[str],
+    reference_catalog: dict[str, list[dict]],
+    existing_index: dict[str, dict[str, dict]],
+) -> dict:
+    assumptions: list[dict] = []
+    context_note_parts: list[str] = []
+    resolved_object_type = _normalize_object_type(str(plan.get("object_type", "triggers")))
+
+    if focus_object_types and resolved_object_type not in set(focus_object_types):
+        prior = resolved_object_type
+        resolved_object_type = focus_object_types[0]
+        assumptions.append(
+            {
+                "kind": "focus_override",
+                "message": (
+                    f"Planner selected '{prior}', but selected focus enforces '{resolved_object_type}'. "
+                    "Generation continued with focused object type."
+                ),
+            }
+        )
+
+    base_match = _match_existing_base_object(
+        prompt=prompt,
+        object_type=resolved_object_type,
+        existing_index=existing_index,
+    )
+    if base_match:
+        assumptions.append(
+            {
+                "kind": "base_object_match",
+                "message": (
+                    f"Using existing {resolved_object_type.rstrip('s')} '{base_match.get('name')}' "
+                    f"(id={base_match.get('id')}) as reference."
+                ),
+            }
+        )
+        context_note_parts.append(
+            "Existing base reference selected: "
+            f"type={resolved_object_type}; id={base_match.get('id')}; name={base_match.get('name')}."
+        )
+
+    prompt_text = str(prompt or "").lower()
+    if (
+        resolved_object_type == "articles"
+        and not any(token in prompt_text for token in ["section", "category", "help center"])
+    ):
+        section_rows = reference_catalog.get("sections", [])
+        category_rows = reference_catalog.get("categories", [])
+        help_center_rows = reference_catalog.get("help_centers", [])
+        destination = None
+        if isinstance(section_rows, list) and section_rows:
+            destination = ("section", section_rows[0])
+        elif isinstance(category_rows, list) and category_rows:
+            destination = ("category", category_rows[0])
+        elif isinstance(help_center_rows, list) and help_center_rows:
+            destination = ("help_center", help_center_rows[0])
+        if destination and isinstance(destination[1], dict):
+            destination_type, destination_row = destination
+            destination_id = str(destination_row.get("id", "")).strip()
+            destination_name = str(destination_row.get("name", "")).strip()
+            assumptions.append(
+                {
+                    "kind": "article_destination_default",
+                    "message": (
+                        f"No article location was specified. Defaulting to {destination_type} "
+                        f"'{destination_name}' (id={destination_id})."
+                    ),
+                }
+            )
+            context_note_parts.append(
+                f"Default article destination inferred: {destination_type}_id={destination_id} ({destination_name})."
+            )
+
+    if assumptions:
+        context_note_parts.insert(0, "Inference-first mode applied assumptions; do not ask clarification questions.")
+
+    confidence = float(plan.get("confidence", 0.0) or 0.0)
+    ambiguity = float(plan.get("ambiguity_score", 0.0) or 0.0)
+    inference_confidence = min(max((confidence * 0.8) + ((1.0 - ambiguity) * 0.2), 0.0), 1.0)
+
+    return {
+        "resolved_object_type": resolved_object_type,
+        "assumptions": assumptions,
+        "context_notes": " ".join(part for part in context_note_parts if part).strip(),
+        "base_object_match": base_match,
+        "inference_confidence": inference_confidence,
+    }
+
+
 def _slugify_option_value(value: str) -> str:
     text = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
     if text:
@@ -944,13 +1168,41 @@ def _apply_generation_safety_to_preview(records: list[dict], safety: dict) -> li
     return records
 
 
+def _merge_context_notes(base_notes: str | None, appended_notes: str | None) -> str:
+    primary = str(base_notes or "").strip()
+    extra = str(appended_notes or "").strip()
+    if primary and extra:
+        return f"{primary} {extra}".strip()
+    return primary or extra
+
+
+def _apply_inference_assumptions_to_preview(records: list[dict], assumptions: list[dict]) -> list[dict]:
+    if not assumptions:
+        return records
+    assumption_messages = [
+        str(item.get("message", "")).strip()
+        for item in assumptions
+        if isinstance(item, dict) and str(item.get("message", "")).strip()
+    ]
+    if not assumption_messages:
+        return records
+    warning_line = "Inference assumptions applied: " + " | ".join(assumption_messages[:3])
+    for row in records:
+        row_warnings = list(row.get("warnings", []) or [])
+        if warning_line not in row_warnings:
+            row_warnings.append(warning_line)
+        row["warnings"] = row_warnings
+    return records
+
+
 def _apply_dependency_resolution(
     rows: list[dict],
     *,
     related_lookup: dict[str, dict[str, str]],
+    catalog_lookup: dict[str, dict[str, str]],
     dependency_mode: str,
 ) -> tuple[list[dict], dict]:
-    if not related_lookup:
+    if not related_lookup and not catalog_lookup:
         return rows, {"resolved_links": 0, "unresolved_links": 0, "unresolved_samples": []}
 
     resolved_links = 0
@@ -987,12 +1239,22 @@ def _apply_dependency_resolution(
                 if _is_numeric_string(value):
                     continue
 
+                normalized_value = _normalize_lookup_name(value)
                 resolved = related_lookup.get(expected_object, {}).get(value.lower())
+                lookup_source = "selected context"
+                if not resolved and normalized_value:
+                    resolved = related_lookup.get(expected_object, {}).get(normalized_value)
+                if not resolved:
+                    resolved = catalog_lookup.get(expected_object, {}).get(value.lower())
+                    lookup_source = "catalog context"
+                if not resolved and normalized_value:
+                    resolved = catalog_lookup.get(expected_object, {}).get(normalized_value)
+                    lookup_source = "catalog context"
                 if resolved:
                     entry["value"] = resolved
                     resolved_links += 1
                     row_notes.append(
-                        f"{field}: mapped '{value}' to ID {resolved} from selected context."
+                        f"{field}: mapped '{value}' to ID {resolved} from {lookup_source}."
                     )
                     continue
 
@@ -1872,6 +2134,7 @@ async def generate_import_assistant_batch(
         for key, values in (request.reference_catalog or {}).items()
     }
     related_lookup = _build_related_lookup(related_objects)
+    catalog_lookup = _build_catalog_lookup(reference_catalog)
     existing_object_index = _build_existing_object_index(reference_catalog)
 
     batch_id = _new_batch_id()
@@ -2004,47 +2267,30 @@ async def generate_import_assistant_batch(
 
     ambiguity_score = float(plan.get("ambiguity_score", 0.0) or 0.0)
     ambiguity_threshold = settings.llm_ambiguity_threshold
-    planned_object_type = _normalize_object_type(str(plan.get("object_type", "triggers")))
-    prompt_explicit = _is_explicit_enough_for_generation(request.prompt, planned_object_type)
-    clarification_questions = _build_clarification_questions(
-        request.prompt,
-        plan,
-        ambiguity_score=ambiguity_score,
-        ambiguity_threshold=ambiguity_threshold,
+    inference_result = _build_inference_assumptions(
+        prompt=request.prompt,
+        plan=plan,
+        focus_object_types=focus_object_types,
+        reference_catalog=reference_catalog,
+        existing_index=existing_object_index,
     )
-    if (
-        not benchmark_mode
-        and ambiguity_score >= ambiguity_threshold
-        and not clarification_questions
-        and not prompt_explicit
-    ):
-        ambiguity_reasons = plan.get("ambiguity_reasons", [])
-        reason_text = (
-            str(ambiguity_reasons[0]).strip()
-            if isinstance(ambiguity_reasons, list) and ambiguity_reasons
-            else "The request appears ambiguous for a reliable one-shot deployment."
-        )
-        clarification_questions = [
-            {
-                "id": "ambiguity_scope",
-                "question": "What exact scope should this apply to (object target + conditions + expected actions)?",
-                "reason": (
-                    f"Understood so far: {str(plan.get('intent', request.prompt)).strip()[:220]}. "
-                    "Missing detail: explicit scope and action mapping. "
-                    f"Why this is required: {reason_text}."
-                ),
-                "examples": [
-                    "For trigger X: status=new, group=Claims; action=set tag test_ticket and assign group Billing.",
-                ],
-            }
-        ]
-    if prompt_explicit and clarification_questions:
-        # Deterministic override: explicit, actionable prompts should not be trapped in clarification loops.
-        clarification_questions = []
-    needs_clarification = bool(clarification_questions)
-    if benchmark_mode and needs_clarification:
-        clarification_questions = []
-        needs_clarification = False
+    resolved_object_type = _normalize_object_type(
+        str(inference_result.get("resolved_object_type") or plan.get("object_type", "triggers"))
+    )
+    plan["object_type"] = resolved_object_type
+    inference_assumptions = list(inference_result.get("assumptions", []) or [])
+    base_object_match = inference_result.get("base_object_match")
+    inference_confidence = float(inference_result.get("inference_confidence", 0.0) or 0.0)
+    prompt_explicit = _is_explicit_enough_for_generation(request.prompt, resolved_object_type)
+    merged_context_notes = _merge_context_notes(
+        request.context_notes,
+        str(inference_result.get("context_notes", "")).strip(),
+    )
+    generator_request = request.model_copy(
+        update={
+            "context_notes": merged_context_notes or request.context_notes,
+        }
+    )
     planning_summary = _build_planning_summary(
         plan=plan,
         request=request,
@@ -2080,39 +2326,36 @@ async def generate_import_assistant_batch(
         "abort_reason": None,
     }
     if chunking_metadata["activated"] and chunking_metadata["exceeds_cap"]:
-        clarification_questions = _build_chunk_split_guidance(
+        guidance = _build_chunk_split_guidance(
             total_chunks=chunking_metadata["total_chunks"],
             max_chunks=chunking_metadata["max_chunks"],
             chunk_size=chunking_metadata["chunk_size"],
             estimated_count=chunking_metadata["estimated_requested_records"],
         )
-        needs_clarification = True
-        chunking_metadata["final_status"] = "clarification_required"
+        chunking_metadata["final_status"] = "failed"
         chunking_metadata["abort_reason"] = (
             f"Estimated chunk count {chunking_metadata['total_chunks']} exceeds cap "
             f"{chunking_metadata['max_chunks']}."
         )
-    if needs_clarification:
-        store.append_status(
-            batch_id,
-            "clarification_required",
-            "Additional details required before generation.",
+        failure_reason = (
+            str(guidance[0].get("question", "")).strip()
+            if isinstance(guidance, list) and guidance
+            else (
+                "Estimated chunk count exceeds the allowed cap; split the request into smaller batches."
+            )
         )
-        batch = store.update_batch(
+        store.append_status(batch_id, "failed", failure_reason)
+        store.update_batch(
             batch_id,
             {
-                "status": "clarification_required",
+                "status": "failed",
                 "planning_summary": planning_summary,
                 "metadata": {
-                    "benchmark": {
-                        "enabled": benchmark_mode,
-                    },
-                    "clarification": {
-                        "required": True,
-                        "questions": clarification_questions,
-                        "ambiguity_score": ambiguity_score,
-                        "ambiguity_threshold": ambiguity_threshold,
-                    },
+                    "benchmark": {"enabled": benchmark_mode},
+                    "inference_assumptions": inference_assumptions,
+                    "base_object_match": base_object_match,
+                    "inference_confidence": inference_confidence,
+                    "chunking": chunking_metadata,
                     "llm_routes": {
                         "planner": planner_route.__dict__,
                         "clarifier": clarifier_route.__dict__,
@@ -2126,29 +2369,18 @@ async def generate_import_assistant_batch(
                         "planner_counts": planner_context_bundle.get("counts", {}),
                         "planner_limits": planner_context_bundle.get("limits", {}),
                     },
-                    "chunking": chunking_metadata,
-                    "context_notes": request.context_notes or "",
+                    "context_notes": merged_context_notes or "",
                     "recent_batch_context": request.recent_batch_context,
                     "failure": {
                         "failure_stage": "generate",
-                        "failure_code": "clarification_required",
-                        "failure_reason": "Additional details are required before generation can continue.",
-                        "next_step": "Answer the clarification question and submit again.",
+                        "failure_code": "chunking_cap_exceeded",
+                        "failure_reason": failure_reason,
+                        "next_step": "Split this request into smaller batches and submit again.",
                     },
                 },
             },
         )
-        return ImportAssistantGenerateResponse(
-            batch_id=batch_id,
-            status="clarification_required",
-            planning_summary=batch.get("planning_summary", {}),
-            generated_counts={},
-            validation_summary=ValidationSummary(),
-            preview_url=f"/api/import-assistant/preview/{batch_id}",
-            needs_clarification=True,
-            clarification_questions=clarification_questions,
-            metadata=batch.get("metadata", {}),
-        )
+        raise RuntimeError(failure_reason)
 
     store.append_status(batch_id, "schemas_selected", "Schemas selected from registry.")
     store.append_status(batch_id, "generating", "Generator call in progress.")
@@ -2188,7 +2420,7 @@ async def generate_import_assistant_batch(
                 )
                 chunk_rows, chunk_runtime_metrics, context_profile = await _run_generator_with_context_fallback(
                     plan=plan,
-                    request=request,
+                    request=generator_request,
                     focus_object_types=focus_object_types,
                     standard_context_bundle=generator_context_bundle,
                     aggressive_context_bundle=llm_context_aggressive,
@@ -2242,7 +2474,7 @@ async def generate_import_assistant_batch(
         else:
             generated_data, generator_telemetry, context_profile = await _run_generator_with_context_fallback(
                 plan=plan,
-                request=request,
+                request=generator_request,
                 focus_object_types=focus_object_types,
                 standard_context_bundle=generator_context_bundle,
                 aggressive_context_bundle=llm_context_aggressive,
@@ -2299,68 +2531,11 @@ async def generate_import_assistant_batch(
                 "Generator could not produce schema-valid JSON after multiple recovery modes."
             )
             next_step_message = (
-                "Use a narrower prompt with explicit Zendesk action fields (status/group_id/set_tags), "
-                "or answer the clarification question to continue."
+                "Retry with narrower scope and explicit Zendesk action fields "
+                "(status/group_id/set_tags/field_type/custom_field_options)."
             )
-            if not benchmark_mode and exc.corrective_question:
-                clarification_questions = [
-                    {
-                        "id": "generator_output_shape",
-                        "question": exc.corrective_question,
-                        "reason": (
-                            "Generator output failed JSON/schema validation across retry modes. "
-                            "Please confirm a stricter, single-record output shape."
-                        ),
-                        "examples": [exc.corrective_example] if exc.corrective_example else [],
-                    }
-                ]
-                store.append_status(
-                    batch_id,
-                    "clarification_required",
-                    "Generator JSON validation failed. Clarification requested before retry.",
-                )
-                clarification_batch = store.update_batch(
-                    batch_id,
-                    {
-                        "status": "clarification_required",
-                        "planning_summary": planning_summary,
-                        "records": [],
-                        "generated_counts": {},
-                        "validation_summary": ValidationSummary().model_dump(),
-                        "metadata": {
-                            "benchmark": {"enabled": benchmark_mode},
-                            "chunking": chunking_metadata,
-                            "llm_routes": {
-                                "planner": planner_route.__dict__,
-                                "clarifier": clarifier_route.__dict__,
-                                "generator": generator_route.__dict__,
-                            },
-                            "llm_runtime": {
-                                "planner": planner_telemetry,
-                                "generator": runtime_metrics,
-                                "generator_chunks": generator_chunk_telemetry,
-                                "generator_error": generator_error_metadata,
-                            },
-                            "failure": {
-                                "failure_stage": "generate",
-                                "failure_code": failure_code,
-                                "failure_reason": failure_message,
-                                "next_step": next_step_message,
-                            },
-                        },
-                    },
-                )
-                return ImportAssistantGenerateResponse(
-                    batch_id=batch_id,
-                    status="clarification_required",
-                    planning_summary=clarification_batch.get("planning_summary", {}),
-                    generated_counts={},
-                    validation_summary=ValidationSummary(),
-                    preview_url=f"/api/import-assistant/preview/{batch_id}",
-                    needs_clarification=True,
-                    clarification_questions=clarification_questions,
-                    metadata=clarification_batch.get("metadata", {}),
-                )
+            if not benchmark_mode and exc.corrective_example:
+                next_step_message += f" Example: {exc.corrective_example}"
         store.append_status(batch_id, "failed", f"{status_message_prefix}: {exc}")
         store.update_batch(
             batch_id,
@@ -2370,6 +2545,9 @@ async def generate_import_assistant_batch(
                     "benchmark": {
                         "enabled": benchmark_mode,
                     },
+                    "inference_assumptions": inference_assumptions,
+                    "base_object_match": base_object_match,
+                    "inference_confidence": inference_confidence,
                     "chunking": chunking_metadata,
                     "llm_routes": {
                         "planner": planner_route.__dict__,
@@ -2382,6 +2560,8 @@ async def generate_import_assistant_batch(
                         "generator_chunks": generator_chunk_telemetry,
                         "generator_error": generator_error_metadata,
                     },
+                    "context_notes": merged_context_notes or "",
+                    "recent_batch_context": request.recent_batch_context,
                     "failure": {
                         "failure_stage": "generate",
                         "failure_code": failure_code,
@@ -2423,6 +2603,7 @@ async def generate_import_assistant_batch(
     generated_data, dependency_resolution = _apply_dependency_resolution(
         generated_data,
         related_lookup=related_lookup,
+        catalog_lookup=catalog_lookup,
         dependency_mode=request.dependency_mode,
     )
     generated_data, focus_diagnostics = _annotate_focus_object_constraints(
@@ -2458,6 +2639,7 @@ async def generate_import_assistant_batch(
 
     preview_records, validation_summary = _build_preview_records(plan, generated_data)
     preview_records = _apply_generation_safety_to_preview(preview_records, generation_safety)
+    preview_records = _apply_inference_assumptions_to_preview(preview_records, inference_assumptions)
     validation_summary = _recompute_validation_summary(preview_records)
     generated_counts = _count_generated(preview_records)
 
@@ -2612,7 +2794,10 @@ async def generate_import_assistant_batch(
                     "generator_limits": generator_context_bundle.get("limits", {}),
                 },
                 "chunking": chunking_metadata,
-                "context_notes": request.context_notes or "",
+                "inference_assumptions": inference_assumptions,
+                "base_object_match": base_object_match,
+                "inference_confidence": inference_confidence,
+                "context_notes": merged_context_notes or "",
                 "recent_batch_context": request.recent_batch_context,
                 "staging": staging_metadata,
                 "validation": validation_metadata,

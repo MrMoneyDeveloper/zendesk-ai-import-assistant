@@ -91,7 +91,7 @@ def test_generator_retry_ladder_reaches_json_object_and_succeeds(monkeypatch):
     assert calls[2].get("response_format_override") == "json_object"
 
 
-def test_generate_returns_clarification_with_failed_generation_metadata(monkeypatch, tmp_path):
+def test_generate_fails_with_failed_generation_metadata(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
     get_settings.cache_clear()
@@ -127,23 +127,31 @@ def test_generate_returns_clarification_with_failed_generation_metadata(monkeypa
 
     from app.services.import_assistant_service import generate_import_assistant_batch
 
-    response = asyncio.run(
-        generate_import_assistant_batch(
-            ImportAssistantGenerateRequest(
-                prompt=(
-                    "Create escalation trigger for finance tickets: conditions status=open "
-                    "and group=Finance Support; actions add tag escalated and keep status open."
-                ),
-                requester="pytest-user",
-                target_environment="sandbox",
-                mode="generate_validate_preview",
+    try:
+        asyncio.run(
+            generate_import_assistant_batch(
+                ImportAssistantGenerateRequest(
+                    prompt=(
+                        "Create escalation trigger for finance tickets: conditions status=open "
+                        "and group=Finance Support; actions add tag escalated and keep status open."
+                    ),
+                    requester="pytest-user",
+                    target_environment="sandbox",
+                    mode="generate_validate_preview",
+                )
             )
         )
-    )
-    assert response.status == "clarification_required"
-    assert response.needs_clarification is True
-    assert response.metadata["llm_runtime"]["generator_error"]["provider_error_code"] == "json_validate_failed"
-    assert "title" in response.metadata["llm_runtime"]["generator_error"]["failed_generation_excerpt"]
+    except RuntimeError:
+        pass
+
+    store = get_batch_store()
+    batches = list(store.list_batches())
+    assert batches
+    latest = sorted(batches, key=lambda item: item.get("updated_at", ""), reverse=True)[0]
+    metadata = latest.get("metadata", {})
+    assert metadata["failure"]["failure_code"] == "generator_json_validation_failed"
+    assert metadata["llm_runtime"]["generator_error"]["provider_error_code"] == "json_validate_failed"
+    assert "title" in metadata["llm_runtime"]["generator_error"]["failed_generation_excerpt"]
 
 
 def test_non_chunked_failure_message_is_not_chunking(monkeypatch, tmp_path):

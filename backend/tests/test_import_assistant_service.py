@@ -4,7 +4,9 @@ from app.models.schemas import ValidationSummary
 from app.services.import_assistant_service import (
     _annotate_focus_object_constraints,
     _apply_generation_safety_to_preview,
+    _apply_dependency_resolution,
     _annotate_duplicate_candidates,
+    _build_catalog_lookup,
     _build_chunk_plan,
     _canonicalize_generated_rows,
     _canonicalize_ticket_field_record,
@@ -63,6 +65,38 @@ def test_duplicate_annotation_adds_dependency_note():
     assert len(duplicates) == 1
     notes = patched[0].get("dependency_notes", [])
     assert any("Duplicate candidate" in note for note in notes)
+
+
+def test_dependency_resolution_uses_catalog_lookup_when_no_selected_context():
+    rows = [
+        {
+            "object_type": "triggers",
+            "title": "Finance Route",
+            "conditions": [{"field": "group_id", "operator": "is", "value": "Finance & Investments"}],
+            "actions": [{"field": "group_id", "value": "Finance & Investments"}],
+            "dependency_notes": [],
+        }
+    ]
+    catalog_lookup = _build_catalog_lookup(
+        {
+            "groups": [
+                {"object_type": "group", "id": "12345", "name": "Finance & Investments"},
+            ]
+        }
+    )
+
+    patched_rows, meta = _apply_dependency_resolution(
+        rows,
+        related_lookup={},
+        catalog_lookup=catalog_lookup,
+        dependency_mode="match_existing_or_create_new",
+    )
+
+    assert meta["resolved_links"] == 2
+    patched = patched_rows[0]
+    assert patched["conditions"][0]["value"] == "12345"
+    assert patched["actions"][0]["value"] == "12345"
+    assert any("catalog context" in note for note in patched.get("dependency_notes", []))
 
 
 def test_clarification_questions_capped_to_one():

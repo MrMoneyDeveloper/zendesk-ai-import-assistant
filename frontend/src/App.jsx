@@ -28,14 +28,28 @@ import { useImportAssistantStore } from "./store/importAssistantStore";
 
 const ZENDESK_SESSION_STORAGE_KEY = "zendesk_session_credentials_v1";
 
-function parseFailureDetail(error) {
+function extractFailurePayload(error) {
   const detail = error?.response?.data?.detail;
   if (detail && typeof detail === "object") {
-    const reason = detail.failure_reason || "Request failed.";
-    const stage = detail.failure_stage ? `[${detail.failure_stage}] ` : "";
-    const next = detail.next_step ? ` Next: ${detail.next_step}` : "";
+    return {
+      stage: detail.failure_stage || null,
+      code: detail.failure_code || null,
+      reason: detail.failure_reason || "Request failed.",
+      nextStep: detail.next_step || null,
+    };
+  }
+  return null;
+}
+
+function parseFailureDetail(error) {
+  const structured = extractFailurePayload(error);
+  if (structured) {
+    const stage = structured.stage ? `[${structured.stage}] ` : "";
+    const next = structured.nextStep ? ` Next: ${structured.nextStep}` : "";
+    const reason = structured.reason || "Request failed.";
     return `${stage}${reason}${next}`;
   }
+  const detail = error?.response?.data?.detail;
   return detail || error?.message || "Request failed.";
 }
 
@@ -113,7 +127,8 @@ function App() {
   const [showExistingContext, setShowExistingContext] = useState(false);
   const [showAdvancedCatalog, setShowAdvancedCatalog] = useState(false);
   const [showProcessingDetails, setShowProcessingDetails] = useState(false);
-  const [clarificationQuestions, setClarificationQuestions] = useState([]);
+  const [inferenceAssumptionMessages, setInferenceAssumptionMessages] = useState([]);
+  const [lastFailureDetail, setLastFailureDetail] = useState(null);
   const [focusObjectTypes, setFocusObjectTypes] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const lastContextSyncRef = useRef("");
@@ -163,34 +178,21 @@ function App() {
   const generateMutation = useMutation({
     mutationFn: generateBatch,
     onMutate: () => {
+      setLastFailureDetail(null);
       appendActivity("info", "Started generate -> stage -> validate pipeline.");
       appendTimeline("assistant", "Processing your request...");
     },
     onSuccess: (data) => {
       setBatchId(data.batch_id);
-      if (data.status === "clarification_required" || data.needs_clarification) {
-        const questions = data.clarification_questions || [];
-        setClarificationQuestions(questions);
-        setChatHistory((prev) => [
-          ...prev,
-          `assistant: clarification required (${questions[0]?.question || "additional detail needed"})`,
-        ]);
-        appendActivity(
-          "warning",
-          `Clarification required before generation. Questions: ${questions.map((q) => q.question).join(" | ")}`
-        );
-        appendTimeline(
-          "assistant",
-          `Clarification required: ${questions.map((q) => q.question).join(" | ")}`
-        );
-        queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
-        queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
-        return;
-      }
-
       const generationSafety = data?.metadata?.generation_safety;
       const focusDiagnostics = data?.metadata?.focus_diagnostics;
-      setClarificationQuestions([]);
+      const assumptions = Array.isArray(data?.metadata?.inference_assumptions)
+        ? data.metadata.inference_assumptions
+        : [];
+      const assumptionMessages = assumptions
+        .map((item) => String(item?.message || "").trim())
+        .filter(Boolean);
+      setInferenceAssumptionMessages(assumptionMessages);
       setChatHistory((prev) => [
         ...prev,
         `assistant: batch ${data.batch_id} ready (passed=${data.validation_summary?.passed || 0}, warnings=${data.validation_summary?.warnings || 0}, blocked=${data.validation_summary?.blocked || 0})`,
@@ -216,12 +218,23 @@ function App() {
           `Object focus mismatch: ${focusDiagnostics.mismatch_count} generated records are outside selected focus (${(focusDiagnostics.generated_types || []).join(", ")}).`
         );
       }
+      if (assumptionMessages.length > 0) {
+        appendActivity(
+          "warning",
+          `Assumptions applied: ${assumptionMessages.join(" | ")}`
+        );
+        appendTimeline(
+          "assistant",
+          `Assumptions applied: ${assumptionMessages.join(" | ")}`
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
       queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
       queryClient.invalidateQueries({ queryKey: ["preview", data.batch_id] });
     },
     onError: (error) => {
       const detail = parseFailureDetail(error);
+      setLastFailureDetail(extractFailurePayload(error));
       appendActivity("error", detail);
       appendTimeline("assistant", `Generation failed: ${detail}`);
     },
@@ -513,7 +526,8 @@ function App() {
     const promptText = String(value || "").trim();
     if (!promptText) return false;
 
-    setClarificationQuestions([]);
+    setInferenceAssumptionMessages([]);
+    setLastFailureDetail(null);
     appendTimeline("user", promptText);
     const localHistory = [...chatHistory.slice(-10), `user: ${promptText}`];
     setChatHistory(localHistory);
@@ -622,7 +636,8 @@ function App() {
     setDecisions({});
     setActivityLogs([]);
     setTimeline([]);
-    setClarificationQuestions([]);
+    setInferenceAssumptionMessages([]);
+    setLastFailureDetail(null);
     setChatHistory([]);
     setHistorySearch("");
     setSelectedContext({});
@@ -641,7 +656,8 @@ function App() {
   const startNewChat = () => {
     const previousBatchId = batchId;
     setDecisions({});
-    setClarificationQuestions([]);
+    setInferenceAssumptionMessages([]);
+    setLastFailureDetail(null);
     setActivityLogs([]);
     setTimeline([]);
     setHistorySearch("");
@@ -1205,24 +1221,29 @@ function App() {
           </div>
         ) : null}
 
-        {clarificationQuestions.length > 0 ? (
+        {inferenceAssumptionMessages.length > 0 ? (
           <Card className="mb-6 border-amber-700/50 bg-amber-950/20">
-            <CardContent className="space-y-3 p-4 text-sm text-amber-100">
-              <p className="font-semibold">More details needed before generation</p>
-              {clarificationQuestions.map((item) => (
-                <div key={item.id} className="rounded border border-amber-800/40 bg-amber-950/30 p-3">
-                  <p>{item.question}</p>
-                  <p className="mt-1 text-xs text-amber-300">{item.reason}</p>
-                  {item.examples?.length ? (
-                    <p className="mt-1 text-xs text-amber-200">
-                      Examples: {item.examples.join(" | ")}
-                    </p>
-                  ) : null}
-                </div>
+            <CardContent className="space-y-2 p-4 text-sm text-amber-100">
+              <p className="font-semibold">Assumptions Applied</p>
+              {inferenceAssumptionMessages.slice(0, 4).map((message, idx) => (
+                <p key={`${message}-${idx}`} className="text-xs text-amber-200">
+                  {message}
+                </p>
               ))}
-              <p className="text-xs text-amber-200">
-                Add answers in your next prompt and submit again.
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {lastFailureDetail ? (
+          <Card className="mb-6 border-rose-800 bg-rose-950/30">
+            <CardContent className="space-y-2 p-4 text-sm text-rose-200">
+              <p className="font-semibold">
+                {lastFailureDetail.stage ? `[${lastFailureDetail.stage}] ` : ""}
+                {lastFailureDetail.reason}
               </p>
+              {lastFailureDetail.nextStep ? (
+                <p className="text-xs text-rose-300">Next step: {lastFailureDetail.nextStep}</p>
+              ) : null}
             </CardContent>
           </Card>
         ) : null}
