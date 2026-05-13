@@ -1,0 +1,6 @@
+{
+  "generated_at": "2026-05-13T15:41:27.765382+00:00",
+  "top_failure_class": "schema_validation_failure",
+  "top_bottleneck_path": "/api/import-assistant/generate",
+  "recommended_immediate_config_profile": "compatibility_safe"
+}

@@ -23,11 +23,15 @@ class LLMRequestError(RuntimeError):
         error_class: str,
         http_status: int | None = None,
         provider_detail: str | None = None,
+        error_code: str | None = None,
+        failed_generation: str | None = None,
     ) -> None:
         super().__init__(message)
         self.error_class = error_class
         self.http_status = http_status
         self.provider_detail = provider_detail or message
+        self.error_code = (error_code or "").strip() or None
+        self.failed_generation = failed_generation or None
 
 
 class GrokClient:
@@ -70,20 +74,29 @@ class GrokClient:
         return str(content)
 
     @staticmethod
-    def _extract_error_detail(response: httpx.Response) -> str:
+    def _extract_error_payload(response: httpx.Response) -> tuple[str, str | None, str | None]:
         detail = response.text
+        error_code: str | None = None
+        failed_generation: str | None = None
         try:
             payload = response.json()
             if isinstance(payload, dict):
                 error = payload.get("error")
                 if isinstance(error, dict):
-                    return str(error.get("message") or error.get("code") or detail)
+                    raw_message = str(error.get("message") or "").strip()
+                    raw_code = str(error.get("code") or "").strip()
+                    raw_failed = error.get("failed_generation")
+                    if raw_code:
+                        error_code = raw_code
+                    if isinstance(raw_failed, str) and raw_failed.strip():
+                        failed_generation = raw_failed.strip()
+                    return (raw_message or raw_code or detail), error_code, failed_generation
                 if error:
-                    return str(error)
-                return str(payload.get("message") or detail)
+                    return str(error), error_code, failed_generation
+                return str(payload.get("message") or detail), error_code, failed_generation
         except Exception:
             pass
-        return detail
+        return detail, error_code, failed_generation
 
     @staticmethod
     def _build_response_format(schema_name: str, schema: dict, strict: bool) -> dict:
@@ -164,17 +177,20 @@ class GrokClient:
             return str(error)
         return str(payload.get("message") or detail or "")
 
-    def _classify_http_error(self, response: httpx.Response) -> tuple[str, str]:
+    def _classify_http_error(
+        self,
+        response: httpx.Response,
+    ) -> tuple[str, str, str | None, str | None]:
         status = int(response.status_code)
-        detail = self._extract_error_detail(response)
+        detail, error_code, failed_generation = self._extract_error_payload(response)
         text = detail.lower()
         if status == 429:
-            return "rate_limited", detail
+            return "rate_limited", detail, error_code, failed_generation
 
         if status == 403 and "model" in text and (
             "permission" in text or "not allowed" in text or "not available" in text
         ):
-            return "model_permission_blocked", detail
+            return "model_permission_blocked", detail, error_code, failed_generation
 
         if status == 400:
             if (
@@ -183,27 +199,27 @@ class GrokClient:
                 or "json_validate_failed" in text
                 or "generated json does not match the expected schema" in text
             ):
-                return "schema_validation_failure", detail
+                return "schema_validation_failure", detail, error_code, failed_generation
             if ("response_format" in text or "json_schema" in text) and (
                 "unsupported" in text or "not support" in text or "invalid" in text
             ):
-                return "unsupported_response_format", detail
+                return "unsupported_response_format", detail, error_code, failed_generation
             if "schema" in text and (
                 "validation" in text or "invalid" in text or "expected" in text
             ):
-                return "schema_validation_failure", detail
+                return "schema_validation_failure", detail, error_code, failed_generation
             if "model" in text and (
                 "permission" in text
                 or "not allowed" in text
                 or "not available" in text
                 or "not found" in text
             ):
-                return "model_permission_blocked", detail
-            return "other_invalid_request", detail
+                return "model_permission_blocked", detail, error_code, failed_generation
+            return "other_invalid_request", detail, error_code, failed_generation
 
         if 400 <= status < 500:
-            return "other_invalid_request", detail
-        return "http_error", detail
+            return "other_invalid_request", detail, error_code, failed_generation
+        return "http_error", detail, error_code, failed_generation
 
     def _model_supports_json_schema(self, model: str) -> bool:
         allowed = tuple(item.strip() for item in self.settings.llm_json_schema_supported_models if item.strip())
@@ -396,6 +412,8 @@ class GrokClient:
                 "wait_reason": metrics.get("wait_reason"),
                 "error_class": metrics.get("error_class"),
                 "breaker_state": metrics.get("breaker_state"),
+                "provider_error_code": metrics.get("provider_error_code"),
+                "provider_failed_generation_excerpt": metrics.get("provider_failed_generation_excerpt"),
             },
         )
 
@@ -444,7 +462,7 @@ class GrokClient:
             last_response = response
             self._apply_rate_headers(model, response)
 
-            error_class, detail = self._classify_http_error(response)
+            error_class, detail, error_code, failed_generation = self._classify_http_error(response)
             if response.status_code == 429 and attempt < attempts:
                 retry_count += 1
                 retry_after_header = response.headers.get("Retry-After")
@@ -486,6 +504,10 @@ class GrokClient:
                         "wait_reason": wait_reason,
                         "error_class": error_class,
                         "breaker_state": breaker_state,
+                        "provider_error_code": error_code,
+                        "provider_failed_generation_excerpt": (
+                            failed_generation[:500] if isinstance(failed_generation, str) else None
+                        ),
                     },
                 )
                 raise LLMRequestError(
@@ -493,6 +515,8 @@ class GrokClient:
                     error_class=error_class,
                     http_status=response.status_code,
                     provider_detail=detail,
+                    error_code=error_code,
+                    failed_generation=failed_generation,
                 )
 
             data = response.json()
@@ -513,6 +537,8 @@ class GrokClient:
                     "wait_reason": wait_reason,
                     "error_class": "none",
                     "breaker_state": breaker_state,
+                    "provider_error_code": None,
+                    "provider_failed_generation_excerpt": None,
                 },
             )
             return data
@@ -531,6 +557,8 @@ class GrokClient:
                     "wait_reason": wait_reason,
                     "error_class": "transport_error",
                     "breaker_state": breaker_state,
+                    "provider_error_code": None,
+                    "provider_failed_generation_excerpt": None,
                 },
             )
             raise LLMRequestError(
@@ -538,7 +566,7 @@ class GrokClient:
                 error_class="transport_error",
                 http_status=None,
             )
-        error_class, detail = self._classify_http_error(last_response)
+        error_class, detail, error_code, failed_generation = self._classify_http_error(last_response)
         self._record_call_metrics(
             task,
             {
@@ -552,6 +580,10 @@ class GrokClient:
                 "wait_reason": wait_reason,
                 "error_class": error_class,
                 "breaker_state": breaker_state,
+                "provider_error_code": error_code,
+                "provider_failed_generation_excerpt": (
+                    failed_generation[:500] if isinstance(failed_generation, str) else None
+                ),
             },
         )
         raise LLMRequestError(
@@ -559,6 +591,8 @@ class GrokClient:
             error_class=error_class,
             http_status=last_response.status_code,
             provider_detail=detail,
+            error_code=error_code,
+            failed_generation=failed_generation,
         )
 
     async def chat(
@@ -572,6 +606,7 @@ class GrokClient:
         response_schema_name: str = "structured_response",
         strict_schema: bool | None = None,
         task: str | None = None,
+        response_format_override: str | None = None,
     ) -> str:
         if not self.settings.xai_enabled:
             raise RuntimeError("xAI integration is disabled via XAI_ENABLED.")
@@ -606,7 +641,13 @@ class GrokClient:
         }
         strict = self.settings.llm_strict_schema_mode if strict_schema is None else strict_schema
         response_format_mode = "none"
-        if response_schema:
+        override = (response_format_override or "").strip().lower()
+        if override == "json_object":
+            payload["response_format"] = {"type": "json_object"}
+            response_format_mode = "json_object_forced"
+        elif override == "none":
+            response_format_mode = "none_forced"
+        elif response_schema:
             if self._model_supports_json_schema(selected_model):
                 payload["response_format"] = self._build_response_format(
                     response_schema_name,

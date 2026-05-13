@@ -22,7 +22,7 @@ from app.models.schemas import (
     ValidationSummary,
 )
 from app.services.batch_store import get_batch_store
-from app.services.generator import run_generator
+from app.services.generator import GeneratorStructuredOutputError, run_generator
 from app.services.planner import run_planner
 from app.services.appscript_bridge import AppScriptBridgeService
 from app.services.sheets_service import SheetsService
@@ -137,6 +137,25 @@ def _is_deterministic_llm_error(exc: Exception) -> bool:
         if f"[{marker}]" in text:
             return True
     return False
+
+
+def _is_schema_validation_failure(exc: Exception) -> bool:
+    if isinstance(exc, GeneratorStructuredOutputError):
+        error_class = str(exc.error_class or "").strip().lower()
+        error_code = str(exc.provider_error_code or "").strip().lower()
+        if error_class == "schema_validation_failure":
+            return True
+        if error_code in {"json_validate_failed", "failed_generation"}:
+            return True
+    text = str(exc).strip().lower()
+    if not text:
+        return False
+    return (
+        "schema_validation_failure" in text
+        or "failed_generation" in text
+        or "json_validate_failed" in text
+        or "failed to validate json" in text
+    )
 
 
 def _normalize_object_type(raw: str) -> str:
@@ -1745,6 +1764,7 @@ async def _run_generator_with_context_fallback(
 ) -> tuple[list[dict], dict, str]:
     runtime_metrics: dict = {}
     context_profile = standard_context_bundle.get("profile", "standard")
+    reduced_token_budget = max(300, int(get_settings().llm_generator_max_output_tokens * 0.6))
     try:
         generated_data = await run_generator(
             plan,
@@ -1759,8 +1779,33 @@ async def _run_generator_with_context_fallback(
             chunk_index=chunk_index,
             chunk_total=chunk_total,
             existing_titles=existing_titles,
+            max_output_tokens=None,
             allow_fallback=False,
         )
+    except GeneratorStructuredOutputError as exc:
+        if _is_schema_validation_failure(exc):
+            context_profile = aggressive_context_bundle.get("profile", "aggressive")
+            try:
+                generated_data = await run_generator(
+                    plan,
+                    dependency_mode=request.dependency_mode,
+                    focus_object_types=focus_object_types,
+                    related_objects=aggressive_context_bundle["related_objects"],
+                    reference_catalog=aggressive_context_bundle["reference_catalog"],
+                    recent_batch_context=aggressive_context_bundle["recent_batch_context"],
+                    context_notes=aggressive_context_bundle["context_notes"],
+                    chunk_instruction=chunk_instruction,
+                    chunk_target_count=chunk_target_count,
+                    chunk_index=chunk_index,
+                    chunk_total=chunk_total,
+                    existing_titles=existing_titles,
+                    max_output_tokens=reduced_token_budget,
+                    allow_fallback=False,
+                )
+            except GeneratorStructuredOutputError as compact_exc:
+                raise compact_exc from compact_exc
+        else:
+            raise
     except RuntimeError as exc:
         if _is_deterministic_llm_error(exc):
             raise
@@ -1779,6 +1824,7 @@ async def _run_generator_with_context_fallback(
                 chunk_index=chunk_index,
                 chunk_total=chunk_total,
                 existing_titles=existing_titles,
+                max_output_tokens=reduced_token_budget,
                 allow_fallback=False,
             )
         except RuntimeError as compact_exc:
@@ -1797,6 +1843,7 @@ async def _run_generator_with_context_fallback(
                 chunk_index=chunk_index,
                 chunk_total=chunk_total,
                 existing_titles=existing_titles,
+                max_output_tokens=reduced_token_budget,
                 allow_fallback=True,
             )
     runtime_metrics = GrokClient.get_last_call_metrics("generator")
@@ -2236,7 +2283,85 @@ async def generate_import_assistant_batch(
         chunking_metadata["total_pacing_wait_ms"] = round(total_pacing_wait_ms, 2)
         chunking_metadata["final_status"] = "failed"
         chunking_metadata["abort_reason"] = str(exc)
-        store.append_status(batch_id, "failed", f"Generation failed during chunking: {exc}")
+        runtime_metrics = GrokClient.get_last_call_metrics("generator")
+        generator_error_metadata: dict = {}
+        failure_code = "chunk_generation_failed"
+        failure_message = str(exc)
+        next_step_message = "Retry generation or reduce request scope/chunk size."
+        status_message_prefix = "Generation failed during chunking"
+        if not chunking_metadata.get("activated"):
+            status_message_prefix = "Generator JSON validation failed"
+        if isinstance(exc, GeneratorStructuredOutputError):
+            error_meta = exc.as_metadata()
+            generator_error_metadata = error_meta
+            failure_code = "generator_json_validation_failed"
+            failure_message = (
+                "Generator could not produce schema-valid JSON after multiple recovery modes."
+            )
+            next_step_message = (
+                "Use a narrower prompt with explicit Zendesk action fields (status/group_id/set_tags), "
+                "or answer the clarification question to continue."
+            )
+            if not benchmark_mode and exc.corrective_question:
+                clarification_questions = [
+                    {
+                        "id": "generator_output_shape",
+                        "question": exc.corrective_question,
+                        "reason": (
+                            "Generator output failed JSON/schema validation across retry modes. "
+                            "Please confirm a stricter, single-record output shape."
+                        ),
+                        "examples": [exc.corrective_example] if exc.corrective_example else [],
+                    }
+                ]
+                store.append_status(
+                    batch_id,
+                    "clarification_required",
+                    "Generator JSON validation failed. Clarification requested before retry.",
+                )
+                clarification_batch = store.update_batch(
+                    batch_id,
+                    {
+                        "status": "clarification_required",
+                        "planning_summary": planning_summary,
+                        "records": [],
+                        "generated_counts": {},
+                        "validation_summary": ValidationSummary().model_dump(),
+                        "metadata": {
+                            "benchmark": {"enabled": benchmark_mode},
+                            "chunking": chunking_metadata,
+                            "llm_routes": {
+                                "planner": planner_route.__dict__,
+                                "clarifier": clarifier_route.__dict__,
+                                "generator": generator_route.__dict__,
+                            },
+                            "llm_runtime": {
+                                "planner": planner_telemetry,
+                                "generator": runtime_metrics,
+                                "generator_chunks": generator_chunk_telemetry,
+                                "generator_error": generator_error_metadata,
+                            },
+                            "failure": {
+                                "failure_stage": "generate",
+                                "failure_code": failure_code,
+                                "failure_reason": failure_message,
+                                "next_step": next_step_message,
+                            },
+                        },
+                    },
+                )
+                return ImportAssistantGenerateResponse(
+                    batch_id=batch_id,
+                    status="clarification_required",
+                    planning_summary=clarification_batch.get("planning_summary", {}),
+                    generated_counts={},
+                    validation_summary=ValidationSummary(),
+                    preview_url=f"/api/import-assistant/preview/{batch_id}",
+                    needs_clarification=True,
+                    clarification_questions=clarification_questions,
+                    metadata=clarification_batch.get("metadata", {}),
+                )
+        store.append_status(batch_id, "failed", f"{status_message_prefix}: {exc}")
         store.update_batch(
             batch_id,
             {
@@ -2253,18 +2378,22 @@ async def generate_import_assistant_batch(
                     },
                     "llm_runtime": {
                         "planner": planner_telemetry,
+                        "generator": runtime_metrics,
                         "generator_chunks": generator_chunk_telemetry,
+                        "generator_error": generator_error_metadata,
                     },
                     "failure": {
                         "failure_stage": "generate",
-                        "failure_code": "chunk_generation_failed",
-                        "failure_reason": str(exc),
-                        "next_step": "Retry generation or reduce request scope/chunk size.",
+                        "failure_code": failure_code,
+                        "failure_reason": failure_message,
+                        "next_step": next_step_message,
                     },
                 },
             },
         )
-        raise RuntimeError(f"Chunked generation aborted: {exc}") from exc
+        if chunking_metadata.get("activated"):
+            raise RuntimeError(f"Chunked generation aborted: {exc}") from exc
+        raise RuntimeError(f"Generator JSON validation failed: {exc}") from exc
 
     if chunking_metadata["activated"]:
         chunking_metadata["total_generated_before_dedupe"] = total_generated_before_dedupe

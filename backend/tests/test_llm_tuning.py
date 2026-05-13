@@ -12,6 +12,11 @@ def test_groq_stage_model_defaults_and_conservative_context(monkeypatch):
     monkeypatch.delenv("LLM_MODEL_PLANNER", raising=False)
     monkeypatch.delenv("LLM_MODEL_CLARIFIER", raising=False)
     monkeypatch.delenv("LLM_MODEL_GENERATOR", raising=False)
+    monkeypatch.delenv("LLM_STRICT_SCHEMA_GENERATOR", raising=False)
+    monkeypatch.delenv("LLM_GENERATOR_MAX_OUTPUT_TOKENS", raising=False)
+    monkeypatch.delenv("LLM_CONTEXT_MAX_CATALOG_ENTRIES", raising=False)
+    monkeypatch.delenv("LLM_CONTEXT_MAX_ENTRIES_PER_CATALOG", raising=False)
+    monkeypatch.delenv("LLM_CONTEXT_MAX_RECENT_ITEMS", raising=False)
     get_settings.cache_clear()
 
     settings = get_settings()
