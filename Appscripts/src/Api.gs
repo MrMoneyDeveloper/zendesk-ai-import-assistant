@@ -70,6 +70,10 @@ function doPost(e) {
       return jsonResponse_(getBatchPreview(payload));
     }
 
+    if (action === 'stage_validate_preview') {
+      return jsonResponse_(stageValidatePreviewPipeline_(payload));
+    }
+
     if (action === 'update_approval_status') {
       return jsonResponse_(handleUpdateApprovalStatus_(payload));
     }
@@ -86,6 +90,34 @@ function doPost(e) {
   } catch (error) {
     return jsonResponse_({ ok: false, action: 'error', error: String(error.message || error) });
   }
+}
+
+function stageValidatePreviewPipeline_(payload) {
+  const input = payload || {};
+  const batchId = requireBatchId_(input.batch_id);
+  const staging = writeBatchToSheets(input);
+  const validation = validateBatch({ batch_id: batchId });
+  const preview = getBatchPreview({ batch_id: batchId });
+
+  const previewRecords = Array.isArray(preview && preview.records) ? preview.records : [];
+  return {
+    ok: true,
+    action: 'stage_validate_preview',
+    batch_id: batchId,
+    spreadsheet_id: staging && staging.spreadsheet_id ? staging.spreadsheet_id : null,
+    spreadsheet_url: staging && staging.spreadsheet_url ? staging.spreadsheet_url : null,
+    summary: {
+      request_rows_written: Number((staging && staging.request_rows_written) || 0),
+      planning_rows_written: Number((staging && staging.planning_rows_written) || 0),
+      total_records: Number((staging && staging.total_records) || 0),
+      validated_rows: Number((validation && validation.validated_rows) || 0),
+      preview_records: previewRecords.length,
+      validation_summary: (validation && validation.summary) || {}
+    },
+    staging: staging || {},
+    validation: validation || {},
+    preview: preview || {}
+  };
 }
 
 function getSchemaBundleInfoSafe_() {

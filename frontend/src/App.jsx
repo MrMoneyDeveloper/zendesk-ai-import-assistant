@@ -102,6 +102,70 @@ function humanizeStatusStep(status, message) {
   return `${base} ${detail}`;
 }
 
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor((ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function objectTypeLabel(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "Object";
+  const mapping = {
+    triggers: "Trigger",
+    automations: "Automation",
+    macros: "Macro",
+    views: "View",
+    groups: "Group",
+    ticket_fields: "Field",
+    ticket_forms: "Form",
+    articles: "Article",
+  };
+  return mapping[text] || text.replace(/_/g, " ");
+}
+
+function extractWaveChunkProgress(statusHistory = [], metadata = {}) {
+  const history = Array.isArray(statusHistory) ? statusHistory : [];
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const row = history[index] || {};
+    const message = String(row.message || "");
+    const waveMatch = message.match(/wave\s+(\d+)\/(\d+)\s+([a-z_]+)\s+chunk\s+(\d+)\/(\d+)/i);
+    if (waveMatch) {
+      return {
+        badge: `Wave ${waveMatch[1]} • ${objectTypeLabel(waveMatch[3])} ${waveMatch[4]}/${waveMatch[5]}`,
+        chunkIndex: Number(waveMatch[4]),
+        chunkTotal: Number(waveMatch[5]),
+      };
+    }
+    const chunkMatch = message.match(/chunk\s+(\d+)\/(\d+)/i);
+    if (chunkMatch) {
+      return {
+        badge: `Chunk ${chunkMatch[1]}/${chunkMatch[2]}`,
+        chunkIndex: Number(chunkMatch[1]),
+        chunkTotal: Number(chunkMatch[2]),
+      };
+    }
+  }
+
+  const chunking = metadata?.chunking || {};
+  const totalChunks = Number(chunking?.total_chunks || 0);
+  const chunkRows = Array.isArray(chunking?.chunks) ? chunking.chunks : [];
+  if (totalChunks > 0 && chunkRows.length > 0) {
+    return {
+      badge: `Chunk ${chunkRows.length}/${totalChunks}`,
+      chunkIndex: chunkRows.length,
+      chunkTotal: totalChunks,
+    };
+  }
+  return {
+    badge: "Preparing run",
+    chunkIndex: 0,
+    chunkTotal: 0,
+  };
+}
+
 function sectionLabel(key) {
   const labels = {
     groups: "Groups",
@@ -128,6 +192,16 @@ const TERMINAL_BATCH_STATUSES = new Set([
   "deployed",
   "deployed_partial",
   "deploy_failed",
+]);
+
+const PREVIEW_POLL_ACTIVE_STATUSES = new Set([
+  "staging",
+  "staged",
+  "validating",
+  "validated_passed",
+  "validated_warning",
+  "validated_failed",
+  "preview_ready",
 ]);
 
 const FOCUS_TO_CATALOG_KEYS = {
@@ -183,6 +257,8 @@ function App() {
   const [lastFailureDetail, setLastFailureDetail] = useState(null);
   const [focusObjectTypes, setFocusObjectTypes] = useState([]);
   const [attachments, setAttachments] = useState([]);
+  const [activeRunStartedAtMs, setActiveRunStartedAtMs] = useState(null);
+  const [processingClockMs, setProcessingClockMs] = useState(Date.now());
   const lastContextSyncRef = useRef("");
   const lastContextErrorRef = useRef("");
   const conversationEndRef = useRef(null);
@@ -230,6 +306,7 @@ function App() {
   const generateMutation = useMutation({
     mutationFn: generateBatch,
     onMutate: () => {
+      setActiveRunStartedAtMs(Date.now());
       setLastFailureDetail(null);
       appendActivity("info", "Started generate -> stage -> validate pipeline.");
       appendTimeline("assistant", "Processing your request...");
@@ -423,14 +500,13 @@ function App() {
       if (current && TERMINAL_BATCH_STATUSES.has(current)) {
         return false;
       }
-      if (
-        generateMutation.isPending
-        || approveMutation.isPending
-        || deployMutation.isPending
-      ) {
+      if (approveMutation.isPending || deployMutation.isPending) {
         return 2_500;
       }
-      return 5_000;
+      if (PREVIEW_POLL_ACTIVE_STATUSES.has(current)) {
+        return generateMutation.isPending ? 2_500 : 5_000;
+      }
+      return false;
     },
     refetchOnWindowFocus: false,
   });
@@ -501,6 +577,26 @@ function App() {
   const currentStatus = jobQuery.data?.status || generateMutation.data?.status || null;
   const selectedRelatedObjects = Object.values(selectedContext);
   const previewRecords = previewQuery.data?.records || [];
+  const hasActiveBatchRun = Boolean(
+    batchId
+    && currentStatus
+    && !TERMINAL_BATCH_STATUSES.has(String(currentStatus))
+  );
+  const shouldTickProcessingClock = Boolean(
+    generateMutation.isPending
+    || approveMutation.isPending
+    || deployMutation.isPending
+    || hasActiveBatchRun
+  );
+
+  useEffect(() => {
+    if (!shouldTickProcessingClock) return undefined;
+    setProcessingClockMs(Date.now());
+    const interval = setInterval(() => {
+      setProcessingClockMs(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [shouldTickProcessingClock]);
 
   const buildDecisionPayload = () => {
     return Object.entries(decisions)
@@ -711,6 +807,7 @@ function App() {
     setFocusObjectTypes([]);
     setAttachments([]);
     setShowAdvancedCatalog(false);
+    setActiveRunStartedAtMs(null);
     lastContextSyncRef.current = "";
     lastContextErrorRef.current = "";
     resetFlow();
@@ -733,6 +830,7 @@ function App() {
     setShowAdvancedCatalog(false);
     setShowProcessingDetails(false);
     setShowExistingContext(false);
+    setActiveRunStartedAtMs(null);
     resetFlow();
     if (previousBatchId) {
       queryClient.removeQueries({ queryKey: ["job", previousBatchId] });
@@ -1002,6 +1100,36 @@ function App() {
     jobQuery.data?.status_history,
   ]);
 
+  const processingSnapshot = useMemo(() => {
+    const runtimeMetadata = generatedData?.metadata || jobQuery.data?.metadata || {};
+    const progress = extractWaveChunkProgress(jobQuery.data?.status_history || [], runtimeMetadata);
+    const fallbackStart = jobQuery.data?.created_at ? Date.parse(jobQuery.data.created_at) : null;
+    const startAtMs = activeRunStartedAtMs || fallbackStart || null;
+    const elapsedMs = startAtMs ? Math.max(0, processingClockMs - startAtMs) : 0;
+    let etaMs = null;
+    if (progress.chunkTotal > 0 && progress.chunkIndex > 0 && progress.chunkTotal > progress.chunkIndex) {
+      const chunkAverage = elapsedMs / progress.chunkIndex;
+      etaMs = Math.max(0, Math.round(chunkAverage * (progress.chunkTotal - progress.chunkIndex)));
+    }
+    const currentLine = processingLines[0];
+    return {
+      badge: progress.badge || "Preparing run",
+      elapsedLabel: formatDuration(elapsedMs),
+      etaLabel: etaMs === null ? "estimating" : formatDuration(etaMs),
+      currentDoing: currentLine?.text || currentPhaseLabel,
+      lines: processingLines.slice(0, 8),
+    };
+  }, [
+    activeRunStartedAtMs,
+    currentPhaseLabel,
+    generatedData?.metadata,
+    jobQuery.data?.created_at,
+    jobQuery.data?.metadata,
+    jobQuery.data?.status_history,
+    processingClockMs,
+    processingLines,
+  ]);
+
   if (!zendeskValidated) {
     return (
       <ZendeskSessionGate
@@ -1121,6 +1249,16 @@ function App() {
                     {isWorking ? "Processing..." : "Processing details"}
                   </p>
                   <p className="text-xs text-slate-400">{currentPhaseLabel}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#B9A7D9]">
+                    <span className="rounded-full border border-[#7B1FFF]/40 bg-[#07030F]/70 px-2 py-0.5">
+                      {processingSnapshot.badge}
+                    </span>
+                    <span>Elapsed: {processingSnapshot.elapsedLabel}</span>
+                    <span>ETA: {processingSnapshot.etaLabel}</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-300">
+                    Currently doing: {processingSnapshot.currentDoing}
+                  </p>
                 </div>
                 <span className="text-xs text-[#B9A7D9]">
                   {showProcessingDetails ? "Hide" : "Show"}
@@ -1128,7 +1266,7 @@ function App() {
               </button>
               {showProcessingDetails ? (
                 <div className="mt-3 space-y-1 border-t border-[#7B1FFF]/20 pt-2 text-xs text-slate-300">
-                  {processingLines.slice(0, 3).map((line, idx) => (
+                  {processingSnapshot.lines.map((line, idx) => (
                     <p key={`${idx}-${line.at}-${line.text}`}>
                       [{new Date(line.at).toLocaleTimeString()}] {line.stage}: {line.text}
                     </p>

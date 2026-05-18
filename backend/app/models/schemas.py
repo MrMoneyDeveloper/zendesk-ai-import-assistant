@@ -325,6 +325,7 @@ class AppScriptActionRequest(BaseModel):
         "write_batch_to_sheets",
         "validate_batch",
         "get_batch_preview",
+        "stage_validate_preview",
         "update_approval_status",
         "write_execution_log",
         "get_execution_summary",

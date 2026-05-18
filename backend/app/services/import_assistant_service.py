@@ -169,6 +169,7 @@ ORCHESTRATION_WAVE_BY_OBJECT = {
     for object_type in object_types
 }
 WAVE3_RULE_OBJECT_TYPES = {"triggers", "macros", "automations"}
+OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD = 3
 
 BUSINESS_BRIEF_SIGNAL_PATTERNS = (
     r"\bbusiness\b",
@@ -4019,6 +4020,8 @@ async def generate_import_assistant_batch(
     generator_chunk_telemetry: list[dict] = []
     chunked_titles: list[str] = []
     chunked_title_set: set[str] = set()
+    failure_count_by_object_type: dict[str, int] = {}
+    forced_deterministic_object_types: set[str] = set()
     total_duplicates_dropped = 0
     total_generated_before_dedupe = 0
     total_pacing_wait_ms = 0.0
@@ -4203,29 +4206,75 @@ async def generate_import_assistant_batch(
                             target_count=int(item_chunk_target),
                         )
                         used_deterministic_fallback = False
+                        forced_deterministic_for_chunk = False
+                        forced_reason: str | None = None
                         selected_model_for_chunk = item_generator_model or primary_generator_model or None
                         selected_api_key_for_chunk = item_generator_api_key or primary_generator_api_key or None
                         chunk_error: RuntimeError | None = None
                         fallback_reason: str | None = None
-                        try:
-                            chunk_rows, chunk_runtime_metrics, context_profile = await _run_generator_with_context_fallback(
-                                plan=item_plan,
-                                request=generator_request,
-                                focus_object_types=focus_object_types,
-                                standard_context_bundle=generator_context_bundle,
-                                aggressive_context_bundle=llm_context_aggressive,
-                                chunk_instruction=chunk_instruction,
-                                chunk_target_count=int(item_chunk_target),
-                                chunk_index=local_chunk_index,
-                                chunk_total=len(item_chunk_targets),
-                                existing_titles=chunked_titles[-200:],
-                                compatibility_first=compatibility_first_for_item,
-                                compatibility_only=compatibility_only_for_item,
-                                model_override=selected_model_for_chunk,
-                                api_key_override=selected_api_key_for_chunk,
+                        chunk_rows: list[dict] = []
+                        chunk_runtime_metrics: dict = {}
+                        context_profile = "standard"
+                        if object_type in forced_deterministic_object_types:
+                            forced_deterministic_for_chunk = True
+                            forced_count = int(failure_count_by_object_type.get(object_type, 0) or 0)
+                            forced_reason = (
+                                f"Object type '{object_type}' forced to deterministic mode after "
+                                f"{forced_count} generation failures in this run."
                             )
-                        except RuntimeError as chunk_exc:
-                            chunk_error = chunk_exc
+                            chunk_rows = _build_deterministic_chunk_rows(
+                                object_type=object_type,
+                                target_count=int(item_chunk_target),
+                                prompt=request.prompt,
+                                reference_catalog=reference_catalog,
+                                existing_titles=chunked_titles[-200:],
+                                generated_rows=generated_data,
+                                reason=forced_reason,
+                            )
+                            if not chunk_rows:
+                                raise GenerateFailureError(
+                                    code="wave_generation_failed",
+                                    reason=(
+                                        f"Deterministic failover could not build valid {object_type} rows for "
+                                        f"wave {wave_position}/{total_wave_count} chunk "
+                                        f"{local_chunk_index}/{len(item_chunk_targets)}."
+                                    ),
+                                    next_step=(
+                                        "Retry with narrower per-object scope and explicit action/condition hints "
+                                        "for this object type."
+                                    ),
+                                )
+                            used_deterministic_fallback = True
+                            fallback_reason = forced_reason
+                            context_profile = "forced_deterministic"
+                            chunk_runtime_metrics = {
+                                "pre_request_wait_ms": 0.0,
+                                "retry_count": 0,
+                                "final_status": "forced_deterministic",
+                                "http_status": None,
+                                "model": "deterministic_fallback",
+                            }
+                        else:
+                            try:
+                                chunk_rows, chunk_runtime_metrics, context_profile = await _run_generator_with_context_fallback(
+                                    plan=item_plan,
+                                    request=generator_request,
+                                    focus_object_types=focus_object_types,
+                                    standard_context_bundle=generator_context_bundle,
+                                    aggressive_context_bundle=llm_context_aggressive,
+                                    chunk_instruction=chunk_instruction,
+                                    chunk_target_count=int(item_chunk_target),
+                                    chunk_index=local_chunk_index,
+                                    chunk_total=len(item_chunk_targets),
+                                    existing_titles=chunked_titles[-200:],
+                                    compatibility_first=compatibility_first_for_item,
+                                    compatibility_only=compatibility_only_for_item,
+                                    model_override=selected_model_for_chunk,
+                                    api_key_override=selected_api_key_for_chunk,
+                                )
+                                failure_count_by_object_type[object_type] = 0
+                            except RuntimeError as chunk_exc:
+                                chunk_error = chunk_exc
                         if (
                             chunk_error is not None
                             and selected_model_for_chunk
@@ -4260,11 +4309,26 @@ async def generate_import_assistant_batch(
                                     api_key_override=primary_generator_api_key,
                                 )
                                 chunk_error = None
+                                failure_count_by_object_type[object_type] = 0
                                 chunk_runtime_metrics = dict(chunk_runtime_metrics or {})
                                 chunk_runtime_metrics["model_fallback_from"] = selected_model_for_chunk
                             except RuntimeError as primary_chunk_exc:
                                 chunk_error = primary_chunk_exc
                         if chunk_error is not None:
+                            object_failure_count = int(failure_count_by_object_type.get(object_type, 0) or 0) + 1
+                            failure_count_by_object_type[object_type] = object_failure_count
+                            if object_failure_count >= OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD:
+                                if object_type not in forced_deterministic_object_types:
+                                    forced_deterministic_object_types.add(object_type)
+                                    store.append_status(
+                                        batch_id,
+                                        "generating",
+                                        (
+                                            f"Object-level failover activated for {object_type}: "
+                                            f"{object_failure_count} generation failures in this run. "
+                                            "Remaining chunks will use deterministic synthesis."
+                                        ),
+                                    )
                             if _can_use_deterministic_chunk_fallback(object_type):
                                 chunk_rows = _build_deterministic_chunk_rows(
                                     object_type=object_type,
@@ -4309,6 +4373,7 @@ async def generate_import_assistant_batch(
                                 )
                             else:
                                 raise chunk_error
+                        object_failure_count_for_chunk = int(failure_count_by_object_type.get(object_type, 0) or 0)
                         if context_profile == "aggressive":
                             store.append_status(
                                 batch_id,
@@ -4374,6 +4439,9 @@ async def generate_import_assistant_batch(
                             "backlog_id": item_meta["backlog_id"],
                             "reconcile_mode": reconcile_mode,
                             "deterministic_fallback": used_deterministic_fallback,
+                            "forced_deterministic": forced_deterministic_for_chunk,
+                            "object_failure_count_in_run": object_failure_count_for_chunk,
+                            "forced_reason": forced_reason,
                             "fallback_reason": fallback_reason,
                         }
                         generator_chunk_telemetry.append(chunk_entry)
@@ -4415,63 +4483,127 @@ async def generate_import_assistant_batch(
                     target_count=int(target_count),
                 )
                 used_deterministic_fallback = False
+                forced_deterministic_for_chunk = False
+                forced_reason: str | None = None
                 fallback_reason: str | None = None
-                try:
-                    chunk_rows, chunk_runtime_metrics, context_profile = await _run_generator_with_context_fallback(
-                        plan=plan,
-                        request=generator_request,
-                        focus_object_types=focus_object_types,
-                        standard_context_bundle=generator_context_bundle,
-                        aggressive_context_bundle=llm_context_aggressive,
-                        chunk_instruction=chunk_instruction,
-                        chunk_target_count=int(target_count),
-                        chunk_index=index,
-                        chunk_total=len(chunk_targets),
-                        existing_titles=chunked_titles[-200:],
-                        compatibility_first=chunked_form_field_compatibility_first,
-                        compatibility_only=chunked_ticket_fields_compatibility_only,
+                current_object_type = _normalize_object_type(str(plan.get("object_type", "")))
+                chunk_rows: list[dict] = []
+                chunk_runtime_metrics: dict = {}
+                context_profile = "standard"
+                if current_object_type in forced_deterministic_object_types:
+                    forced_deterministic_for_chunk = True
+                    forced_count = int(failure_count_by_object_type.get(current_object_type, 0) or 0)
+                    forced_reason = (
+                        f"Object type '{current_object_type}' forced to deterministic mode after "
+                        f"{forced_count} generation failures in this run."
                     )
-                except RuntimeError as chunk_exc:
-                    current_object_type = _normalize_object_type(str(plan.get("object_type", "")))
-                    if _can_use_deterministic_chunk_fallback(current_object_type):
-                        chunk_rows = _build_deterministic_chunk_rows(
-                            object_type=current_object_type,
-                            target_count=int(target_count),
-                            prompt=request.prompt,
-                            reference_catalog=reference_catalog,
+                    chunk_rows = _build_deterministic_chunk_rows(
+                        object_type=current_object_type,
+                        target_count=int(target_count),
+                        prompt=request.prompt,
+                        reference_catalog=reference_catalog,
+                        existing_titles=chunked_titles[-200:],
+                        generated_rows=generated_data,
+                        reason=forced_reason,
+                    )
+                    if not chunk_rows:
+                        raise GenerateFailureError(
+                            code="chunk_generation_failed",
+                            reason=(
+                                f"Deterministic failover could not build valid {current_object_type} rows "
+                                f"for chunk {index}/{len(chunk_targets)}."
+                            ),
+                            next_step=(
+                                "Retry with narrower scope and explicit action/condition hints for this object "
+                                "type."
+                            ),
+                        )
+                    used_deterministic_fallback = True
+                    fallback_reason = forced_reason
+                    context_profile = "forced_deterministic"
+                    chunk_runtime_metrics = {
+                        "pre_request_wait_ms": 0.0,
+                        "retry_count": 0,
+                        "final_status": "forced_deterministic",
+                        "http_status": None,
+                        "model": "deterministic_fallback",
+                    }
+                else:
+                    try:
+                        chunk_rows, chunk_runtime_metrics, context_profile = await _run_generator_with_context_fallback(
+                            plan=plan,
+                            request=generator_request,
+                            focus_object_types=focus_object_types,
+                            standard_context_bundle=generator_context_bundle,
+                            aggressive_context_bundle=llm_context_aggressive,
+                            chunk_instruction=chunk_instruction,
+                            chunk_target_count=int(target_count),
+                            chunk_index=index,
+                            chunk_total=len(chunk_targets),
                             existing_titles=chunked_titles[-200:],
-                            generated_rows=generated_data,
-                            reason=str(chunk_exc),
+                            compatibility_first=chunked_form_field_compatibility_first,
+                            compatibility_only=chunked_ticket_fields_compatibility_only,
                         )
-                        if not chunk_rows:
-                            raise GenerateFailureError(
-                                code="chunk_generation_failed",
-                                reason=(
-                                    f"Deterministic fallback could not build valid {current_object_type} rows "
-                                    f"for chunk {index}/{len(chunk_targets)}."
-                                ),
-                                next_step=(
-                                    "Retry with narrower scope and explicit action/condition hints for this object "
-                                    "type."
-                                ),
-                            ) from chunk_exc
-                        used_deterministic_fallback = True
-                        fallback_reason = str(chunk_exc)
-                        context_profile = "deterministic_fallback"
-                        chunk_runtime_metrics = {
-                            "pre_request_wait_ms": 0.0,
-                            "retry_count": 0,
-                            "final_status": "fallback",
-                            "http_status": None,
-                            "model": "deterministic_fallback",
-                        }
-                        store.append_status(
-                            batch_id,
-                            "generating",
-                            f"Chunk {index}/{len(chunk_targets)} used deterministic fallback record synthesis.",
-                        )
-                    else:
-                        raise
+                        failure_count_by_object_type[current_object_type] = 0
+                    except RuntimeError as chunk_exc:
+                        object_failure_count = int(
+                            failure_count_by_object_type.get(current_object_type, 0) or 0
+                        ) + 1
+                        failure_count_by_object_type[current_object_type] = object_failure_count
+                        if object_failure_count >= OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD:
+                            if current_object_type not in forced_deterministic_object_types:
+                                forced_deterministic_object_types.add(current_object_type)
+                                store.append_status(
+                                    batch_id,
+                                    "generating",
+                                    (
+                                        f"Object-level failover activated for {current_object_type}: "
+                                        f"{object_failure_count} generation failures in this run. "
+                                        "Remaining chunks will use deterministic synthesis."
+                                    ),
+                                )
+                        if _can_use_deterministic_chunk_fallback(current_object_type):
+                            chunk_rows = _build_deterministic_chunk_rows(
+                                object_type=current_object_type,
+                                target_count=int(target_count),
+                                prompt=request.prompt,
+                                reference_catalog=reference_catalog,
+                                existing_titles=chunked_titles[-200:],
+                                generated_rows=generated_data,
+                                reason=str(chunk_exc),
+                            )
+                            if not chunk_rows:
+                                raise GenerateFailureError(
+                                    code="chunk_generation_failed",
+                                    reason=(
+                                        f"Deterministic fallback could not build valid {current_object_type} rows "
+                                        f"for chunk {index}/{len(chunk_targets)}."
+                                    ),
+                                    next_step=(
+                                        "Retry with narrower scope and explicit action/condition hints for this object "
+                                        "type."
+                                    ),
+                                ) from chunk_exc
+                            used_deterministic_fallback = True
+                            fallback_reason = str(chunk_exc)
+                            context_profile = "deterministic_fallback"
+                            chunk_runtime_metrics = {
+                                "pre_request_wait_ms": 0.0,
+                                "retry_count": 0,
+                                "final_status": "fallback",
+                                "http_status": None,
+                                "model": "deterministic_fallback",
+                            }
+                            store.append_status(
+                                batch_id,
+                                "generating",
+                                f"Chunk {index}/{len(chunk_targets)} used deterministic fallback record synthesis.",
+                            )
+                        else:
+                            raise
+                object_failure_count_for_chunk = int(
+                    failure_count_by_object_type.get(current_object_type, 0) or 0
+                )
                 if context_profile == "aggressive":
                     store.append_status(
                         batch_id,
@@ -4513,6 +4645,9 @@ async def generate_import_assistant_batch(
                     "model": chunk_runtime_metrics.get("model"),
                     "mode_order": generator_mode_order,
                     "deterministic_fallback": used_deterministic_fallback,
+                    "forced_deterministic": forced_deterministic_for_chunk,
+                    "object_failure_count_in_run": object_failure_count_for_chunk,
+                    "forced_reason": forced_reason,
                     "fallback_reason": fallback_reason,
                     "object_type": _normalize_object_type(str(plan.get("object_type", ""))),
                     "wave": _resolve_wave_for_object_type(str(plan.get("object_type", ""))),
@@ -4565,6 +4700,10 @@ async def generate_import_assistant_batch(
         chunking_metadata["total_pacing_wait_ms"] = round(total_pacing_wait_ms, 2)
         chunking_metadata["final_status"] = "failed"
         chunking_metadata["abort_reason"] = str(exc)
+        chunking_metadata["forced_deterministic_object_types"] = sorted(
+            forced_deterministic_object_types
+        )
+        chunking_metadata["object_failure_counts"] = dict(failure_count_by_object_type)
         if orchestration_mode == "business_blueprint":
             orchestration_metadata["final_status"] = "failed"
             orchestration_metadata["abort_reason"] = str(exc)
@@ -4708,6 +4847,10 @@ async def generate_import_assistant_batch(
         chunking_metadata["total_pacing_wait_ms"] = round(total_pacing_wait_ms, 2)
         chunking_metadata["chunks"] = generator_chunk_telemetry
         chunking_metadata["final_status"] = "single_pass"
+    chunking_metadata["forced_deterministic_object_types"] = sorted(
+        forced_deterministic_object_types
+    )
+    chunking_metadata["object_failure_counts"] = dict(failure_count_by_object_type)
     if orchestration_mode == "business_blueprint":
         orchestration_metadata["final_status"] = "ok"
         orchestration_metadata["generated_records"] = len(generated_data)
@@ -4864,110 +5007,204 @@ async def generate_import_assistant_batch(
 
         post_generation_stage = "staging"
         store.append_status(batch_id, "staging", "Staging batch to Google Sheets.")
+        appscript_payload = {
+            "batch_id": batch_id,
+            "prompt": request.prompt,
+            "requester": request.requester,
+            "status": "staging",
+            "target_environment": request.target_environment,
+            "created_at": created_at,
+            "planning_summary": planning_summary,
+            "records": preview_records,
+        }
+        use_legacy_roundtrip = True
         if appscript.enabled:
-            appscript_stage_raw = await appscript.invoke(
-                action="write_batch_to_sheets",
-                payload={
-                    "batch_id": batch_id,
-                    "prompt": request.prompt,
-                    "requester": request.requester,
-                    "status": "staging",
-                    "target_environment": request.target_environment,
-                    "created_at": created_at,
-                    "planning_summary": planning_summary,
-                    "records": preview_records,
-                },
+            combined_roundtrip_raw = await appscript.invoke(
+                action="stage_validate_preview",
+                payload=appscript_payload,
             )
-            appscript_stage = _normalize_appscript_action_result(
-                appscript_stage_raw,
-                action="write_batch_to_sheets",
+            combined_roundtrip = _normalize_appscript_action_result(
+                combined_roundtrip_raw,
+                action="stage_validate_preview",
             )
-            staging_metadata = {
-                "mode": "appscript",
-                "status": appscript_stage.get("status"),
-                "detail": appscript_stage.get("detail"),
-                "http_status": appscript_stage.get("http_status"),
-                "result": appscript_stage.get("data", {}),
-            }
-            if appscript_stage.get("status") != "ok" and sheets.enabled:
-                fallback_result = sheets.stage_batch(batch, plan, preview_records)
-                staging_metadata["fallback"] = {
-                    "mode": "google_sheets_service_account",
-                    "result": fallback_result,
-                }
-            elif appscript_stage.get("status") != "ok":
-                raise RuntimeError(
-                    appscript_stage.get("detail")
-                    or "Apps Script staging failed and no backend fallback is configured."
+            if combined_roundtrip.get("status") == "ok":
+                use_legacy_roundtrip = False
+                combined_data = combined_roundtrip.get("data", {})
+                stage_result = (
+                    combined_data.get("staging", {})
+                    if isinstance(combined_data.get("staging"), dict)
+                    else {}
                 )
-        else:
-            staging_metadata = {
-                "mode": "google_sheets_service_account",
-                "result": sheets.stage_batch(batch, plan, preview_records),
-            }
-
-        store.append_status(batch_id, "staged", "Batch staged.")
-
-        post_generation_stage = "validation"
-        store.append_status(batch_id, "validating", "Running row-level validation.")
-        if appscript.enabled:
-            appscript_validation_raw = await appscript.invoke(
-                action="validate_batch",
-                payload={"batch_id": batch_id},
-            )
-            appscript_validation = _normalize_appscript_action_result(
-                appscript_validation_raw,
-                action="validate_batch",
-            )
-            validation_metadata = {
-                "mode": "appscript",
-                "status": appscript_validation.get("status"),
-                "detail": appscript_validation.get("detail"),
-                "http_status": appscript_validation.get("http_status"),
-                "result": appscript_validation.get("data", {}),
-            }
-            validation_data = appscript_validation.get("data", {})
-            if isinstance(validation_data, dict):
-                summary_data = validation_data.get("summary", {})
-                if isinstance(summary_data, dict):
+                validation_result = (
+                    combined_data.get("validation", {})
+                    if isinstance(combined_data.get("validation"), dict)
+                    else {}
+                )
+                preview_result = (
+                    combined_data.get("preview", {})
+                    if isinstance(combined_data.get("preview"), dict)
+                    else {}
+                )
+                summary_result = (
+                    combined_data.get("summary", {})
+                    if isinstance(combined_data.get("summary"), dict)
+                    else {}
+                )
+                staging_metadata = {
+                    "mode": "appscript_combined",
+                    "status": combined_roundtrip.get("status"),
+                    "detail": combined_roundtrip.get("detail"),
+                    "http_status": combined_roundtrip.get("http_status"),
+                    "result": stage_result,
+                    "summary": summary_result,
+                }
+                validation_metadata = {
+                    "mode": "appscript_combined",
+                    "status": combined_roundtrip.get("status"),
+                    "detail": combined_roundtrip.get("detail"),
+                    "http_status": combined_roundtrip.get("http_status"),
+                    "result": validation_result,
+                    "summary": summary_result.get("validation_summary", {}),
+                }
+                appscript_preview_metadata = {
+                    "mode": "appscript_combined",
+                    "status": combined_roundtrip.get("status"),
+                    "detail": combined_roundtrip.get("detail"),
+                    "http_status": combined_roundtrip.get("http_status"),
+                    "result": {
+                        "status": preview_result.get("status"),
+                        "validation_summary": preview_result.get("validation_summary", {}),
+                        "generated_counts": preview_result.get("generated_counts", {}),
+                    },
+                }
+                store.append_status(
+                    batch_id,
+                    "staged",
+                    "Batch staged via combined Apps Script pipeline.",
+                )
+                post_generation_stage = "validation"
+                store.append_status(
+                    batch_id,
+                    "validating",
+                    "Running row-level validation via combined Apps Script pipeline.",
+                )
+                summary_candidates: list[dict] = []
+                for candidate in (
+                    validation_result.get("summary"),
+                    summary_result.get("validation_summary"),
+                    preview_result.get("validation_summary"),
+                ):
+                    if isinstance(candidate, dict):
+                        summary_candidates.append(candidate)
+                for summary_data in summary_candidates:
                     try:
                         validation_summary = ValidationSummary(**summary_data)
+                        break
                     except Exception:
-                        pass
-
-            if appscript_validation.get("status") != "ok" and sheets.enabled:
-                sheets.write_validation_log(batch_id, preview_records)
-                validation_metadata["fallback"] = {
-                    "mode": "google_sheets_service_account",
-                    "result": "validation log written from backend fallback",
-                }
-            elif appscript_validation.get("status") != "ok":
-                raise RuntimeError(
-                    appscript_validation.get("detail")
-                    or "Apps Script validation failed and no backend fallback is configured."
+                        continue
+            else:
+                store.append_status(
+                    batch_id,
+                    "staging",
+                    "Combined Apps Script pipeline unavailable; using legacy staging/validation/preview actions.",
                 )
-        else:
-            sheets.write_validation_log(batch_id, preview_records)
-            validation_metadata = {
-                "mode": "google_sheets_service_account",
-                "result": "validation log written",
-            }
 
-        if appscript.enabled:
-            appscript_preview_raw = await appscript.invoke(
-                action="get_batch_preview",
-                payload={"batch_id": batch_id},
-            )
-            appscript_preview = _normalize_appscript_action_result(
-                appscript_preview_raw,
-                action="get_batch_preview",
-            )
-            appscript_preview_metadata = {
-                "mode": "appscript",
-                "status": appscript_preview.get("status"),
-                "detail": appscript_preview.get("detail"),
-                "http_status": appscript_preview.get("http_status"),
-            }
+        if use_legacy_roundtrip:
+            if appscript.enabled:
+                appscript_stage_raw = await appscript.invoke(
+                    action="write_batch_to_sheets",
+                    payload=appscript_payload,
+                )
+                appscript_stage = _normalize_appscript_action_result(
+                    appscript_stage_raw,
+                    action="write_batch_to_sheets",
+                )
+                staging_metadata = {
+                    "mode": "appscript",
+                    "status": appscript_stage.get("status"),
+                    "detail": appscript_stage.get("detail"),
+                    "http_status": appscript_stage.get("http_status"),
+                    "result": appscript_stage.get("data", {}),
+                }
+                if appscript_stage.get("status") != "ok" and sheets.enabled:
+                    fallback_result = sheets.stage_batch(batch, plan, preview_records)
+                    staging_metadata["fallback"] = {
+                        "mode": "google_sheets_service_account",
+                        "result": fallback_result,
+                    }
+                elif appscript_stage.get("status") != "ok":
+                    raise RuntimeError(
+                        appscript_stage.get("detail")
+                        or "Apps Script staging failed and no backend fallback is configured."
+                    )
+            else:
+                staging_metadata = {
+                    "mode": "google_sheets_service_account",
+                    "result": sheets.stage_batch(batch, plan, preview_records),
+                }
+
+            store.append_status(batch_id, "staged", "Batch staged.")
+
+            post_generation_stage = "validation"
+            store.append_status(batch_id, "validating", "Running row-level validation.")
+            if appscript.enabled:
+                appscript_validation_raw = await appscript.invoke(
+                    action="validate_batch",
+                    payload={"batch_id": batch_id},
+                )
+                appscript_validation = _normalize_appscript_action_result(
+                    appscript_validation_raw,
+                    action="validate_batch",
+                )
+                validation_metadata = {
+                    "mode": "appscript",
+                    "status": appscript_validation.get("status"),
+                    "detail": appscript_validation.get("detail"),
+                    "http_status": appscript_validation.get("http_status"),
+                    "result": appscript_validation.get("data", {}),
+                }
+                validation_data = appscript_validation.get("data", {})
+                if isinstance(validation_data, dict):
+                    summary_data = validation_data.get("summary", {})
+                    if isinstance(summary_data, dict):
+                        try:
+                            validation_summary = ValidationSummary(**summary_data)
+                        except Exception:
+                            pass
+
+                if appscript_validation.get("status") != "ok" and sheets.enabled:
+                    sheets.write_validation_log(batch_id, preview_records)
+                    validation_metadata["fallback"] = {
+                        "mode": "google_sheets_service_account",
+                        "result": "validation log written from backend fallback",
+                    }
+                elif appscript_validation.get("status") != "ok":
+                    raise RuntimeError(
+                        appscript_validation.get("detail")
+                        or "Apps Script validation failed and no backend fallback is configured."
+                    )
+            else:
+                sheets.write_validation_log(batch_id, preview_records)
+                validation_metadata = {
+                    "mode": "google_sheets_service_account",
+                    "result": "validation log written",
+                }
+
+            if appscript.enabled:
+                appscript_preview_raw = await appscript.invoke(
+                    action="get_batch_preview",
+                    payload={"batch_id": batch_id},
+                )
+                appscript_preview = _normalize_appscript_action_result(
+                    appscript_preview_raw,
+                    action="get_batch_preview",
+                )
+                appscript_preview_metadata = {
+                    "mode": "appscript",
+                    "status": appscript_preview.get("status"),
+                    "detail": appscript_preview.get("detail"),
+                    "http_status": appscript_preview.get("http_status"),
+                }
 
         if validation_summary.blocked > 0:
             store.append_status(batch_id, "validated_failed", "Validation produced blocked records.")
