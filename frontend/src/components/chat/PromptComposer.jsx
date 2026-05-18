@@ -45,6 +45,7 @@ export default function PromptComposer({
   onAddExistingContext,
   onRemoveExistingContext,
   articleHelpCenterHint = "",
+  embedded = false,
 }) {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -171,10 +172,12 @@ export default function PromptComposer({
   };
 
   return (
-    <div className="mx-auto mb-8 w-full max-w-5xl">
-      <h1 className="mb-4 text-center text-5xl font-medium text-slate-100">
-        Where should we begin?
-      </h1>
+    <div className={embedded ? "w-full" : "mx-auto mb-8 w-full max-w-5xl"}>
+      {!embedded ? (
+        <h1 className="mb-4 text-center text-5xl font-medium text-slate-100">
+          Where should we begin?
+        </h1>
+      ) : null}
       <div className="mb-3 grid gap-2 rounded-xl border border-[#7B1FFF]/30 bg-[#120522]/70 p-3 text-xs text-slate-300 md:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span className="text-[#B9A7D9]">Dependency behavior</span>
@@ -361,7 +364,7 @@ export default function PromptComposer({
         </div>
       ) : null}
 
-      <form onSubmit={submit} className="rounded-3xl border border-[#7B1FFF]/45 bg-[#120522]/80 p-3 shadow-lg shadow-[#9B35FF]/15">
+      <form onSubmit={submit} className={`rounded-3xl border border-[#7B1FFF]/45 bg-[#120522]/80 p-3 shadow-lg shadow-[#9B35FF]/15 ${embedded ? "ml-auto w-full max-w-4xl" : ""}`}>
         <div className="flex items-center gap-3">
           <button
             type="button"

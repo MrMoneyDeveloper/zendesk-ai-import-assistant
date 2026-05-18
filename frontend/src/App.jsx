@@ -44,6 +44,13 @@ function extractFailurePayload(error) {
 function parseFailureDetail(error) {
   const structured = extractFailurePayload(error);
   if (structured) {
+    if (structured.code === "rate_limited") {
+      const reason = structured.reason || "Request was rate-limited by the provider.";
+      const next = structured.nextStep
+        || "Wait for the rate-limit window to reset, then retry.";
+      const stage = structured.stage ? `[${structured.stage}] ` : "";
+      return `${stage}${reason} Next: ${next}`;
+    }
     const stage = structured.stage ? `[${structured.stage}] ` : "";
     const next = structured.nextStep ? ` Next: ${structured.nextStep}` : "";
     const reason = structured.reason || "Request failed.";
@@ -58,6 +65,41 @@ function statusBadgeVariant(status) {
   if (["deploy_failed", "failed", "validated_failed"].includes(status)) return "danger";
   if (["deployed_partial", "validated_warning"].includes(status)) return "warning";
   return "neutral";
+}
+
+const STATUS_STEP_LABELS = {
+  received: "Request received.",
+  request_validated: "Validating request payload and context.",
+  planning: "Planning generation strategy.",
+  planned: "Plan created.",
+  business_blueprinting: "Compiling business blueprint from your prompt.",
+  backlog_building: "Building deterministic dependency backlog.",
+  wave_execution: "Executing orchestration waves.",
+  schemas_selected: "Selecting schema constraints.",
+  generating: "Generating structured records.",
+  generated: "Generation completed.",
+  staging: "Writing staged records to Apps Script/Sheets.",
+  staged: "Staging completed.",
+  validating: "Running safety and validation checks.",
+  validated_passed: "Validation passed.",
+  validated_warning: "Validation passed with warnings.",
+  validated_failed: "Validation failed.",
+  preview_ready: "Preview ready for review.",
+  approved: "Approval decisions saved.",
+  partially_approved: "Partial approval saved.",
+  deploying: "Deploying approved records to Zendesk.",
+  deployed: "Deployment completed.",
+  deployed_partial: "Deployment completed with partial failures.",
+  deploy_failed: "Deployment failed.",
+  failed: "Run failed.",
+};
+
+function humanizeStatusStep(status, message) {
+  const base = STATUS_STEP_LABELS[String(status || "").trim()] || status || "processing";
+  const detail = String(message || "").trim();
+  if (!detail) return base;
+  if (detail.toLowerCase() === base.toLowerCase()) return base;
+  return `${base} ${detail}`;
 }
 
 function sectionLabel(key) {
@@ -77,6 +119,16 @@ function sectionLabel(key) {
   };
   return labels[key] || key;
 }
+
+const TERMINAL_BATCH_STATUSES = new Set([
+  "preview_ready",
+  "failed",
+  "approved",
+  "partially_approved",
+  "deployed",
+  "deployed_partial",
+  "deploy_failed",
+]);
 
 const FOCUS_TO_CATALOG_KEYS = {
   triggers: ["triggers", "groups", "ticket_forms", "brands"],
@@ -252,15 +304,11 @@ function App() {
     refetchInterval: (query) => {
       const data = query.state.data;
       const appscriptHealth = data?.appscript?.health;
-      const appscriptSource = data?.appscript?.health_source;
       if (generateMutation.isPending) {
         return 15_000;
       }
-      if (appscriptHealth === "ok" && appscriptSource === "cache") {
-        return false;
-      }
       if (appscriptHealth === "ok") {
-        return 60_000;
+        return false;
       }
       return 20_000;
     },
@@ -269,7 +317,8 @@ function App() {
   const jobsQuery = useQuery({
     queryKey: ["jobs-list"],
     queryFn: () => listJobs(40),
-    refetchInterval: 10000,
+    refetchInterval: 45_000,
+    refetchOnWindowFocus: false,
   });
 
   const zendeskContextQuery = useQuery({
@@ -307,13 +356,6 @@ function App() {
       }
       return 2500;
     },
-  });
-
-  const previewQuery = useQuery({
-    queryKey: ["preview", batchId],
-    queryFn: () => getPreview(batchId),
-    enabled: Boolean(batchId),
-    refetchInterval: 5000,
   });
 
   const approveMutation = useMutation({
@@ -369,6 +411,28 @@ function App() {
       appendActivity("error", detail);
       appendTimeline("assistant", `Deploy failed: ${detail}`);
     },
+  });
+
+  const previewQuery = useQuery({
+    queryKey: ["preview", batchId],
+    queryFn: () => getPreview(batchId),
+    enabled: Boolean(batchId),
+    refetchInterval: () => {
+      if (!batchId) return false;
+      const current = String(jobQuery.data?.status || "");
+      if (current && TERMINAL_BATCH_STATUSES.has(current)) {
+        return false;
+      }
+      if (
+        generateMutation.isPending
+        || approveMutation.isPending
+        || deployMutation.isPending
+      ) {
+        return 2_500;
+      }
+      return 5_000;
+    },
+    refetchOnWindowFocus: false,
   });
 
   const zendeskValidateMutation = useMutation({
@@ -866,79 +930,76 @@ function App() {
   );
 
   const processingLines = useMemo(() => {
-    const nowIso = new Date().toISOString();
-    const lines = [];
+    const runtimeMetadata = generatedData?.metadata || jobQuery.data?.metadata || {};
+    const orchestration = runtimeMetadata?.orchestration || {};
+    const waveRows = Array.isArray(orchestration?.waves) ? orchestration.waves : [];
+    const history = [...(jobQuery.data?.status_history || [])];
+    const lines = history
+      .filter((item) => item?.status && item?.message)
+      .slice(-10)
+      .reverse()
+      .map((item) => ({
+        at: item.at || new Date().toISOString(),
+        stage: item.status,
+        text: humanizeStatusStep(item.status, item.message),
+      }));
+
+    if (waveRows.length > 0) {
+      const waveProgress = waveRows
+        .map((wave) => {
+          const waveId = Number(wave?.wave || 0);
+          const status = String(wave?.status || "pending");
+          const created = Number(wave?.created || 0);
+          const reused = Number(wave?.reused || 0);
+          const updated = Number(wave?.updated || 0);
+          const blocked = Number(wave?.blocked || 0);
+          const chunks = Number(wave?.chunks || 0);
+          return `Wave ${waveId}: ${status} (chunks=${chunks}, create=${created}, reuse=${reused}, update=${updated}, blocked=${blocked})`;
+        })
+        .filter(Boolean);
+      if (waveProgress.length > 0) {
+        lines.unshift({
+          at: new Date().toISOString(),
+          stage: "wave_execution",
+          text: waveProgress.slice(0, 2).join(" | "),
+        });
+      }
+    }
+
     if (attachmentExtractMutation.isPending) {
-      lines.push({
-        at: nowIso,
+      lines.unshift({
+        at: new Date().toISOString(),
         stage: "attachments",
         text: "Extracting attachment text for prompt context.",
       });
     }
-    if (generateMutation.isPending || ["planning", "planned", "schemas_selected"].includes(currentStatus || "")) {
-      lines.push({
-        at: nowIso,
-        stage: "planning",
-        text: "Preparing constrained payload and calling planner model.",
-      });
-    }
-    if ((currentStatus || "") === "generating" || (currentStatus || "") === "generated") {
-      lines.push({
-        at: nowIso,
+
+    if (generateMutation.isPending && !lines.some((item) => item.stage === "generating")) {
+      lines.unshift({
+        at: new Date().toISOString(),
         stage: "generating",
-        text: "Generating structured records inside selected schema.",
+        text: "Generating records and synchronizing blueprint waves.",
       });
     }
-    if (["staging", "staged"].includes(currentStatus || "")) {
-      lines.push({
-        at: nowIso,
-        stage: "staging",
-        text: "Syncing records to Apps Script / Sheets staging tabs.",
-      });
-    }
-    if (["validating", "validated_warning", "validated_passed", "validated_failed"].includes(currentStatus || "")) {
-      lines.push({
-        at: nowIso,
-        stage: "validating",
-        text: "Running validation and safety gates before review.",
-      });
-    }
-    if (approveMutation.isPending) {
-      lines.push({
-        at: nowIso,
-        stage: "approval",
-        text: "Writing approval decisions to Apps Script.",
-      });
-    }
-    if (deployMutation.isPending || (currentStatus || "") === "deploying") {
-      lines.push({
-        at: nowIso,
-        stage: "deploying",
-        text: "Deploying approved records to Zendesk instance.",
-      });
-    }
+
     if (!lines.length && activityLogs.length > 0) {
-      lines.push({
-        at: activityLogs[0].at,
-        stage: activityLogs[0].level,
-        text: activityLogs[0].message,
-      });
-      if (activityLogs.length > 1) {
+      for (const item of activityLogs.slice(0, 3)) {
         lines.push({
-          at: activityLogs[1].at,
-          stage: activityLogs[1].level,
-          text: activityLogs[1].message,
+          at: item.at,
+          stage: item.level,
+          text: item.message,
         });
       }
     }
-    return lines.slice(0, 3);
+
+    return lines.slice(0, 8);
   }, [
+    activityLogs,
     attachmentExtractMutation.isPending,
     generateMutation.isPending,
-    approveMutation.isPending,
-    deployMutation.isPending,
-    currentStatus,
-    activityLogs,
+    generatedData?.metadata,
+    jobQuery.data?.metadata,
+    jobQuery.data?.status_history,
   ]);
 
   if (!zendeskValidated) {
@@ -994,85 +1055,92 @@ function App() {
         </div>
         <div className="mb-4 cx-brand-divider" />
 
-        {timeline.length > 0 ? (
-          <Card className="mb-4 border-[#7B1FFF]/30 bg-[#120522]/70">
-            <CardContent className="max-h-72 overflow-y-auto p-4">
-              <div className="space-y-2">
-                {timeline.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className={`max-w-[90%] rounded-xl border px-3 py-2 text-sm ${
-                      entry.role === "user"
-                        ? "ml-auto border-[#7B1FFF]/45 bg-[#7B1FFF]/16 text-[#F4EEFF]"
-                        : "border-[#7B1FFF]/25 bg-[#07030F]/60 text-[#B9A7D9]"
-                    }`}
-                  >
-                    <p>{entry.text}</p>
-                    <p className="mt-1 text-[10px] text-slate-500">{entry.at}</p>
-                  </div>
-                ))}
-                <div ref={conversationEndRef} />
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <PromptComposer
-          onSubmitPrompt={submitPrompt}
-          onExtractAttachment={handleExtractAttachment}
-          onRemoveAttachment={removeAttachment}
-          onAddExistingContext={addExistingContextSelection}
-          onRemoveExistingContext={removeExistingContextSelection}
-          attachments={attachments}
-          isLoading={generateMutation.isPending || attachmentExtractMutation.isPending}
-          isLocked={!zendeskValidated}
-          lockReason="Validate Zendesk credentials first in Integration Diagnostics."
-          dependencyMode={dependencyMode}
-          onDependencyModeChange={setDependencyMode}
-          onExistingMode={onExistingMode}
-          onOnExistingModeChange={setOnExistingMode}
-          existingItemBehavior={existingItemBehavior}
-          onExistingItemBehaviorChange={setExistingItemBehavior}
-          selectedContextCount={selectedRelatedObjects.length}
-          focusObjectTypes={focusObjectTypes}
-          onFocusObjectTypesChange={setFocusObjectTypes}
-          existingItemOptions={existingItemOptions}
-          selectedExistingItems={selectedExistingItems}
-          selectedExistingItemKeySet={selectedExistingItemKeySet}
-          articleHelpCenterHint={articleHelpCenterHint}
-        />
-
-        <Card className="mb-4 border-[#7B1FFF]/28 bg-[#120522]/75">
-          <CardContent className="p-3">
-            <button
-              type="button"
-              onClick={() => setShowProcessingDetails((prev) => !prev)}
-              className="flex w-full items-center justify-between text-left"
-            >
-              <div>
-                <p className="text-sm font-semibold text-slate-200">
-                  {isWorking ? "Processing..." : "Processing details"}
-                </p>
-                <p className="text-xs text-slate-400">{currentPhaseLabel}</p>
-              </div>
-              <span className="text-xs text-[#B9A7D9]">
-                {showProcessingDetails ? "Hide" : "Show"}
-              </span>
-            </button>
-            {showProcessingDetails ? (
-              <div className="mt-3 space-y-1 border-t border-[#7B1FFF]/20 pt-2 text-xs text-slate-300">
-                {processingLines.map((line, idx) => (
-                  <p key={`${idx}-${line.at}-${line.text}`}>
-                    [{new Date(line.at).toLocaleTimeString()}] {line.stage}: {line.text}
+        <Card className="mb-4 border-[#7B1FFF]/30 bg-[#120522]/72">
+          <CardContent className="space-y-4 p-4">
+            <div className="max-h-[22rem] overflow-y-auto rounded-xl border border-[#7B1FFF]/20 bg-[#07030F]/45 p-3">
+              {timeline.length > 0 ? (
+                <div className="space-y-2">
+                  {timeline.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={`max-w-[92%] rounded-xl border px-3 py-2 text-sm ${
+                        entry.role === "user"
+                          ? "ml-auto border-[#7B1FFF]/45 bg-[#7B1FFF]/16 text-[#F4EEFF]"
+                          : "border-[#7B1FFF]/25 bg-[#07030F]/60 text-[#B9A7D9]"
+                      }`}
+                    >
+                      <p>{entry.text}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">{entry.at}</p>
+                    </div>
+                  ))}
+                  <div ref={conversationEndRef} />
+                </div>
+              ) : (
+                <div className="flex min-h-[10rem] items-center justify-center">
+                  <p className="text-center text-4xl font-medium text-slate-200">
+                    Where should we begin?
                   </p>
-                ))}
-                {attachments.length > 0 ? (
-                  <p className="text-[11px] text-slate-400">
-                    Attachment context: {attachmentSummaryText}
+                </div>
+              )}
+            </div>
+
+            <PromptComposer
+              embedded
+              onSubmitPrompt={submitPrompt}
+              onExtractAttachment={handleExtractAttachment}
+              onRemoveAttachment={removeAttachment}
+              onAddExistingContext={addExistingContextSelection}
+              onRemoveExistingContext={removeExistingContextSelection}
+              attachments={attachments}
+              isLoading={generateMutation.isPending || attachmentExtractMutation.isPending}
+              isLocked={!zendeskValidated}
+              lockReason="Validate Zendesk credentials first in Integration Diagnostics."
+              dependencyMode={dependencyMode}
+              onDependencyModeChange={setDependencyMode}
+              onExistingMode={onExistingMode}
+              onOnExistingModeChange={setOnExistingMode}
+              existingItemBehavior={existingItemBehavior}
+              onExistingItemBehaviorChange={setExistingItemBehavior}
+              selectedContextCount={selectedRelatedObjects.length}
+              focusObjectTypes={focusObjectTypes}
+              onFocusObjectTypesChange={setFocusObjectTypes}
+              existingItemOptions={existingItemOptions}
+              selectedExistingItems={selectedExistingItems}
+              selectedExistingItemKeySet={selectedExistingItemKeySet}
+              articleHelpCenterHint={articleHelpCenterHint}
+            />
+
+            <div className="rounded-lg border border-[#7B1FFF]/24 bg-[#120522]/60 p-3">
+              <button
+                type="button"
+                onClick={() => setShowProcessingDetails((prev) => !prev)}
+                className="flex w-full items-center justify-between text-left"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-slate-200">
+                    {isWorking ? "Processing..." : "Processing details"}
                   </p>
-                ) : null}
-              </div>
-            ) : null}
+                  <p className="text-xs text-slate-400">{currentPhaseLabel}</p>
+                </div>
+                <span className="text-xs text-[#B9A7D9]">
+                  {showProcessingDetails ? "Hide" : "Show"}
+                </span>
+              </button>
+              {showProcessingDetails ? (
+                <div className="mt-3 space-y-1 border-t border-[#7B1FFF]/20 pt-2 text-xs text-slate-300">
+                  {processingLines.slice(0, 3).map((line, idx) => (
+                    <p key={`${idx}-${line.at}-${line.text}`}>
+                      [{new Date(line.at).toLocaleTimeString()}] {line.stage}: {line.text}
+                    </p>
+                  ))}
+                  {attachments.length > 0 ? (
+                    <p className="text-[11px] text-slate-400">
+                      Attachment context: {attachmentSummaryText}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
 

@@ -1,0 +1,486 @@
+Cleaning existing listeners on preferred ports 8016 and 5176...
+Backend port 8016 is unavailable. Using fallback port 8080.
+Starting backend on http://127.0.0.1:8080
+Starting frontend on http://127.0.0.1:5176
+Pipeline running. Backend: 8080 | Frontend: 5176
+Diagnostics mode: OFF (lean runtime profile)
+Press Ctrl+C to stop both services.
+2026-05-18 01:47:44,007 | INFO | app.middlewares.request_context | request_id=da839f00-ed93-4a61-98e8-18664168e446 | GET / -> 200 in 1.71ms
+INFO:     127.0.0.1:57675 - "GET / HTTP/1.1" 200 OK
+
+> frontend@0.0.0 dev
+> vite --host 127.0.0.1 --port 5176 --strictPort
+
+
+  [32m[1mVITE[22m v8.0.10[39m  [2mready in [0m[1m422[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5176[22m/[39m
+2026-05-18 01:48:02,446 | INFO | app.middlewares.request_context | request_id=b77f78fc-49de-447b-8d39-a7d6a7de5521 | GET / -> 200 in 0.74ms
+INFO:     127.0.0.1:57679 - "GET / HTTP/1.1" 200 OK
+2026-05-18 01:48:30,774 | INFO | app.middlewares.request_context | request_id=1431a8f8-6d86-4a7c-af81-398524b9d799 | GET /api/import-assistant/jobs -> 200 in 7.65ms
+INFO:     127.0.0.1:57683 - "GET /api/import-assistant/jobs?limit=40 HTTP/1.1" 200 OK
+2026-05-18 01:48:34,691 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://script.google.com/macros/s/AKfycbyH3PhAfX6FiDM91PUIGocXngSb_IDyrQOa5ERuAFF2osU0hZl_XL4hyHE98YL2kbtydA/exec "HTTP/1.1 302 Moved Temporarily"
+2026-05-18 01:48:35,773 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: GET https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnSKwXnaTHXX4q0Eq0Lq_f-VxSA7m4BPeebX2zHaaTXkLRV2Nz6IGHfasgSujgZX0dz8qSD_yjscskjozthptFoQwPC2eTgGlxFXJeYC_Ued2WtiFkpgVdDtgQ8uCRJijnSldfEOVUiUtMEmvSOIY1_FHy4beeXXztfNzaRIgfNykKJzAGGrpMN_mzGt3Hb-j3t-OjkY-n6qv6UC9wJcwPH-_fhozyDj744ibWBCOc2E4cQKHA_46O9PmJrX6N1KUUMdnw4aDpLnnQDAL-OBGECS7gAeRw&lib=Mg0-yMfVWcPFS641Hte3R1-bPlieALKzK "HTTP/1.1 200 OK"
+2026-05-18 01:48:36,964 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:48:36,965 | WARNING | app.services.planner | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Planner model 'qwen/qwen3-32b' unavailable/unstable for this request, retrying with fallback model 'openai/gpt-oss-20b'.
+2026-05-18 01:48:37,676 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:48:37,677 | WARNING | app.services.planner | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Planner fallback model call failed: Groq API request failed (400) [schema_validation_failure]: Failed to validate JSON. Please adjust your prompt. See 'failed_generation' for more details.
+2026-05-18 01:48:37,678 | WARNING | app.services.planner | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Planner fallback in use: Groq API request failed (400) [schema_validation_failure]: Failed to validate JSON. Please adjust your prompt. See 'failed_generation' for more details.
+2026-05-18 01:48:38,738 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:48:38,739 | WARNING | app.services.planner | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Planner model 'qwen/qwen3-32b' unavailable/unstable for this request, retrying with fallback model 'openai/gpt-oss-20b'.
+2026-05-18 01:48:39,822 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:48:39,823 | WARNING | app.services.planner | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Planner fallback model call failed: Groq API request failed (400) [schema_validation_failure]: Failed to validate JSON. Please adjust your prompt. See 'failed_generation' for more details.
+2026-05-18 01:48:39,823 | WARNING | app.services.planner | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Planner fallback in use: Groq API request failed (400) [schema_validation_failure]: Failed to validate JSON. Please adjust your prompt. See 'failed_generation' for more details.
+2026-05-18 01:48:41,260 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:48:41,839 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:48:41,841 | WARNING | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Structured response failed for model 'openai/gpt-oss-20b' task 'generator' (unsupported_response_format). Retrying with json_object.
+2026-05-18 01:48:43,403 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:48:44,357 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:48:46,203 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:48:47,129 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:48:47,827 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:48:47,829 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 3 attempts.
+2026-05-18 01:48:48,673 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:48:49,629 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:48:49,631 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:49:02,429 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:49:02,431 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator recovered records via json_object repair pass after no_response_format parse failure.
+2026-05-18 01:49:02,834 | INFO | app.middlewares.request_context | request_id=418a5cc0-9a89-42fe-b8f3-6e51e916414d | GET /api/import-assistant/jobs -> 200 in 1.65ms
+INFO:     127.0.0.1:53265 - "GET /api/import-assistant/jobs?limit=50 HTTP/1.1" 200 OK
+2026-05-18 01:49:02,854 | INFO | app.middlewares.request_context | request_id=a353d0e6-0fcf-4378-a3cd-00c0efa9679b | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.70ms
+INFO:     127.0.0.1:53265 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:03,915 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:49:04,807 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:49:04,809 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:49:07,882 | INFO | app.middlewares.request_context | request_id=de031ce0-e76c-4934-b2e4-c4501ff15e6a | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.86ms
+INFO:     127.0.0.1:53278 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:12,900 | INFO | app.middlewares.request_context | request_id=550039ef-ccaf-4db7-a8cc-d969d84c6725 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.84ms
+INFO:     127.0.0.1:53279 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:17,548 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:49:17,550 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 3 attempts.
+2026-05-18 01:49:17,550 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:49:17,918 | INFO | app.middlewares.request_context | request_id=d1df6148-76cf-4dbf-aa9d-60a107af170d | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 9.33ms
+INFO:     127.0.0.1:61422 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:22,927 | INFO | app.middlewares.request_context | request_id=c26c9c92-0c66-4046-9f2d-cb5222f43019 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.83ms
+INFO:     127.0.0.1:64499 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:27,932 | INFO | app.middlewares.request_context | request_id=7063dde2-9202-4ac9-9f4b-dbef59eca7b2 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.59ms
+INFO:     127.0.0.1:64501 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:30,607 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:49:30,608 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 6.51s before openai/gpt-oss-20b request.
+2026-05-18 01:49:32,949 | INFO | app.middlewares.request_context | request_id=2f12f5e7-7c00-438c-a1bc-34dcc293e530 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.62ms
+INFO:     127.0.0.1:52923 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:37,956 | INFO | app.middlewares.request_context | request_id=a2eaf007-502f-496e-950f-a067beab5d4f | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.90ms
+INFO:     127.0.0.1:52925 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:38,112 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:49:38,809 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:49:38,812 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 3 attempts.
+2026-05-18 01:49:40,169 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:49:41,033 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:49:41,035 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:49:42,970 | INFO | app.middlewares.request_context | request_id=f54c4215-88c0-474d-b425-6007570d6d59 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.46ms
+INFO:     127.0.0.1:53188 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:47,985 | INFO | app.middlewares.request_context | request_id=c32e99b5-9888-4f50-8d0b-4eed4d1bcd83 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.70ms
+INFO:     127.0.0.1:53189 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:52,994 | INFO | app.middlewares.request_context | request_id=5a80ebe7-d7a1-4bc5-99c3-5c8d7bb30b27 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.56ms
+INFO:     127.0.0.1:59387 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:49:53,959 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:49:53,977 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 3 attempts.
+2026-05-18 01:49:55,088 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:49:56,079 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:49:56,081 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:49:58,013 | INFO | app.middlewares.request_context | request_id=9bacb387-6516-4cd0-a59f-5a558f9e7c53 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.85ms
+INFO:     127.0.0.1:59391 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:03,031 | INFO | app.middlewares.request_context | request_id=30d53420-1907-4d36-b2d3-875611ff76bd | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 8.37ms
+INFO:     127.0.0.1:55035 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:08,050 | INFO | app.middlewares.request_context | request_id=9f15685f-f6fc-4826-afd1-4870fc49546f | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.79ms
+INFO:     127.0.0.1:55036 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:08,982 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:50:08,984 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 3 attempts.
+2026-05-18 01:50:09,491 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:50:13,075 | INFO | app.middlewares.request_context | request_id=aa88706d-1ec4-437b-b240-0b9ef41a7620 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 3.34ms
+INFO:     127.0.0.1:55038 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:18,081 | INFO | app.middlewares.request_context | request_id=0d51044b-a3f1-4c6c-a036-09708e2ead9c | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.58ms
+INFO:     127.0.0.1:55039 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:22,456 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:50:22,457 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:50:23,095 | INFO | app.middlewares.request_context | request_id=c86b3e8d-76a9-49bc-b5ca-6a721e05d919 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.00ms
+INFO:     127.0.0.1:55042 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:28,112 | INFO | app.middlewares.request_context | request_id=a9f96dd4-aa2a-4477-9e6a-b4c19681e33a | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.59ms
+INFO:     127.0.0.1:55043 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:33,117 | INFO | app.middlewares.request_context | request_id=0f7568df-f280-4697-97fb-d33a3dd15a4a | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.67ms
+INFO:     127.0.0.1:63114 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:35,352 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:50:35,354 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 2.89s before openai/gpt-oss-20b request.
+2026-05-18 01:50:38,125 | INFO | app.middlewares.request_context | request_id=237bf548-c759-4030-a2cd-4a043193235d | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.88ms
+INFO:     127.0.0.1:63116 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:39,320 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:50:39,321 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator recovered records via json_object repair pass after no_response_format parse failure.
+2026-05-18 01:50:40,836 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:50:41,851 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:50:42,570 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:50:42,571 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 3 attempts.
+2026-05-18 01:50:43,148 | INFO | app.middlewares.request_context | request_id=8110dad5-035a-4a96-9d32-ea942d6c5c2c | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 8.10ms
+INFO:     127.0.0.1:63123 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:43,744 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:50:44,687 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:50:44,688 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:50:48,164 | INFO | app.middlewares.request_context | request_id=ed621492-5221-4d12-b6da-e694cbf1dc46 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.05ms
+INFO:     127.0.0.1:63125 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:53,180 | INFO | app.middlewares.request_context | request_id=826edf54-3986-4928-b674-2eaf4ca6b0ad | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.86ms
+INFO:     127.0.0.1:53887 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:57,483 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:50:57,485 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 3 attempts.
+2026-05-18 01:50:58,199 | INFO | app.middlewares.request_context | request_id=23542056-b7b8-4fa9-850c-fbf5a131c530 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.14ms
+INFO:     127.0.0.1:53891 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:50:58,919 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:50:59,869 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:50:59,871 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:51:03,210 | INFO | app.middlewares.request_context | request_id=3c3c43f8-1e91-439f-9514-7ffac168a272 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.65ms
+INFO:     127.0.0.1:53893 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:08,222 | INFO | app.middlewares.request_context | request_id=a4883124-60d7-4646-a365-8afd7622e225 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.97ms
+INFO:     127.0.0.1:53895 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:12,583 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:51:12,585 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 3 attempts.
+2026-05-18 01:51:12,585 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:51:13,249 | INFO | app.middlewares.request_context | request_id=8204c558-6c0e-4ca1-a847-34fec24f8564 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.51ms
+INFO:     127.0.0.1:53898 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:18,268 | INFO | app.middlewares.request_context | request_id=cc76b7f9-8bed-4d26-8b0a-083ea801d347 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.05ms
+INFO:     127.0.0.1:53899 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:23,273 | INFO | app.middlewares.request_context | request_id=07662973-f9db-4b0c-8e14-ecbb01f9abf8 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.64ms
+INFO:     127.0.0.1:53900 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:25,432 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:51:25,433 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:51:28,287 | INFO | app.middlewares.request_context | request_id=d38c2a65-8984-4691-9789-a1bec650df10 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.82ms
+INFO:     127.0.0.1:53902 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:33,299 | INFO | app.middlewares.request_context | request_id=61c9eb0d-870f-4327-84dd-ff67c0d7e014 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.62ms
+INFO:     127.0.0.1:53903 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:38,310 | INFO | app.middlewares.request_context | request_id=d55fe6eb-2e2c-48f3-af65-c45d86598c3d | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.85ms
+INFO:     127.0.0.1:53905 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:38,393 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:51:38,397 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 1.22s before openai/gpt-oss-20b request.
+2026-05-18 01:51:41,999 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:51:42,001 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 3 attempts.
+2026-05-18 01:51:43,338 | INFO | app.middlewares.request_context | request_id=90caace8-4a88-4562-8dc9-f797601a2961 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 9.16ms
+INFO:     127.0.0.1:53908 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:43,497 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:51:44,068 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:51:48,350 | INFO | app.middlewares.request_context | request_id=798f9969-4f11-495e-b734-1a614a187da5 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.00ms
+INFO:     127.0.0.1:53910 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:53,355 | INFO | app.middlewares.request_context | request_id=9c44ae0b-bb6b-4c2e-9646-6c3096af973a | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.65ms
+INFO:     127.0.0.1:53911 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:57,023 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:51:58,362 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:51:58,376 | INFO | app.middlewares.request_context | request_id=ac375d96-2dc2-45c4-b451-65c7f4699228 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.55ms
+INFO:     127.0.0.1:53914 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:51:58,899 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:52:03,385 | INFO | app.middlewares.request_context | request_id=7e8123d3-9481-4413-96b9-2fa7a6a6bfad | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.87ms
+INFO:     127.0.0.1:53915 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:08,396 | INFO | app.middlewares.request_context | request_id=fa06296b-243d-458e-a1a1-c0c808a6581c | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.05ms
+INFO:     127.0.0.1:53917 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:11,783 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:52:12,690 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:52:12,692 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:52:13,413 | INFO | app.middlewares.request_context | request_id=fea1db1e-7d70-4f97-9f8c-e66165acc752 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.84ms
+INFO:     127.0.0.1:53654 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:18,423 | INFO | app.middlewares.request_context | request_id=e0042ef5-ec82-423b-afeb-4dec7f7b8dee | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.92ms
+INFO:     127.0.0.1:64495 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:23,428 | INFO | app.middlewares.request_context | request_id=de4ce771-e4cb-4905-b8d3-0d4210f26d75 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.85ms
+INFO:     127.0.0.1:64496 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:25,374 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:52:25,375 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:52:28,434 | INFO | app.middlewares.request_context | request_id=fc19a62b-9426-4b32-a5a1-c83a2615e11b | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.80ms
+INFO:     127.0.0.1:56104 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:33,442 | INFO | app.middlewares.request_context | request_id=a25a3d7a-2d35-4fd3-9e10-d31719d82da0 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.77ms
+INFO:     127.0.0.1:56105 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:38,347 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:52:38,348 | WARNING | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Structured response failed for model 'openai/gpt-oss-20b' task 'generator' (schema_validation_failure). Retrying with json_object.
+2026-05-18 01:52:38,546 | INFO | app.middlewares.request_context | request_id=5f380415-f676-48c6-ba68-85732bc8325f | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.97ms
+INFO:     127.0.0.1:56105 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:39,511 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:52:39,906 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:52:43,559 | INFO | app.middlewares.request_context | request_id=4ecd7225-45bc-48cf-86dd-48c2270b9a0f | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.71ms
+INFO:     127.0.0.1:56109 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:48,585 | INFO | app.middlewares.request_context | request_id=b53b3b13-6761-4595-9924-2a7c8283ad07 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 8.16ms
+INFO:     127.0.0.1:56110 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:52,841 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:52:53,277 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:52:53,598 | INFO | app.middlewares.request_context | request_id=9b7d186a-6e90-4333-9a23-3d6591201f49 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.85ms
+INFO:     127.0.0.1:56112 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:52:58,617 | INFO | app.middlewares.request_context | request_id=63f9c9a8-995b-4ecc-96cf-53a500ef7a12 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.90ms
+INFO:     127.0.0.1:56113 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:03,629 | INFO | app.middlewares.request_context | request_id=4be2425b-f7ad-4854-9489-942f08f58974 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.71ms
+INFO:     127.0.0.1:56115 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:06,184 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:53:07,086 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:53:07,750 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:53:08,637 | INFO | app.middlewares.request_context | request_id=3f36c7a6-a301-437e-966f-0109fe7bfb8f | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.93ms
+INFO:     127.0.0.1:56120 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:08,651 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:53:08,653 | WARNING | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Structured response failed for model 'openai/gpt-oss-20b' task 'generator' (schema_validation_failure). Retrying with json_object.
+2026-05-18 01:53:08,653 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:53:13,652 | INFO | app.middlewares.request_context | request_id=ac207982-e534-432a-b970-11c70d805e07 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.53ms
+INFO:     127.0.0.1:56121 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:18,670 | INFO | app.middlewares.request_context | request_id=27c54d45-94f8-4b17-9197-bd1d85ca1db4 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.68ms
+INFO:     127.0.0.1:64794 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:23,124 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:53:23,691 | INFO | app.middlewares.request_context | request_id=9e4b4a75-b6dd-4817-9428-dfca4b103ec1 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.34ms
+INFO:     127.0.0.1:64799 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:23,697 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:53:23,698 | WARNING | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Structured response failed for model 'openai/gpt-oss-20b' task 'generator' (unsupported_response_format). Retrying with json_object.
+2026-05-18 01:53:24,605 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:53:24,607 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 5 attempts.
+2026-05-18 01:53:24,607 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:53:28,706 | INFO | app.middlewares.request_context | request_id=81a65209-4b02-4041-94a7-484c5ceea5c3 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.78ms
+INFO:     127.0.0.1:64801 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:33,723 | INFO | app.middlewares.request_context | request_id=e5965af1-9c96-4c69-8a31-eab24465c20c | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.66ms
+INFO:     127.0.0.1:64802 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:37,450 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:53:37,451 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:53:38,739 | INFO | app.middlewares.request_context | request_id=fb42029b-cfdd-4c56-906f-25e5a48330e8 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 9.31ms
+INFO:     127.0.0.1:64804 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:43,756 | INFO | app.middlewares.request_context | request_id=c5e03a35-673a-492a-a356-d65fb3357097 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.90ms
+INFO:     127.0.0.1:64805 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:48,765 | INFO | app.middlewares.request_context | request_id=6be20202-d0e5-4748-9d94-0df5cb3fc8c6 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.34ms
+INFO:     127.0.0.1:64070 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:50,353 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:53:50,932 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:53:53,777 | INFO | app.middlewares.request_context | request_id=13b114d0-5f61-404a-91b9-dd2fede08600 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.11ms
+INFO:     127.0.0.1:64072 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:53:58,788 | INFO | app.middlewares.request_context | request_id=e170b0df-05d6-451d-b0ac-76a816cd17b6 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.88ms
+INFO:     127.0.0.1:64073 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:03,798 | INFO | app.middlewares.request_context | request_id=1e2bfa0c-b032-4598-a4a8-224b035eae2a | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.66ms
+INFO:     127.0.0.1:64076 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:03,843 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:54:04,274 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:54:08,811 | INFO | app.middlewares.request_context | request_id=5efb0f99-f08e-4046-9fb9-635a683ba15a | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.92ms
+INFO:     127.0.0.1:64077 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:13,822 | INFO | app.middlewares.request_context | request_id=00f1ce38-d2e3-41d8-a2ee-3d0a3432a265 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.90ms
+INFO:     127.0.0.1:64078 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:17,313 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:54:18,579 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:54:18,828 | INFO | app.middlewares.request_context | request_id=3f38440b-fea1-4bc6-93ce-154a92188002 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.77ms
+INFO:     127.0.0.1:64082 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:19,143 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:54:23,843 | INFO | app.middlewares.request_context | request_id=34a0583d-b9a3-45d8-bdbd-c1ca8a474755 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.85ms
+INFO:     127.0.0.1:64083 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:28,861 | INFO | app.middlewares.request_context | request_id=62659859-69b5-43fb-babd-3cee8bbca4dc | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.19ms
+INFO:     127.0.0.1:64084 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:32,101 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:54:33,076 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:54:33,081 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:54:33,877 | INFO | app.middlewares.request_context | request_id=f2070e74-f3ac-44bd-a889-6a9e23c13d2e | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.05ms
+INFO:     127.0.0.1:64088 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:38,883 | INFO | app.middlewares.request_context | request_id=7ea19dff-2e81-4d8d-9e47-5a2b9d43544f | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.71ms
+INFO:     127.0.0.1:64089 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:43,905 | INFO | app.middlewares.request_context | request_id=62e7b7c5-7fa3-42ab-959c-ba7c8748164b | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 14.00ms
+INFO:     127.0.0.1:64090 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:46,037 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:54:46,038 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:54:48,925 | INFO | app.middlewares.request_context | request_id=e148b209-e7d5-471a-bdc7-5aa6ed8f88f1 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.07ms
+INFO:     127.0.0.1:64092 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:53,924 | INFO | app.middlewares.request_context | request_id=f09b922e-2ebf-49bd-9042-80cacae1e633 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.83ms
+INFO:     127.0.0.1:64092 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:58,940 | INFO | app.middlewares.request_context | request_id=f7ae90ad-aae9-465e-94cf-e04ec4723160 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.80ms
+INFO:     127.0.0.1:64094 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:54:58,981 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:54:58,983 | WARNING | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Structured response failed for model 'openai/gpt-oss-20b' task 'generator' (schema_validation_failure). Retrying with json_object.
+2026-05-18 01:54:58,984 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 5.02s before openai/gpt-oss-20b request.
+2026-05-18 01:55:03,954 | INFO | app.middlewares.request_context | request_id=50734d25-1a31-477e-818f-cce21ce1bfb9 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.80ms
+INFO:     127.0.0.1:52209 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:05,019 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:55:05,452 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:55:05,453 | WARNING | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Structured response failed for model 'openai/gpt-oss-20b' task 'generator' (unsupported_response_format). Retrying with json_object.
+2026-05-18 01:55:06,438 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-18 01:55:06,954 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:55:08,974 | INFO | app.middlewares.request_context | request_id=199177fe-7be9-4645-9a9b-32346ca61984 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.94ms
+INFO:     127.0.0.1:53212 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:13,988 | INFO | app.middlewares.request_context | request_id=1a209d64-ea5a-4e15-84b6-a0ffa044510f | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.27ms
+INFO:     127.0.0.1:53214 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:19,159 | INFO | app.middlewares.request_context | request_id=81fcd558-8f56-499d-a011-6120efc621b7 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.96ms
+INFO:     127.0.0.1:53214 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:21,031 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:55:21,033 | WARNING | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Structured response failed for model 'openai/gpt-oss-20b' task 'generator' (unsupported_response_format). Retrying with json_object.
+2026-05-18 01:55:21,033 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:55:24,177 | INFO | app.middlewares.request_context | request_id=4eba68da-1777-4a4d-b7c5-9cd28d4657ff | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.86ms
+INFO:     127.0.0.1:57502 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:29,189 | INFO | app.middlewares.request_context | request_id=43b6d76d-541b-4192-91f1-d1d4bfd662e2 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.92ms
+INFO:     127.0.0.1:57503 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:33,945 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:55:34,201 | INFO | app.middlewares.request_context | request_id=718b630e-1a81-4117-ba85-7ab6054755ef | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.81ms
+INFO:     127.0.0.1:61771 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:34,855 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:55:34,856 | WARNING | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Structured response failed for model 'openai/gpt-oss-20b' task 'generator' (schema_validation_failure). Retrying with json_object.
+2026-05-18 01:55:35,963 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:55:36,891 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-18 01:55:36,893 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:55:39,210 | INFO | app.middlewares.request_context | request_id=84b4989c-0a5c-4a79-8da0-379046838088 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.79ms
+INFO:     127.0.0.1:61774 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:44,217 | INFO | app.middlewares.request_context | request_id=1fbd467c-facd-4bb3-86d2-e314226d1a62 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.65ms
+INFO:     127.0.0.1:61775 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:49,230 | INFO | app.middlewares.request_context | request_id=863e447b-c4e7-4bd1-874b-c6a99ce0dbd2 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 9.83ms
+INFO:     127.0.0.1:64204 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:49,568 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-18 01:55:49,569 | WARNING | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq API rate limited (429). Retrying attempt 2/2 after 10.00s.
+2026-05-18 01:55:54,245 | INFO | app.middlewares.request_context | request_id=a256dfeb-3d52-4a58-8bef-f6269f1d1752 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.85ms
+INFO:     127.0.0.1:64208 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:59,265 | INFO | app.middlewares.request_context | request_id=7a7b02a8-4e7a-4123-be9e-14b7fd4571ca | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 1.72ms
+INFO:     127.0.0.1:57091 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:55:59,573 | INFO | app.api.grok.client | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Groq proactive rate guard delaying 12.00s before openai/gpt-oss-20b request.
+2026-05-18 01:56:04,281 | INFO | app.middlewares.request_context | request_id=66e16bc0-87ee-4433-bb39-44af44410d8c | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.54ms
+INFO:     127.0.0.1:53972 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:56:09,299 | INFO | app.middlewares.request_context | request_id=13c92557-8389-4528-ba66-68c9da1eac91 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 2.00ms
+INFO:     127.0.0.1:56210 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 01:56:12,297 | INFO | httpx | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-18 01:56:12,299 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator fail-fast: rate limited in mode 'no_response_format'; skipping remaining retry modes.
+2026-05-18 01:56:12,305 | WARNING | app.services.generator | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | Generator retry ladder exhausted after 4 attempts.
+2026-05-18 01:56:12,330 | INFO | app.middlewares.request_context | request_id=18b2e9cd-e8fb-4348-a5c5-4fe9c3af2ae0 | POST /api/import-assistant/generate -> 429 in 461525.28ms
+2026-05-18 01:56:14,321 | INFO | app.middlewares.request_context | request_id=9066214a-5031-4234-8edd-e25a431d7212 | GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C -> 200 in 4.95ms
+INFO:     127.0.0.1:53301 - "GET /api/import-assistant/jobs/BATCH-20260517-234835-99515C HTTP/1.1" 200 OK
+2026-05-18 02:47:44,935 | INFO | app.middlewares.request_context | request_id=ce7be6d7-2179-42e2-b8fb-eb316c2e3e17 | GET /api/import-assistant/jobs -> 200 in 1072.60ms
+INFO:     127.0.0.1:57042 - "GET /api/import-assistant/jobs?limit=40 HTTP/1.1" 200 OK
+2026-05-18 02:47:45,789 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/sections.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,796 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/macros.json "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,798 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/groups.json "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,800 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_forms.json "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,802 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_centers.json "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,821 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/articles.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,831 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/brands.json "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,880 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/triggers.json "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,888 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/categories.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,894 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/automations.json "HTTP/1.1 200 OK"
+2026-05-18 02:47:45,992 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_fields.json "HTTP/1.1 200 OK"
+2026-05-18 02:47:46,214 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/views.json "HTTP/1.1 200 OK"
+2026-05-18 02:47:46,539 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_center.json "HTTP/1.1 404 Not Found"
+2026-05-18 02:47:46,816 | INFO | httpx | request_id=785f07a2-8866-461a-ac91-18740fdcb61b | HTTP Request: GET https://script.google.com/macros/s/AKfycbyH3PhAfX6FiDM91PUIGocXngSb_IDyrQOa5ERuAFF2osU0hZl_XL4hyHE98YL2kbtydA/exec?action=health "HTTP/1.1 302 Moved Temporarily"
+2026-05-18 02:47:46,819 | INFO | httpx | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center.json "HTTP/1.1 404 Not Found"
+2026-05-18 02:47:46,830 | INFO | app.middlewares.request_context | request_id=6bf56b11-5c92-41d2-ae26-19333690c824 | POST /api/import-assistant/zendesk/context -> 200 in 2994.56ms
+INFO:     127.0.0.1:57041 - "POST /api/import-assistant/zendesk/context HTTP/1.1" 200 OK
+2026-05-18 02:47:47,779 | INFO | httpx | request_id=785f07a2-8866-461a-ac91-18740fdcb61b | HTTP Request: GET https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnQz51txicAwd4_mI6gZfB3YxwoVsS1o5TeQyijjY_8kdGrUaDh-f_matfJM3C3TLiKvOYGH-vwdagdKKMPclnl7pCKHMLtOzFtQGRv5i3cfvyThG1GTOD2s3PCEFPIdMz2cm_1G6v3qnhnDpN6OzuttbtoCsqyK5ZrCNNNws49P4SkcaR1RyxCoHxetdas2Fw3Y1QhORtJTiIjwLVi4BI4MnjZLEUSr82PBxJwBWZRpDLHEUny0shMVLGhU-dKn4zfApHS-iKa-jRK8a1lv1grzBTE4_dbOy87vZamc5MV4rY2axcQ&lib=Mg0-yMfVWcPFS641Hte3R1-bPlieALKzK "HTTP/1.1 200 OK"
+2026-05-18 02:47:47,848 | INFO | app.middlewares.request_context | request_id=785f07a2-8866-461a-ac91-18740fdcb61b | GET /api/import-assistant/integrations/status -> 200 in 3988.96ms
+INFO:     127.0.0.1:57043 - "GET /api/import-assistant/integrations/status HTTP/1.1" 200 OK
+2026-05-18 03:33:19,207 | INFO | app.middlewares.request_context | request_id=4b5abbc6-5194-4dbc-b78f-f3f830e72933 | GET /api/import-assistant/jobs -> 200 in 663.54ms
+INFO:     127.0.0.1:60346 - "GET /api/import-assistant/jobs?limit=40 HTTP/1.1" 200 OK
+2026-05-18 03:33:20,510 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_centers.json "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,526 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/articles.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,546 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/categories.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,550 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/sections.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,606 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_forms.json "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,613 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/groups.json "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,619 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/macros.json "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,644 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/triggers.json "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,710 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/views.json "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,925 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/automations.json "HTTP/1.1 200 OK"
+2026-05-18 03:33:20,939 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/brands.json "HTTP/1.1 200 OK"
+2026-05-18 03:33:21,141 | INFO | httpx | request_id=febae51e-6d70-4151-91c3-fd484cbeda9c | HTTP Request: GET https://script.google.com/macros/s/AKfycbyH3PhAfX6FiDM91PUIGocXngSb_IDyrQOa5ERuAFF2osU0hZl_XL4hyHE98YL2kbtydA/exec?action=health "HTTP/1.1 302 Moved Temporarily"
+2026-05-18 03:33:21,165 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_fields.json "HTTP/1.1 200 OK"
+2026-05-18 03:33:21,757 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_center.json "HTTP/1.1 404 Not Found"
+2026-05-18 03:33:21,941 | INFO | httpx | request_id=febae51e-6d70-4151-91c3-fd484cbeda9c | HTTP Request: GET https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnSrR5ugx1YHKFVxvEjUqytK0d03AX6rXdhFlRyCjVkNAfOC0uqPRoHktRv1PFtw934rokrRQvPOv--CezCWX44kc02Dd2nXmWLcW30MVEOoHePes9BBhJIU-JPANaqGNwTH1pBEKAPgoCPw8UrYZuXwCLk-91xNW3zGconREQ8FwsE-oPJSHsmgGLd_tJytYp8EKoa-MEsKRMyxjO58kcqdkwTg5koVdSGgaAMgBX3VzXg5O0MJesZkEXajlZA0DCOAwMvt2A5TuAIwpjom-hB9hZY_S4fVPENM5kVMGQXGviOfhPo&lib=Mg0-yMfVWcPFS641Hte3R1-bPlieALKzK "HTTP/1.1 200 OK"
+2026-05-18 03:33:22,016 | INFO | app.middlewares.request_context | request_id=febae51e-6d70-4151-91c3-fd484cbeda9c | GET /api/import-assistant/integrations/status -> 200 in 3386.99ms
+INFO:     127.0.0.1:60347 - "GET /api/import-assistant/integrations/status HTTP/1.1" 200 OK
+2026-05-18 03:33:22,032 | INFO | httpx | request_id=38f3866a-d611-426b-b905-dd1e628d791e | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center.json "HTTP/1.1 404 Not Found"
+2026-05-18 03:33:22,044 | INFO | app.middlewares.request_context | request_id=38f3866a-d611-426b-b905-dd1e628d791e | POST /api/import-assistant/zendesk/context -> 200 in 3507.64ms
+INFO:     127.0.0.1:60345 - "POST /api/import-assistant/zendesk/context HTTP/1.1" 200 OK
+2026-05-18 03:53:41,875 | INFO | app.middlewares.request_context | request_id=73aead6c-b673-4e94-a236-e2347b159b66 | GET /api/import-assistant/jobs -> 200 in 584.59ms
+INFO:     127.0.0.1:64814 - "GET /api/import-assistant/jobs?limit=40 HTTP/1.1" 200 OK
+2026-05-18 03:53:43,011 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/categories.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,051 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/articles.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,084 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_centers.json "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,167 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/sections.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,319 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/views.json "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,329 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_fields.json "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,452 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/groups.json "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,473 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/automations.json "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,482 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/macros.json "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,492 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/brands.json "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,502 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/triggers.json "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,534 | INFO | httpx | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_forms.json "HTTP/1.1 200 OK"
+2026-05-18 03:53:43,556 | INFO | app.middlewares.request_context | request_id=8c7bb5e6-00be-4f02-9bd6-0cb6c8adafb2 | POST /api/import-assistant/zendesk/context -> 200 in 2268.64ms
+INFO:     127.0.0.1:64813 - "POST /api/import-assistant/zendesk/context HTTP/1.1" 200 OK
+2026-05-18 03:53:44,106 | INFO | httpx | request_id=6ac117e4-f7fc-4dfb-8a02-abf3135c49bf | HTTP Request: GET https://script.google.com/macros/s/AKfycbyH3PhAfX6FiDM91PUIGocXngSb_IDyrQOa5ERuAFF2osU0hZl_XL4hyHE98YL2kbtydA/exec?action=health "HTTP/1.1 302 Moved Temporarily"
+2026-05-18 03:53:44,910 | INFO | httpx | request_id=6ac117e4-f7fc-4dfb-8a02-abf3135c49bf | HTTP Request: GET https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnQDlAY0pqaRK2tsbRVQgiMfrBe6YjXbsaQ7e32TSqDJiAveE7Bnd3RzHLaC_3CvQTvWZihk9vfMhg7U_p46SI1ffEBRZu3sjm2Z4zwQgw6bo6-Xz9uUBlccZnPNDMgVtXjif4thAup8voawajbIfGIQWSFWCdnEHH3h_d_iVtZM90v8dtq3Iv4F2sQUEO4p9y74CkLlikp3B6la7khg5I9MGlT9sL9_3K-b4Q-UhjxXxF8W8FSn2luxIQxyg0lVPVa5wQFDTFSCWXhWIbUS5Yy2ZOFoUmnl4hAblGHLlrOYDogEcBg&lib=Mg0-yMfVWcPFS641Hte3R1-bPlieALKzK "HTTP/1.1 200 OK"
+2026-05-18 03:53:44,964 | INFO | app.middlewares.request_context | request_id=6ac117e4-f7fc-4dfb-8a02-abf3135c49bf | GET /api/import-assistant/integrations/status -> 200 in 3674.36ms
+INFO:     127.0.0.1:64812 - "GET /api/import-assistant/integrations/status HTTP/1.1" 200 OK
+2026-05-18 08:15:35,342 | INFO | app.middlewares.request_context | request_id=cd87ce31-a05e-4a7c-b3b1-b7adbb38ab09 | GET /api/import-assistant/jobs -> 200 in 854.25ms
+INFO:     127.0.0.1:65074 - "GET /api/import-assistant/jobs?limit=40 HTTP/1.1" 200 OK
+2026-05-18 08:15:36,522 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_centers.json "HTTP/1.1 200 OK"
+2026-05-18 08:15:36,532 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/articles.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 08:15:36,539 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/categories.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 08:15:36,555 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/sections.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 08:15:36,616 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/triggers.json "HTTP/1.1 200 OK"
+2026-05-18 08:15:36,636 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_forms.json "HTTP/1.1 200 OK"
+2026-05-18 08:15:36,771 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/groups.json "HTTP/1.1 200 OK"
+2026-05-18 08:15:36,952 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/automations.json "HTTP/1.1 200 OK"
+2026-05-18 08:15:36,956 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/brands.json "HTTP/1.1 200 OK"
+2026-05-18 08:15:36,965 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/macros.json "HTTP/1.1 200 OK"
+2026-05-18 08:15:37,069 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/views.json "HTTP/1.1 200 OK"
+2026-05-18 08:15:37,105 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_fields.json "HTTP/1.1 200 OK"
+2026-05-18 08:15:37,343 | INFO | httpx | request_id=7f29cd1b-ce74-477e-aa7a-887621418ced | HTTP Request: GET https://script.google.com/macros/s/AKfycbyH3PhAfX6FiDM91PUIGocXngSb_IDyrQOa5ERuAFF2osU0hZl_XL4hyHE98YL2kbtydA/exec?action=health "HTTP/1.1 302 Moved Temporarily"
+2026-05-18 08:15:37,968 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_center.json "HTTP/1.1 404 Not Found"
+2026-05-18 08:15:38,010 | INFO | httpx | request_id=7f29cd1b-ce74-477e-aa7a-887621418ced | HTTP Request: GET https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnT_5bemtO6I2x_ERbzFceXBoS23sW7o0gonqyVbTRvEXwKqlnWSGJtjBXeOuj7ANR9RF5PVttv6XG89Dnjshix9Q_8yVZgvQQYyqX7cUaHiK3cmxjARy5yOKo6d3mG2cpwOHn5n3uePAMYfL_VDzjRQxC7IJS4Qf6lA1jxWQuLFdFPCIzoXZlGzUVYY7MpCHcRibnURRMLtXXBoq7pzTEvltCbBu6DtF-nEZqY3wML197RgwJqX2FuPfNTiA_kgZaLC4oq1WnqLIFtFUty2C0bV2hYDFArxgAgacFm-kT2_Bk-otWI&lib=Mg0-yMfVWcPFS641Hte3R1-bPlieALKzK "HTTP/1.1 200 OK"
+2026-05-18 08:15:38,047 | INFO | app.middlewares.request_context | request_id=7f29cd1b-ce74-477e-aa7a-887621418ced | GET /api/import-assistant/integrations/status -> 200 in 3570.49ms
+INFO:     127.0.0.1:65075 - "GET /api/import-assistant/integrations/status HTTP/1.1" 200 OK
+2026-05-18 08:15:38,553 | INFO | httpx | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center.json "HTTP/1.1 404 Not Found"
+2026-05-18 08:15:38,570 | INFO | app.middlewares.request_context | request_id=9ed90825-a051-42e3-ad03-4b8bd12811cd | POST /api/import-assistant/zendesk/context -> 200 in 4085.51ms
+INFO:     127.0.0.1:65073 - "POST /api/import-assistant/zendesk/context HTTP/1.1" 200 OK
+2026-05-18 09:31:41,686 | INFO | app.middlewares.request_context | request_id=e7a6fa8a-2d97-465a-8d9d-5b9ecf9844c1 | GET /api/import-assistant/jobs -> 200 in 1430.06ms
+INFO:     127.0.0.1:62396 - "GET /api/import-assistant/jobs?limit=40 HTTP/1.1" 200 OK
+2026-05-18 09:31:43,136 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/articles.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,149 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_centers.json "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,161 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/sections.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,211 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/categories.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,222 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/groups.json "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,269 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/macros.json "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,362 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/views.json "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,549 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/brands.json "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,574 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/automations.json "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,588 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_forms.json "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,595 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/triggers.json "HTTP/1.1 200 OK"
+2026-05-18 09:31:43,636 | INFO | httpx | request_id=88000880-1522-4e74-bdfe-f3f094d0e9ab | HTTP Request: GET https://script.google.com/macros/s/AKfycbyH3PhAfX6FiDM91PUIGocXngSb_IDyrQOa5ERuAFF2osU0hZl_XL4hyHE98YL2kbtydA/exec?action=health "HTTP/1.1 302 Moved Temporarily"
+2026-05-18 09:31:43,647 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_fields.json "HTTP/1.1 200 OK"
+2026-05-18 09:31:44,246 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_center.json "HTTP/1.1 404 Not Found"
+2026-05-18 09:31:44,298 | INFO | httpx | request_id=88000880-1522-4e74-bdfe-f3f094d0e9ab | HTTP Request: GET https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnQg1F4ob30bNlhAPuAeSGwtW84BDTF9AN3wjpD0I65wcpuY_R4iG43WniALNTO59v1qD8wgABIGXaxKtehITGGgLRrxYDs21aQ0TvSBAOG1_bITM7x-QHh7jBGfbJVAuMaKcsy2HzUjlZT6hBbaf-ip7ZE7OjPk4BBD9An66NtUTrXMfG9CCADRyrmGZBRJ0Xy3O7nkjHNq_Gdy6iqrbO7TF6mZD5dX0a4htOl3gcSrdz-tfNh6BJJ2O-UnZ05GjlJkzrGyoOpFSCn7ATfM3DlCiftS7YSGQhtlc8Ycg9tqlNCKpOc&lib=Mg0-yMfVWcPFS641Hte3R1-bPlieALKzK "HTTP/1.1 200 OK"
+2026-05-18 09:31:44,318 | INFO | app.middlewares.request_context | request_id=88000880-1522-4e74-bdfe-f3f094d0e9ab | GET /api/import-assistant/integrations/status -> 200 in 4078.33ms
+INFO:     127.0.0.1:62395 - "GET /api/import-assistant/integrations/status HTTP/1.1" 200 OK
+2026-05-18 09:31:44,881 | INFO | httpx | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center.json "HTTP/1.1 404 Not Found"
+2026-05-18 09:31:44,906 | INFO | app.middlewares.request_context | request_id=95c5753c-8843-4120-997a-ef648e4cbcc7 | POST /api/import-assistant/zendesk/context -> 200 in 4649.50ms
+INFO:     127.0.0.1:62394 - "POST /api/import-assistant/zendesk/context HTTP/1.1" 200 OK
+2026-05-18 09:34:53,327 | INFO | app.middlewares.request_context | request_id=86482277-88d8-4390-aa6d-53f1cdde230d | GET /api/import-assistant/jobs -> 200 in 1514.66ms
+INFO:     127.0.0.1:52872 - "GET /api/import-assistant/jobs?limit=40 HTTP/1.1" 200 OK
+2026-05-18 09:34:54,335 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/groups.json "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,361 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/triggers.json "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,447 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/brands.json "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,459 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/articles.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,563 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/automations.json "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,572 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/views.json "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,579 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_fields.json "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,603 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/macros.json "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,689 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_centers.json "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,743 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/sections.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,946 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/categories.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,952 | INFO | httpx | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_forms.json "HTTP/1.1 200 OK"
+2026-05-18 09:34:54,979 | INFO | app.middlewares.request_context | request_id=2f144d9c-8f18-4629-bc17-22d2b13e4056 | POST /api/import-assistant/zendesk/context -> 200 in 3251.74ms
+INFO:     127.0.0.1:52871 - "POST /api/import-assistant/zendesk/context HTTP/1.1" 200 OK
+2026-05-18 09:34:55,347 | INFO | httpx | request_id=bf2a97e0-5264-4e0b-bb2a-3c9db48c561b | HTTP Request: GET https://script.google.com/macros/s/AKfycbyH3PhAfX6FiDM91PUIGocXngSb_IDyrQOa5ERuAFF2osU0hZl_XL4hyHE98YL2kbtydA/exec?action=health "HTTP/1.1 302 Moved Temporarily"
+2026-05-18 09:34:56,324 | INFO | httpx | request_id=bf2a97e0-5264-4e0b-bb2a-3c9db48c561b | HTTP Request: GET https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnScPeJBOmbWBVqJ0Av3802Pv3V659ppPiC2rG5KLESfFWNu3aScLKZqNDXih2UAQVp5IDjBmD2qGc_Ox1Hr3xD8e8xTtDkIRADdNaZn5kpuqjoAe5kiBU54OwmU2rfxKcD2H1-xnPQqX-NQcya0EpJropiKrQ_CPiFSRFGGb918sRRFUJAzPnEA4YF8JADeWFgfbO8U5nZevX3FfGnZLq-3Dvefdwy7PyfXIZB8Mbwl8Bk9ayzvT_nscvnDIOLLEnvMr_gkFTNZxZ94sERkl8RZLYBaBNf4kq3ykRIFAe7Ft0Fi3Z8&lib=Mg0-yMfVWcPFS641Hte3R1-bPlieALKzK "HTTP/1.1 200 OK"
+2026-05-18 09:34:56,334 | INFO | app.middlewares.request_context | request_id=bf2a97e0-5264-4e0b-bb2a-3c9db48c561b | GET /api/import-assistant/integrations/status -> 200 in 4528.56ms
+INFO:     127.0.0.1:52873 - "GET /api/import-assistant/integrations/status HTTP/1.1" 200 OK
+2026-05-18 09:46:50,030 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_fields.json "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,074 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/groups.json "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,580 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/brands.json "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,584 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/sections.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,590 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/triggers.json "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,614 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/macros.json "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,622 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/automations.json "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,639 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/ticket_forms.json "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,649 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/help_centers.json "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,676 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/categories.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,686 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/help_center/articles.json?per_page=100 "HTTP/1.1 200 OK"
+2026-05-18 09:46:50,819 | INFO | httpx | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | HTTP Request: GET https://digify7.zendesk.com/api/v2/views.json "HTTP/1.1 200 OK"
+2026-05-18 09:46:51,018 | INFO | app.middlewares.request_context | request_id=044cea2c-715b-47ff-b3d1-c1a0ae304095 | POST /api/import-assistant/zendesk/context -> 200 in 4507.39ms
+Frontend listener on port 5176 stopped unexpectedly.
+At C:\Workspace\zendesk-ai-import-assistant-1\run-local.ps1:304 char:7
++       throw "Frontend listener on port $activeFrontendPort stopped un ...
++       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Frontend listen...d unexpectedly.:String) [], RuntimeException
+    + FullyQualifiedErrorId : Frontend listener on port 5176 stopped unexpectedly.
+ 

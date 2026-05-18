@@ -1,6 +1,0 @@
-{
-  "generated_at": "2026-05-12T21:06:02.536688+00:00",
-  "top_failure_class": "none",
-  "top_bottleneck_path": "/api/import-assistant/generate",
-  "recommended_immediate_config_profile": "balanced_default"
-}

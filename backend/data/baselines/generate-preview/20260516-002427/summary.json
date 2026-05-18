@@ -1,0 +1,11 @@
+{
+  "session": "20260516-002427",
+  "output_dir": "C:\\Workspace\\zendesk-ai-import-assistant-1\\backend\\data\\live-prompt-runs\\20260516-002427",
+  "total": 30,
+  "preview_ready": 29,
+  "success_rate_pct": 96.67,
+  "p95_duration_ms": 39841.62,
+  "failures": {
+    "generator_json_validation_failed": 1
+  }
+}

@@ -26,6 +26,7 @@ from app.models.schemas import (
     ZendeskCredentialValidationResponse,
 )
 from app.services.import_assistant_service import (
+    GenerateFailureError,
     apply_approval,
     deploy_batch_to_zendesk,
     generate_import_assistant_batch,
@@ -169,12 +170,29 @@ async def generate(request: ImportAssistantGenerateRequest) -> ImportAssistantGe
         if preflight.get("status") == "error":
             raise RuntimeError(preflight.get("detail") or "Apps Script schema sync preflight failed.")
         return await generate_import_assistant_batch(request)
+    except GenerateFailureError as exc:
+        detail = _build_failure_detail(
+            stage=exc.stage,
+            code=exc.code,
+            reason=exc.reason,
+            next_step=exc.next_step,
+        )
+        status_code = 429 if exc.code == "rate_limited" else 502
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     except RuntimeError as exc:
         detail = _build_failure_detail(
             stage="generate",
             code="generate_runtime_error",
             reason=str(exc),
             next_step="Retry generation after fixing the reported prerequisite or runtime issue.",
+        )
+        raise HTTPException(status_code=502, detail=detail) from exc
+    except Exception as exc:  # noqa: BLE001
+        detail = _build_failure_detail(
+            stage="generate",
+            code="generate_runtime_error",
+            reason=f"Unhandled generation error: {exc}",
+            next_step="Retry generation after resolving the runtime error shown above.",
         )
         raise HTTPException(status_code=502, detail=detail) from exc
 

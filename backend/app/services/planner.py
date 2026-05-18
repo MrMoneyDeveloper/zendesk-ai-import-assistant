@@ -1,8 +1,8 @@
 from collections.abc import Iterable
 
-from app.api.grok.client import GrokClient
+from app.api.grok.client import GrokClient, LLMRequestError
 from app.api.grok.routing import resolve_model_route
-from app.api.grok.schemas import OBJECT_TYPE_ENUM, PLANNER_JSON_SCHEMA
+from app.api.grok.schemas import OBJECT_TYPE_ENUM
 from app.core.settings import get_settings
 from app.helpers.json_parser import extract_json_payload
 from app.helpers.prompts import build_planner_messages
@@ -79,6 +79,13 @@ def _is_json_generation_error(exc: Exception) -> bool:
         or "[schema_validation_failure]" in text
         or "[other_invalid_request]" in text
     )
+
+
+def _is_rate_limited_error(exc: Exception) -> bool:
+    if isinstance(exc, LLMRequestError):
+        return str(exc.error_class or "").strip().lower() == "rate_limited"
+    text = str(exc).strip().lower()
+    return "[rate_limited]" in text or "rate_limit" in text or "too many requests" in text
 
 
 def _resolve_fallback_object_type(focus_object_types: list[str] | None) -> str:
@@ -164,18 +171,22 @@ async def run_planner(
             temperature=0.0,
             model=route.model,
             max_output_tokens=route.max_output_tokens,
-            response_schema=PLANNER_JSON_SCHEMA,
-            response_schema_name="planner_result",
-            strict_schema=route.strict_schema,
+            response_schema=None,
+            strict_schema=False,
             task=route.task,
+            response_format_override="json_object",
         )
         payload = extract_json_payload(raw)
         if not isinstance(payload, dict):
             raise ValueError("Planner response must be a JSON object.")
         return _build_plan_from_payload(payload, cleaned_prompt, route)
     except Exception as exc:
+        if _is_rate_limited_error(exc):
+            logger.warning("Planner rate limited; skipping planner fallback fanout.")
+            raise RuntimeError(f"Planner model call failed: {exc}") from exc
         if (
             (_is_model_availability_error(exc) or _is_json_generation_error(exc))
+            and not _is_rate_limited_error(exc)
             and route.model != settings.llm_model_generator
         ):
             logger.warning(
@@ -199,10 +210,10 @@ async def run_planner(
                     temperature=0.0,
                     model=fallback_route.model,
                     max_output_tokens=fallback_route.max_output_tokens,
-                    response_schema=PLANNER_JSON_SCHEMA,
-                    response_schema_name="planner_result",
-                    strict_schema=fallback_route.strict_schema,
+                    response_schema=None,
+                    strict_schema=False,
                     task=fallback_route.task,
+                    response_format_override="json_object",
                 )
                 payload = extract_json_payload(raw)
                 if not isinstance(payload, dict):

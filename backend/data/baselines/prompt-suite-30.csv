@@ -1,0 +1,31 @@
+id,focus,prompt
+T01,triggers,Create one trigger called Billing Route Open that adds tag billing_open when status is open.
+T02,triggers,Create one trigger called Claims Escalation that sets priority to urgent when group is Claims & Benefits and status is open.
+T03,triggers,Create one trigger called Finance New Ticket that adds tag finance_new when status is new and group is Finance & Investments.
+T04,triggers,Create one trigger called Technical Queue Marker that adds tag tech_queue when form is Technical Support and status is open.
+T05,triggers,Create one trigger called Employer Relations Followup that adds tag employer_followup when group is Employer Relations and status is pending.
+T06,triggers,Create one trigger called Pensioner Priority that sets priority to high when category is Pensioners and status is open.
+T07,triggers,Create one trigger called IT Aging Alert that adds tag it_aging when group is IT & Technical Support and priority is high.
+T08,triggers,Create one trigger called Claims Closed Marker that adds tag claim_closed when status is solved and group is Claims & Benefits.
+F01,ticket_fields,"Make me a field called Claim Status as dropdown and values are Open, Closed, Pending."
+F02,ticket_fields,"Make me a field called Escalation Reason as dropdown and values are SLA breach, Customer request, Internal review."
+F03,ticket_fields,Create a ticket field named Callback Required as checkbox.
+F04,ticket_fields,Create a ticket field named Policy Number as text field.
+F05,ticket_fields,"Create a ticket field named Benefit Type as dropdown with values Pension, Disability, Survivor."
+F06,ticket_fields,"Create a ticket field named Processing Stage as dropdown and values are Intake, Review, Approval, Complete."
+FM01,ticket_forms,Create ticket form called Claims Intake Form including fields Claim Status and Policy Number.
+FM02,ticket_forms,Create ticket form called Finance Review Form including fields Escalation Reason and Processing Stage.
+FM03,ticket_forms,Create ticket form called Technical Incident Form including fields Callback Required and Escalation Reason.
+FM04,ticket_forms,Create ticket form called Employer Query Form including fields Policy Number and Benefit Type.
+FM05,ticket_forms,Create ticket form called Pensioner Support Form including fields Claim Status and Benefit Type.
+M01,macros,Create one macro called Request Documents that adds tag docs_requested and sets status to pending.
+M02,macros,Create one macro called Escalate Finance that adds tag escalate_finance and assigns group to Finance & Investments.
+M03,macros,Create one macro called Follow Up Tomorrow that adds tag follow_up and sets priority to normal.
+M04,macros,Create one macro called Close With Note that sets status to solved and adds tag resolved_internal.
+V01,views,Create one view called Open Claims Queue for group Claims & Benefits and status open.
+V02,views,Create one view called High Priority Finance for group Finance & Investments and priority high.
+V03,views,Create one view called Technical Pending for form Technical Support and status pending.
+G01,groups,Create one group called Billing Operations.
+G02,groups,Create one group called Member Onboarding.
+C01,triggers,Create 8 triggers for finance tickets older than 48 hours; each should add tag finance_aging and set priority high for open or pending tickets.
+C02,ticket_fields,"Create 8 ticket fields for claims processing as dropdowns with practical options for intake, review, verification, and closure."

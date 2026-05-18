@@ -3,6 +3,7 @@ import asyncio
 from app.api.grok.client import GrokClient
 from app.api.grok.routing import resolve_model_route
 from app.core.settings import get_settings
+from app.services.planner import run_planner
 
 
 def test_groq_stage_model_defaults_and_conservative_context(monkeypatch):
@@ -13,10 +14,18 @@ def test_groq_stage_model_defaults_and_conservative_context(monkeypatch):
     monkeypatch.delenv("LLM_MODEL_CLARIFIER", raising=False)
     monkeypatch.delenv("LLM_MODEL_GENERATOR", raising=False)
     monkeypatch.delenv("LLM_STRICT_SCHEMA_GENERATOR", raising=False)
+    monkeypatch.delenv("LLM_PLANNER_MAX_OUTPUT_TOKENS", raising=False)
+    monkeypatch.delenv("LLM_CLARIFIER_MAX_OUTPUT_TOKENS", raising=False)
     monkeypatch.delenv("LLM_GENERATOR_MAX_OUTPUT_TOKENS", raising=False)
+    monkeypatch.delenv("LLM_CONTEXT_MAX_RELATED_OBJECTS", raising=False)
     monkeypatch.delenv("LLM_CONTEXT_MAX_CATALOG_ENTRIES", raising=False)
     monkeypatch.delenv("LLM_CONTEXT_MAX_ENTRIES_PER_CATALOG", raising=False)
     monkeypatch.delenv("LLM_CONTEXT_MAX_RECENT_ITEMS", raising=False)
+    monkeypatch.delenv("LLM_CONTEXT_MAX_RECENT_CHARS", raising=False)
+    monkeypatch.delenv("LLM_CONTEXT_MAX_NOTES_CHARS", raising=False)
+    monkeypatch.delenv("LLM_AUTO_CHUNK_SIZE", raising=False)
+    monkeypatch.delenv("LLM_AUTO_CHUNK_MAX_CHUNKS", raising=False)
+    monkeypatch.delenv("LLM_AUTO_CHUNK_TRIGGER_MIN_RECORDS", raising=False)
     get_settings.cache_clear()
 
     settings = get_settings()
@@ -227,3 +236,46 @@ def test_circuit_breaker_opens_after_configured_failures(monkeypatch):
     assert client._is_breaker_open(task, model, error_class) is False
     client._record_breaker_failure(task, model, error_class)
     assert client._is_breaker_open(task, model, error_class) is True
+
+
+def test_run_planner_uses_json_object_compatibility_profile(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("XAI_API_KEY", "gsk_test_key")
+    get_settings.cache_clear()
+
+    captured: dict[str, object] = {}
+
+    class _FakePlannerClient:
+        def __init__(self):
+            pass
+
+        @classmethod
+        def get_last_call_metrics(cls, _task: str):
+            return {"response_format_mode": "json_object_forced"}
+
+        async def chat(self, _messages, **kwargs):
+            captured.update(kwargs)
+            return (
+                '{"object_type":"ticket_forms","intent":"Create form",'
+                '"confidence":0.91,"ambiguity_score":0.2,'
+                '"ambiguity_reasons":[],"clarification_questions":[],"dependency_notes":""}'
+            )
+
+    monkeypatch.setattr("app.services.planner.GrokClient", _FakePlannerClient)
+    monkeypatch.setattr(
+        "app.services.planner.build_planner_messages",
+        lambda *args, **kwargs: [{"role": "user", "content": "Create form"}],
+    )
+
+    result = asyncio.run(
+        run_planner(
+            "Create a ticket form for claims",
+            dependency_mode="match_existing_or_create_new",
+            allow_fallback=False,
+        )
+    )
+
+    assert result["object_type"] == "ticket_forms"
+    assert captured.get("response_format_override") == "json_object"
+    assert captured.get("response_schema") is None
+    assert captured.get("strict_schema") is False

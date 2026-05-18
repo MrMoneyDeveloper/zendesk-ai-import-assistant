@@ -109,6 +109,8 @@ class Settings:
     frontend_origin: str
     llm_provider: str
     xai_api_key: str
+    xai_api_key_wave3: str
+    xai_api_key_wave4: str
     xai_base_url: str
     xai_model: str
     xai_request_timeout_seconds: float
@@ -117,6 +119,8 @@ class Settings:
     xai_enabled: bool
     llm_model_planner: str
     llm_model_generator: str
+    llm_model_generator_wave3: str
+    llm_model_generator_wave4: str
     llm_model_clarifier: str
     llm_planner_max_output_tokens: int
     llm_generator_max_output_tokens: int
@@ -153,6 +157,7 @@ class Settings:
     llm_auto_chunk_pacing_seconds: float
     llm_auto_chunk_pacing_jitter_seconds: float
     benchmark_mode_enabled: bool
+    diagnostics_mode_enabled: bool
     perf_capture_enabled: bool
     perf_capture_dir: str
     inference_policy: str
@@ -168,6 +173,8 @@ class Settings:
     google_service_account_file: str
     google_sheets_scope: str
     batch_store_file: str
+    batch_store_max_entries: int
+    batch_store_trim_runtime_metadata: bool
     appscript_web_app_url: str
     appscript_api_key: str
     appscript_timeout_seconds: float
@@ -200,6 +207,8 @@ def get_settings() -> Settings:
         frontend_origin=os.getenv("FRONTEND_ORIGIN", "http://localhost:5173"),
         llm_provider=provider,
         xai_api_key=api_key,
+        xai_api_key_wave3=os.getenv("XAI_API_KEY_WAVE3", "").strip(),
+        xai_api_key_wave4=os.getenv("XAI_API_KEY_WAVE4", "").strip(),
         xai_base_url=_resolve_base_url(provider, os.getenv("XAI_BASE_URL", "")),
         xai_model=default_model,
         xai_request_timeout_seconds=_as_float(os.getenv("XAI_REQUEST_TIMEOUT_SECONDS"), 60.0),
@@ -208,6 +217,8 @@ def get_settings() -> Settings:
         xai_enabled=_as_bool(os.getenv("XAI_ENABLED"), True),
         llm_model_planner=os.getenv("LLM_MODEL_PLANNER", "").strip() or default_planner_model,
         llm_model_generator=os.getenv("LLM_MODEL_GENERATOR", "").strip() or default_generator_model,
+        llm_model_generator_wave3=os.getenv("LLM_MODEL_GENERATOR_WAVE3", "").strip(),
+        llm_model_generator_wave4=os.getenv("LLM_MODEL_GENERATOR_WAVE4", "").strip(),
         llm_model_clarifier=os.getenv("LLM_MODEL_CLARIFIER", "").strip() or default_clarifier_model,
         llm_planner_max_output_tokens=_as_int(
             os.getenv("LLM_PLANNER_MAX_OUTPUT_TOKENS"),
@@ -319,6 +330,7 @@ def get_settings() -> Settings:
             0.0,
         ),
         benchmark_mode_enabled=_as_bool(os.getenv("BENCHMARK_MODE"), False),
+        diagnostics_mode_enabled=_as_bool(os.getenv("DIAGNOSTICS_MODE"), False),
         perf_capture_enabled=_as_bool(os.getenv("PERF_CAPTURE_ENABLED"), False),
         perf_capture_dir=os.getenv("PERF_CAPTURE_DIR", "").strip(),
         inference_policy=_as_choice(
@@ -368,6 +380,14 @@ def get_settings() -> Settings:
         batch_store_file=(
             os.getenv("BATCH_STORE_FILE", "").strip()
             or str((BASE_DIR / "data" / "batches.json").resolve())
+        ),
+        batch_store_max_entries=max(
+            _as_int(os.getenv("BATCH_STORE_MAX_ENTRIES"), 250),
+            25,
+        ),
+        batch_store_trim_runtime_metadata=_as_bool(
+            os.getenv("BATCH_STORE_TRIM_RUNTIME_METADATA"),
+            True,
         ),
         appscript_web_app_url=os.getenv("APPS_SCRIPT_WEB_APP_URL", "").strip(),
         appscript_api_key=os.getenv("APPS_SCRIPT_API_KEY", "").strip(),

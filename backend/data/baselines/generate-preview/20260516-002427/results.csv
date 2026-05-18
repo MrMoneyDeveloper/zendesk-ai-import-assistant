@@ -1,0 +1,31 @@
+idx,id,focus,prompt,batch_id,http,status,failure_code,failure_reason,next_step,preview_ready,blocked,warnings,passed,duration_ms
+1,T01,triggers,Create one trigger called Billing Route Open that adds tag billing_open when status is open.,BATCH-20260516-002433-75AF29,200,preview_ready,,,,True,0,0,1,29813.37
+2,T02,triggers,Create one trigger called Claims Escalation that sets priority to urgent when group is Claims & Benefits and status is open.,BATCH-20260516-002502-5DF98A,200,preview_ready,,,,True,0,0,1,38379.99
+3,T03,triggers,Create one trigger called Finance New Ticket that adds tag finance_new when status is new and group is Finance & Investments.,BATCH-20260516-002541-6DB270,200,preview_ready,,,,True,0,0,1,28237.84
+4,T04,triggers,Create one trigger called Technical Queue Marker that adds tag tech_queue when form is Technical Support and status is open.,BATCH-20260516-002609-C30CDD,200,preview_ready,,,,True,0,0,1,42740.63
+5,T05,triggers,Create one trigger called Employer Relations Followup that adds tag employer_followup when group is Employer Relations and status is pending.,BATCH-20260516-002652-E5B41F,200,preview_ready,,,,True,1,0,0,26935.91
+6,T06,triggers,Create one trigger called Pensioner Priority that sets priority to high when category is Pensioners and status is open.,BATCH-20260516-002718-AA1049,200,preview_ready,,,,True,0,0,1,32911.91
+7,T07,triggers,Create one trigger called IT Aging Alert that adds tag it_aging when group is IT & Technical Support and priority is high.,BATCH-20260516-002751-AAD718,200,preview_ready,,,,True,0,0,1,30030.95
+8,T08,triggers,Create one trigger called Claims Closed Marker that adds tag claim_closed when status is solved and group is Claims & Benefits.,BATCH-20260516-002822-5A8666,200,preview_ready,,,,True,0,0,1,30543.75
+9,F01,ticket_fields,"Make me a field called Claim Status as dropdown and values are Open, Closed, Pending.",BATCH-20260516-002853-9F14DB,200,preview_ready,,,,True,0,1,0,25839.28
+10,F02,ticket_fields,"Make me a field called Escalation Reason as dropdown and values are SLA breach, Customer request, Internal review.",BATCH-20260516-002919-FD5726,200,preview_ready,,,,True,0,1,0,30734.29
+11,F03,ticket_fields,Create a ticket field named Callback Required as checkbox.,BATCH-20260516-002951-0EC9E4,200,preview_ready,,,,True,0,1,0,33176.22
+12,F04,ticket_fields,Create a ticket field named Policy Number as text field.,BATCH-20260516-003022-C85608,200,preview_ready,,,,True,0,1,0,25241.86
+13,F05,ticket_fields,"Create a ticket field named Benefit Type as dropdown with values Pension, Disability, Survivor.",BATCH-20260516-003047-2A0FAA,200,preview_ready,,,,True,0,1,0,30979.93
+14,F06,ticket_fields,"Create a ticket field named Processing Stage as dropdown and values are Intake, Review, Approval, Complete.",BATCH-20260516-003119-5D8686,200,preview_ready,,,,True,0,1,0,33661.51
+15,FM01,ticket_forms,Create ticket form called Claims Intake Form including fields Claim Status and Policy Number.,BATCH-20260516-003156-560852,200,preview_ready,,,,True,0,2,1,33907.74
+16,FM02,ticket_forms,Create ticket form called Finance Review Form including fields Escalation Reason and Processing Stage.,BATCH-20260516-003226-6F0EED,200,preview_ready,,,,True,0,2,1,29417.68
+17,FM03,ticket_forms,Create ticket form called Technical Incident Form including fields Callback Required and Escalation Reason.,BATCH-20260516-003256-807836,200,preview_ready,,,,True,0,2,1,27092.65
+18,FM04,ticket_forms,Create ticket form called Employer Query Form including fields Policy Number and Benefit Type.,BATCH-20260516-003322-B00E5D,200,preview_ready,,,,True,0,2,1,26851.18
+19,FM05,ticket_forms,Create ticket form called Pensioner Support Form including fields Claim Status and Benefit Type.,BATCH-20260516-003349-4E853C,200,preview_ready,,,,True,0,2,1,26517.39
+20,M01,macros,Create one macro called Request Documents that adds tag docs_requested and sets status to pending.,BATCH-20260516-003415-B90616,200,preview_ready,,,,True,0,0,1,29615.42
+21,M02,macros,Create one macro called Escalate Finance that adds tag escalate_finance and assigns group to Finance & Investments.,BATCH-20260516-003445-98048B,200,preview_ready,,,,True,0,0,1,39841.62
+22,M03,macros,Create one macro called Follow Up Tomorrow that adds tag follow_up and sets priority to normal.,BATCH-20260516-003526-F56F50,200,preview_ready,,,,True,0,0,1,31444.43
+23,M04,macros,Create one macro called Close With Note that sets status to solved and adds tag resolved_internal.,BATCH-20260516-003556-9ECBC6,200,preview_ready,,,,True,0,0,1,31582.82
+24,V01,views,Create one view called Open Claims Queue for group Claims & Benefits and status open.,BATCH-20260516-003628-9A471D,200,preview_ready,,,,True,0,1,0,31232.82
+25,V02,views,Create one view called High Priority Finance for group Finance & Investments and priority high.,BATCH-20260516-003700-ABA4EC,200,preview_ready,,,,True,0,1,0,37511.85
+26,V03,views,Create one view called Technical Pending for form Technical Support and status pending.,BATCH-20260516-003738-84900C,200,preview_ready,,,,True,0,1,0,34495.87
+27,G01,groups,Create one group called Billing Operations.,BATCH-20260516-003812-02C111,200,preview_ready,,,,True,0,1,0,27552.25
+28,G02,groups,Create one group called Member Onboarding.,BATCH-20260516-003840-563D73,200,preview_ready,,,,True,0,1,0,30999.9
+29,C01,triggers,Create 8 triggers for finance tickets older than 48 hours; each should add tag finance_aging and set priority high for open or pending tickets.,BATCH-20260516-003912-445927,200,preview_ready,,,,True,2,0,2,37118.07
+30,C02,ticket_fields,"Create 8 ticket fields for claims processing as dropdowns with practical options for intake, review, verification, and closure.",,502,failed,generator_json_validation_failed,Generator could not produce schema-valid JSON after recovery attempts.,"Retry with narrower scope and explicit Zendesk action fields (status/group_id/set_tags/field_type/custom_field_options). Example: Example answer: Yes, generate one trigger record only with JSON fields object_type/title/conditions/actions/dependency_notes and no prose.",False,,,,82103.76

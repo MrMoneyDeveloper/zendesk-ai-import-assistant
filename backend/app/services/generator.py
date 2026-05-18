@@ -35,6 +35,7 @@ class GeneratorStructuredOutputError(RuntimeError):
         corrective_question: str | None = None,
         corrective_example: str | None = None,
         error_class: str | None = None,
+        mode_order: list[str] | None = None,
     ) -> None:
         super().__init__(message)
         self.attempts = attempts
@@ -44,6 +45,7 @@ class GeneratorStructuredOutputError(RuntimeError):
         self.corrective_question = corrective_question
         self.corrective_example = corrective_example
         self.error_class = error_class
+        self.mode_order = list(mode_order or [])
 
     def as_metadata(self) -> dict[str, Any]:
         return {
@@ -54,6 +56,7 @@ class GeneratorStructuredOutputError(RuntimeError):
             "corrective_question": self.corrective_question,
             "corrective_example": self.corrective_example,
             "error_class": self.error_class,
+            "mode_order": self.mode_order,
         }
 
 
@@ -85,6 +88,7 @@ _GENERATOR_RETRY_MODES: tuple[_GeneratorMode, ...] = (
         requires_hardened_prompt=True,
     ),
 )
+_GENERATOR_MODE_BY_NAME = {mode.name: mode for mode in _GENERATOR_RETRY_MODES}
 
 
 def _fallback_generated_rows() -> list[dict]:
@@ -201,23 +205,95 @@ def _parse_records_from_text(raw_text: str) -> tuple[list[dict], str | None]:
     raise ValueError(reason)
 
 
-def _build_hardened_instruction(mode_name: str) -> str:
+def _build_hardened_instruction(mode_name: str, object_type_hint: str) -> str:
+    object_type = str(object_type_hint or "triggers").strip().lower()
+    example_record = {
+        "object_type": object_type if object_type else "triggers",
+        "title": "Example Title",
+        "conditions": [{"field": "status", "operator": "is", "value": "new"}],
+        "actions": [{"field": "set_tags", "value": "example_tag"}],
+        "dependency_notes": [],
+    }
+    if object_type == "ticket_fields":
+        example_record["conditions"] = []
+        example_record["actions"] = [
+            {"field": "field_type", "value": "tagger"},
+            {
+                "field": "custom_field_options",
+                "value": [{"name": "Option A", "value": "option_a"}],
+            },
+        ]
+    elif object_type == "ticket_forms":
+        example_record["conditions"] = []
+        example_record["actions"] = [
+            {"field": "ticket_field_names", "value": ["Field A", "Field B"]},
+        ]
+    elif object_type == "articles":
+        example_record["conditions"] = []
+        example_record["actions"] = [
+            {"field": "section_id", "value": "123"},
+            {"field": "body", "value": "<p>Article body</p>"},
+        ]
+    elif object_type == "views":
+        example_record["conditions"] = [{"field": "status", "operator": "less_than", "value": "solved"}]
+        example_record["actions"] = [
+            {"field": "output_columns", "value": ["status", "updated", "subject"]},
+        ]
+
+    example_json = (
+        '{"records":[{"object_type":"'
+        + str(example_record["object_type"])
+        + '","title":"'
+        + str(example_record["title"])
+        + '","conditions":'
+        + str(example_record["conditions"]).replace("'", '"')
+        + ',"actions":'
+        + str(example_record["actions"]).replace("'", '"')
+        + ',"dependency_notes":[]}],"generation_notes":[]}'
+    )
+    extra_constraints = ""
+    if object_type == "ticket_forms":
+        extra_constraints = (
+            " For ticket_forms records: keep conditions as an empty array, and include at least one action with "
+            '"field":"ticket_field_names" (array of strings) or "field":"ticket_field_ids" (array of numeric IDs). '
+            "Do not include any explanation text."
+        )
+    elif object_type == "ticket_fields":
+        extra_constraints = (
+            " For ticket_fields records: include field_type plus custom_field_options when the field is dropdown/tagger "
+            "or multiselect."
+        )
+    elif object_type == "articles":
+        extra_constraints = (
+            " For articles records: include section_id in actions and provide body as plain HTML string."
+        )
+    elif object_type == "views":
+        extra_constraints = (
+            " For views records: include at least one condition object with field/operator/value, and include "
+            "an action with field=output_columns and value as an array of column keys."
+        )
+
     return (
         f"Formatting mode: {mode_name}. "
         "Return exactly one JSON object on a single line. "
         "No markdown fences, no prose, no comments, no function wrappers. "
         'Top-level keys must be {"records":[...],"generation_notes":[...]}. '
-        "Each record must contain object_type, title, conditions, actions, dependency_notes."
+        "Each record must contain object_type, title, conditions, actions, dependency_notes. "
+        f"Use this exact shape example: {example_json}.{extra_constraints}"
     )
 
 
-def _with_hardened_instruction(messages: list[dict[str, Any]], mode_name: str) -> list[dict[str, Any]]:
+def _with_hardened_instruction(
+    messages: list[dict[str, Any]],
+    mode_name: str,
+    object_type_hint: str,
+) -> list[dict[str, Any]]:
     output = list(messages)
     output.insert(
         1,
         {
             "role": "system",
-            "content": _build_hardened_instruction(mode_name),
+            "content": _build_hardened_instruction(mode_name, object_type_hint),
         },
     )
     return output
@@ -252,6 +328,74 @@ def _build_mode_attempt_trace(mode: _GeneratorMode, metrics: dict[str, Any], err
     }
 
 
+async def _repair_records_with_json_object(
+    *,
+    client: GrokClient,
+    route,
+    model: str,
+    api_key_override: str | None,
+    raw_text: str,
+    max_output_tokens: int,
+) -> list[dict]:
+    repair_messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a JSON repair assistant. "
+                "Convert the user content into exactly one strict JSON object with top-level keys "
+                '{"records":[...],"generation_notes":[...]}. '
+                "Return JSON only. Do not add markdown, comments, or prose."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Repair this content into strict JSON:\n{raw_text}",
+        },
+    ]
+    repaired_raw = await client.chat(
+        repair_messages,
+        temperature=0.0,
+        model=model,
+        max_output_tokens=max(220, min(max_output_tokens, 520)),
+        response_schema=None,
+        response_schema_name="generator_records_repair",
+        strict_schema=False,
+        task=route.task,
+        response_format_override="json_object",
+        api_key_override=api_key_override,
+    )
+    repaired_records, _ = _parse_records_from_text(repaired_raw)
+    return repaired_records
+
+
+def _resolve_retry_modes(
+    *,
+    compatibility_first: bool,
+    compatibility_only: bool = False,
+) -> tuple[_GeneratorMode, ...]:
+    if compatibility_only:
+        ordered_names = (
+            "json_object",
+            "no_response_format",
+        )
+    elif compatibility_first:
+        ordered_names = (
+            "json_object",
+            "no_response_format",
+            "json_schema_best_effort",
+            "json_schema_strict",
+        )
+    else:
+        return _GENERATOR_RETRY_MODES
+
+    resolved: list[_GeneratorMode] = []
+    for name in ordered_names:
+        mode = _GENERATOR_MODE_BY_NAME.get(name)
+        if mode is not None:
+            resolved.append(mode)
+    return tuple(resolved) if resolved else _GENERATOR_RETRY_MODES
+
+
 async def run_generator(
     plan: dict,
     *,
@@ -268,9 +412,14 @@ async def run_generator(
     existing_titles: list[str] | None = None,
     max_output_tokens: int | None = None,
     allow_fallback: bool = True,
+    compatibility_first: bool = False,
+    compatibility_only: bool = False,
+    model_override: str | None = None,
+    api_key_override: str | None = None,
 ) -> list[dict]:
     settings = get_settings()
     route = resolve_model_route(settings, "generator")
+    selected_model = str(model_override or route.model).strip() or route.model
     client = GrokClient()
     base_messages = build_generator_messages(
         plan,
@@ -288,14 +437,20 @@ async def run_generator(
     )
 
     attempts: list[dict[str, Any]] = []
+    retry_modes = _resolve_retry_modes(
+        compatibility_first=compatibility_first,
+        compatibility_only=compatibility_only,
+    )
+    mode_order = [mode.name for mode in retry_modes]
     last_failed_generation_excerpt: str | None = None
     last_provider_error_code: str | None = None
     last_error_class: str | None = None
     last_validator_reason: str | None = None
 
-    for mode in _GENERATOR_RETRY_MODES:
+    object_type_hint = str(plan.get("object_type", "triggers"))
+    for mode in retry_modes:
         messages = (
-            _with_hardened_instruction(base_messages, mode.name)
+            _with_hardened_instruction(base_messages, mode.name, object_type_hint)
             if mode.requires_hardened_prompt
             else base_messages
         )
@@ -306,13 +461,14 @@ async def run_generator(
             raw = await client.chat(
                 messages,
                 temperature=0.1,
-                model=route.model,
+                model=selected_model,
                 max_output_tokens=mode_max_tokens,
                 response_schema=GENERATOR_JSON_SCHEMA if mode.use_schema else None,
                 response_schema_name="generator_records",
                 strict_schema=mode.strict_schema,
                 task=route.task,
                 response_format_override=mode.response_format_override,
+                api_key_override=api_key_override,
             )
             records, _ = _parse_records_from_text(raw)
             return records
@@ -329,6 +485,12 @@ async def run_generator(
                     last_provider_error_code = exc.error_code
                 if exc.error_class:
                     last_error_class = exc.error_class
+                if exc.error_class == "rate_limited":
+                    logger.warning(
+                        "Generator fail-fast: rate limited in mode '%s'; skipping remaining retry modes.",
+                        mode.name,
+                    )
+                    break
                 if exc.failed_generation:
                     last_failed_generation_excerpt = exc.failed_generation[:1800]
                     if mode.name == "no_response_format":
@@ -343,12 +505,51 @@ async def run_generator(
                             last_validator_reason = str(repair_exc)
             elif isinstance(exc, ValueError):
                 last_validator_reason = str(exc)
+                if mode.name == "no_response_format":
+                    last_failed_generation_excerpt = str(raw)[:1800]
+                    try:
+                        repaired_records = await _repair_records_with_json_object(
+                            client=client,
+                            route=route,
+                            model=selected_model,
+                            api_key_override=api_key_override,
+                            raw_text=str(raw),
+                            max_output_tokens=mode_max_tokens,
+                        )
+                        logger.warning(
+                            "Generator recovered records via json_object repair pass after no_response_format parse failure.",
+                        )
+                        return repaired_records
+                    except Exception as repair_exc:  # noqa: BLE001
+                        repair_metrics = GrokClient.get_last_call_metrics(route.task)
+                        attempts.append(
+                            {
+                                "mode": "repair_json_object",
+                                "response_format_mode": repair_metrics.get("response_format_mode"),
+                                "model": repair_metrics.get("model"),
+                                "http_status": repair_metrics.get("http_status"),
+                                "error_class": repair_metrics.get("error_class"),
+                                "provider_error_code": repair_metrics.get("provider_error_code"),
+                                "retry_count": repair_metrics.get("retry_count"),
+                                "pre_request_wait_ms": repair_metrics.get("pre_request_wait_ms"),
+                                "error": str(repair_exc),
+                            }
+                        )
+                        repair_error_class = str(repair_metrics.get("error_class") or "").strip()
+                        if repair_error_class:
+                            last_error_class = repair_error_class
+                        repair_provider_code = str(repair_metrics.get("provider_error_code") or "").strip()
+                        if repair_provider_code:
+                            last_provider_error_code = repair_provider_code
 
     logger.warning("Generator retry ladder exhausted after %s attempts.", len(attempts))
     question, example = _build_corrective_hint(
         plan_object_type=str(plan.get("object_type", "records")),
     )
-    error_message = "Generator JSON validation failed after retry ladder."
+    if last_error_class == "rate_limited":
+        error_message = "Generator rate limited before producing valid output."
+    else:
+        error_message = "Generator JSON validation failed after retry ladder."
     structured_error = GeneratorStructuredOutputError(
         error_message,
         attempts=attempts,
@@ -358,6 +559,7 @@ async def run_generator(
         corrective_question=question,
         corrective_example=example,
         error_class=last_error_class,
+        mode_order=mode_order,
     )
     if allow_fallback:
         logger.warning("Generator fallback in use: %s", structured_error)

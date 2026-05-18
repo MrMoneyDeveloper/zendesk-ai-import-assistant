@@ -607,10 +607,12 @@ class GrokClient:
         strict_schema: bool | None = None,
         task: str | None = None,
         response_format_override: str | None = None,
+        api_key_override: str | None = None,
     ) -> str:
         if not self.settings.xai_enabled:
             raise RuntimeError("xAI integration is disabled via XAI_ENABLED.")
-        if not self.settings.xai_api_key:
+        active_api_key = str(api_key_override or self.settings.xai_api_key or "").strip()
+        if not active_api_key:
             raise RuntimeError("XAI_API_KEY is missing from environment.")
 
         selected_model = model or self.settings.xai_model or RECOMMENDED_MODEL
@@ -668,7 +670,7 @@ class GrokClient:
                 )
 
         headers = {
-            "Authorization": f"Bearer {self.settings.xai_api_key}",
+            "Authorization": f"Bearer {active_api_key}",
             "Content-Type": "application/json",
         }
 

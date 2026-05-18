@@ -35,7 +35,15 @@ What this does:
 - starts frontend (default preferred `5176`, auto-fallback if busy)
 - sets `VITE_BACKEND_URL` automatically
 - cleans listeners when stopped
-- enables performance telemetry capture for the full session
+- runs in **Lean Prod** mode by default (diagnostics/perf capture off)
+
+To run with diagnostics/perf capture enabled:
+
+```powershell
+cd C:\Workspace\zendesk-ai-import-assistant-1
+.\stop-local.cmd
+.\run-local.cmd -Diagnostics
+```
 
 To stop:
 
@@ -44,20 +52,20 @@ cd C:\Workspace\zendesk-ai-import-assistant-1
 .\stop-local.cmd
 ```
 
-Telemetry output from each run is stored in:
+Diagnostics telemetry output (when `-Diagnostics` is enabled) is stored in:
 
 - `backend/data/perf-sessions/<timestamp>/events.jsonl`
 - `backend/data/perf-sessions/<timestamp>/summary.csv`
 - `backend/data/perf-sessions/<timestamp>/bottlenecks_top30.csv`
 - `backend/data/perf-sessions/<timestamp>/session_verdict.json`
 
-The active telemetry path is also written to `.local-dev-state.json` as `perf_session_dir`.
+The active runtime ports and optional telemetry path are written to `.local-dev-state.json`.
 
 ## First Test Flow
 
 1. Open the frontend URL printed by `run-local`.
 2. Validate Zendesk credentials on the gate screen.
-3. (Optional) click `Test APIs`.
+3. Submit prompt(s) and review Preview Workspace.
 4. Submit a prompt.
 5. Review/adjust row decisions in Preview Workspace.
 6. Click `Save Approval Decisions`.
@@ -170,6 +178,27 @@ Then restart pipeline:
 .\run-local.cmd
 ```
 
+### 8) Run the 30-prompt quality suite (Generate→Preview)
+
+```powershell
+cd C:\Workspace\zendesk-ai-import-assistant-1\backend
+python .\run-generate-preview-suite.py --diagnostics --rerun-on-rate-limit --pace-seconds 2 --rerun-wait-seconds 45
+```
+
+Outputs:
+
+- `backend/data/live-prompt-runs/<timestamp>/results.csv`
+- `backend/data/live-prompt-runs/<timestamp>/summary.json`
+
+### 9) Preserve baseline + purge runtime data
+
+```powershell
+cd C:\Workspace\zendesk-ai-import-assistant-1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\cleanup-runtime-data.ps1 -BaselineSession <session-id> -PurgeAll
+```
+
+If `-BaselineSession` is omitted, the script auto-selects the latest passing run (`>=95%`) when available.
+
 ## Notes
 
 - Keep secrets in env files only; do not hardcode API keys in frontend.
@@ -200,4 +229,4 @@ Set these in `backend/.env` to tune model behavior:
 - `INTEGRATIONS_HEALTH_CACHE_SECONDS=45`
 - `ZENDESK_FALLBACK_404_COOLDOWN_SECONDS=1800`
 
-Default behavior is safe for free-tier PoC usage: smaller planner token budget, strict structured outputs, and ambiguity gating before generation.
+Default behavior is safe for free-tier PoC usage: inference-first generation, single-item planner bypass, compatibility-first single-item generator, multi-item chunking, strict deploy safety, and lean metadata retention.

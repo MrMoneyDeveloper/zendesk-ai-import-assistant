@@ -1,7 +1,8 @@
 param(
   [int]$BackendPort = 8016,
   [int]$FrontendPort = 5176,
-  [switch]$DisableAutoPortFallback
+  [switch]$DisableAutoPortFallback,
+  [switch]$Diagnostics
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,8 +13,10 @@ $frontendJob = $null
 $activeBackendPort = $BackendPort
 $activeFrontendPort = $FrontendPort
 $autoPortFallback = -not $DisableAutoPortFallback
+$diagnosticsEnabled = [bool]$Diagnostics
 $perfSessionId = ""
 $perfSessionDir = ""
+$lastPerfSummaryAt = [datetime]::MinValue
 
 function Get-ListeningPidsByPort {
   param([int]$Port)
@@ -144,6 +147,22 @@ function Save-State {
   $state | ConvertTo-Json | Set-Content -Path $stateFile -Encoding UTF8
 }
 
+function Emit-PerfSummary {
+  param([string]$SessionDir)
+
+  if (-not $SessionDir -or -not (Test-Path $SessionDir)) {
+    return
+  }
+  $summaryScript = Join-Path $repoRoot "backend\\summarize-perf-session.py"
+  if (-not (Test-Path $summaryScript)) {
+    return
+  }
+  try {
+    python $summaryScript --session-dir $SessionDir | Out-Null
+  } catch {
+  }
+}
+
 function Cleanup {
   if ($backendJob) {
     Stop-Job -Job $backendJob -ErrorAction SilentlyContinue
@@ -165,14 +184,8 @@ function Cleanup {
   Stop-ProcessByCommandPattern -Pattern "*vite*--port $activeFrontendPort*"
 
   if ($perfSessionDir -and (Test-Path $perfSessionDir)) {
-    try {
-      $summaryScript = Join-Path $repoRoot "backend\\summarize-perf-session.py"
-      if (Test-Path $summaryScript) {
-        python $summaryScript --session-dir $perfSessionDir | Out-Null
-      }
-      Write-Host "Performance telemetry saved to: $perfSessionDir"
-    } catch {
-    }
+    Emit-PerfSummary -SessionDir $perfSessionDir
+    Write-Host "Performance telemetry saved to: $perfSessionDir"
   }
 
   if (Test-Path $stateFile) {
@@ -227,9 +240,13 @@ try {
 
   $activeBackendPort = Resolve-UsablePort -PreferredPort $BackendPort -Candidates @($BackendPort, 8016, 8000, 8020, 8080) -Label "Backend"
   $activeFrontendPort = Resolve-UsablePort -PreferredPort $FrontendPort -Candidates @($FrontendPort, 5176, 5173, 5180, 5273) -Label "Frontend"
-  $perfSessionId = (Get-Date).ToString("yyyyMMdd-HHmmss")
-  $perfSessionDir = Join-Path (Join-Path $repoRoot "backend\\data\\perf-sessions") $perfSessionId
-  New-Item -ItemType Directory -Path $perfSessionDir -Force | Out-Null
+  if ($diagnosticsEnabled) {
+    $perfSessionId = (Get-Date).ToString("yyyyMMdd-HHmmss")
+    $perfSessionDir = Join-Path (Join-Path $repoRoot "backend\\data\\perf-sessions") $perfSessionId
+    New-Item -ItemType Directory -Path $perfSessionDir -Force | Out-Null
+    Emit-PerfSummary -SessionDir $perfSessionDir
+    $lastPerfSummaryAt = Get-Date
+  }
 
   Save-State -Backend $activeBackendPort -Frontend $activeFrontendPort -PerfSessionDir $perfSessionDir
 
@@ -237,8 +254,15 @@ try {
   $backendJob = Start-Job -Name "backend-dev" -ArgumentList $repoRoot, $activeBackendPort, $perfSessionDir -ScriptBlock {
     param($root, $port, $sessionDir)
     Set-Location (Join-Path $root "backend")
-    $env:PERF_CAPTURE_ENABLED = "true"
-    $env:PERF_CAPTURE_DIR = $sessionDir
+    if ($sessionDir) {
+      $env:DIAGNOSTICS_MODE = "true"
+      $env:PERF_CAPTURE_ENABLED = "true"
+      $env:PERF_CAPTURE_DIR = $sessionDir
+    } else {
+      $env:DIAGNOSTICS_MODE = "false"
+      $env:PERF_CAPTURE_ENABLED = "false"
+      $env:PERF_CAPTURE_DIR = ""
+    }
     python -m uvicorn app.main:app --host 127.0.0.1 --port $port --reload
   }
 
@@ -259,7 +283,12 @@ try {
   }
 
   Write-Host "Pipeline running. Backend: $activeBackendPort | Frontend: $activeFrontendPort"
-  Write-Host "Performance capture enabled: $perfSessionDir"
+  if ($diagnosticsEnabled) {
+    Write-Host "Diagnostics mode: ON"
+    Write-Host "Performance capture enabled: $perfSessionDir"
+  } else {
+    Write-Host "Diagnostics mode: OFF (lean runtime profile)"
+  }
   Write-Host "Press Ctrl+C to stop both services."
 
   while ($true) {
@@ -273,6 +302,14 @@ try {
     }
     if (-not $frontendListening) {
       throw "Frontend listener on port $activeFrontendPort stopped unexpectedly."
+    }
+
+    if ($diagnosticsEnabled -and $perfSessionDir -and (Test-Path $perfSessionDir)) {
+      $elapsedSummarySeconds = ((Get-Date) - $lastPerfSummaryAt).TotalSeconds
+      if ($elapsedSummarySeconds -ge 30) {
+        Emit-PerfSummary -SessionDir $perfSessionDir
+        $lastPerfSummaryAt = Get-Date
+      }
     }
 
     Start-Sleep -Milliseconds 700

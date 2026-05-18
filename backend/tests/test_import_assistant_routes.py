@@ -216,7 +216,7 @@ def test_generate_recovers_from_planner_failed_generation(monkeypatch, tmp_path)
     response = client.post(
         "/api/import-assistant/generate",
         json={
-            "prompt": "Create one support group named Recovered Ops Group.",
+            "prompt": "Create 2 support groups and include one named Recovered Ops Group.",
             "target_environment": "sandbox",
             "mode": "generate_validate_preview",
             "requester": "pytest-user",
@@ -820,4 +820,1011 @@ def test_generate_chunk_failure_aborts_whole_run(monkeypatch, tmp_path):
     assert response.status_code == 502
     detail = response.json()["detail"]
     assert detail["failure_stage"] == "generate"
-    assert "chunked generation aborted" in detail["failure_reason"].lower()
+    assert detail["failure_code"] == "chunk_generation_failed"
+    assert "synthetic generator chunk failure" in detail["failure_reason"].lower()
+
+
+def test_generate_chunked_ticket_fields_forces_compatibility_first(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_ENABLED", "true")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_SIZE", "3")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_MAX_CHUNKS", "12")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_TRIGGER_MIN_RECORDS", "2")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    compatibility_flags: list[bool] = []
+    compatibility_only_flags: list[bool] = []
+    seen_chunks: list[int] = []
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "ticket_fields", "intent": prompt, "confidence": 0.95}
+
+    async def fake_generator(plan: dict, **kwargs):
+        chunk_index = int(kwargs.get("chunk_index") or 1)
+        seen_chunks.append(chunk_index)
+        compatibility_flags.append(bool(kwargs.get("compatibility_first")))
+        compatibility_only_flags.append(bool(kwargs.get("compatibility_only")))
+        return [
+            {
+                "object_type": "ticket_fields",
+                "title": f"Chunk Field {chunk_index}",
+                "conditions": [],
+                "actions": [
+                    {"field": "field_type", "value": "tagger"},
+                    {
+                        "field": "custom_field_options",
+                        "value": [
+                            {"name": "Option A", "value": "option_a"},
+                            {"name": "Option B", "value": "option_b"},
+                        ],
+                    },
+                ],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create 8 ticket fields for claims processing as dropdowns.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+            "focus_object_types": ["ticket_fields"],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert seen_chunks == [1, 2, 3, 4]
+    assert compatibility_flags
+    assert all(compatibility_flags)
+    assert compatibility_only_flags
+    assert all(compatibility_only_flags)
+    chunking = payload.get("metadata", {}).get("chunking", {})
+    assert chunking.get("activated") is True
+    for item in chunking.get("chunks", []):
+        assert item.get("mode_order", []) == ["json_object", "no_response_format"]
+
+
+def test_generate_business_blueprint_ticket_forms_forces_compatibility_first(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    compatibility_by_object: dict[str, list[bool]] = {}
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.9, "ambiguity_score": 0.21}
+
+    async def fake_blueprint_compiler(**kwargs):  # noqa: ANN001
+        return (
+            {
+                "mode": "compiler",
+                "target_objects": [
+                    {"object_type": "ticket_fields", "target_count": 2, "priority": 1, "wave": 1},
+                    {"object_type": "ticket_forms", "target_count": 2, "priority": 2, "wave": 2},
+                ],
+                "assumptions": ["Generated from business brief"],
+            },
+            {"model": "test-planner"},
+        )
+
+    async def fake_generator(plan: dict, **kwargs):
+        object_type = str(plan.get("object_type", "triggers"))
+        compatibility_by_object.setdefault(object_type, []).append(bool(kwargs.get("compatibility_first")))
+        if object_type == "ticket_fields":
+            return [
+                {
+                    "object_type": "ticket_fields",
+                    "title": "Medication Type",
+                    "conditions": [],
+                    "actions": [
+                        {"field": "field_type", "value": "tagger"},
+                        {
+                            "field": "custom_field_options",
+                            "value": [
+                                {"name": "Acute", "value": "acute"},
+                                {"name": "Chronic", "value": "chronic"},
+                            ],
+                        },
+                    ],
+                    "dependency_notes": [],
+                }
+            ]
+        return [
+            {
+                "object_type": "ticket_forms",
+                "title": "Medication Intake",
+                "conditions": [],
+                "actions": [{"field": "ticket_field_names", "value": ["Medication Type"]}],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service._run_business_blueprint_compiler", fake_blueprint_compiler)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": (
+                "For medication support, create 4 ticket fields and 3 ticket forms "
+                "with field mapping for intake and request routing."
+            ),
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert compatibility_by_object.get("ticket_forms")
+    assert all(compatibility_by_object["ticket_forms"])
+    chunking = payload.get("metadata", {}).get("chunking", {})
+    form_chunks = [item for item in chunking.get("chunks", []) if item.get("object_type") == "ticket_forms"]
+    assert form_chunks
+    for item in form_chunks:
+        assert item.get("mode_order", [])[0] == "json_object"
+
+
+def test_generate_business_blueprint_views_forces_compatibility_first(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    compatibility_by_object: dict[str, list[bool]] = {}
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.9, "ambiguity_score": 0.2}
+
+    async def fake_blueprint_compiler(**kwargs):  # noqa: ANN001
+        return (
+            {
+                "mode": "compiler",
+                "target_objects": [
+                    {"object_type": "groups", "target_count": 1, "priority": 1, "wave": 1},
+                    {"object_type": "views", "target_count": 3, "priority": 2, "wave": 2},
+                ],
+                "assumptions": ["Generated from business brief"],
+            },
+            {"model": "test-planner"},
+        )
+
+    async def fake_generator(plan: dict, **kwargs):
+        object_type = str(plan.get("object_type", "triggers"))
+        compatibility_by_object.setdefault(object_type, []).append(bool(kwargs.get("compatibility_first")))
+        if object_type == "groups":
+            return [
+                {
+                    "object_type": "groups",
+                    "title": "Claims Team",
+                    "conditions": [],
+                    "actions": [],
+                    "dependency_notes": [],
+                }
+            ]
+        return [
+            {
+                "object_type": "views",
+                "title": "Claims Open Tickets",
+                "conditions": [{"field": "status", "operator": "less_than", "value": "solved"}],
+                "actions": [{"field": "output_columns", "value": ["status", "updated", "subject"]}],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service._run_business_blueprint_compiler", fake_blueprint_compiler)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "For claims support, create 1 group and 3 views for open work queues end-to-end.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert compatibility_by_object.get("views")
+    assert all(compatibility_by_object["views"])
+    chunking = payload.get("metadata", {}).get("chunking", {})
+    view_chunks = [item for item in chunking.get("chunks", []) if item.get("object_type") == "views"]
+    assert view_chunks
+    for item in view_chunks:
+        assert item.get("mode_order", [])[0] == "json_object"
+
+
+def test_generate_business_blueprint_wave3_triggers_force_compatibility_only(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    compatibility_only_by_object: dict[str, list[bool]] = {}
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.9, "ambiguity_score": 0.2}
+
+    async def fake_blueprint_compiler(**kwargs):  # noqa: ANN001
+        return (
+            {
+                "mode": "compiler",
+                "target_objects": [
+                    {"object_type": "groups", "target_count": 1, "priority": 1, "wave": 1},
+                    {"object_type": "triggers", "target_count": 4, "priority": 3, "wave": 3},
+                ],
+                "assumptions": ["Generated from business brief"],
+            },
+            {"model": "test-planner"},
+        )
+
+    async def fake_generator(plan: dict, **kwargs):
+        object_type = str(plan.get("object_type", "triggers"))
+        compatibility_only_by_object.setdefault(object_type, []).append(bool(kwargs.get("compatibility_only")))
+        if object_type == "groups":
+            return [
+                {
+                    "object_type": "groups",
+                    "title": "Claims Team",
+                    "conditions": [],
+                    "actions": [],
+                    "dependency_notes": [],
+                }
+            ]
+        return [
+            {
+                "object_type": "triggers",
+                "title": "Claims Escalation Trigger",
+                "conditions": [{"field": "status", "operator": "less_than", "value": "solved"}],
+                "actions": [{"field": "set_tags", "value": "claims_escalation"}],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service._run_business_blueprint_compiler", fake_blueprint_compiler)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "For claims support, create 1 group and 4 escalation triggers.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert compatibility_only_by_object.get("triggers")
+    assert all(compatibility_only_by_object["triggers"])
+    chunking = payload.get("metadata", {}).get("chunking", {})
+    trigger_chunks = [item for item in chunking.get("chunks", []) if item.get("object_type") == "triggers"]
+    assert trigger_chunks
+    for item in trigger_chunks:
+        assert item.get("mode_order", []) == ["json_object", "no_response_format"]
+
+
+def test_generate_business_blueprint_wave3_automations_use_deterministic_fallback(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "automations", "intent": prompt, "confidence": 0.9, "ambiguity_score": 0.2}
+
+    async def fake_blueprint_compiler(**kwargs):  # noqa: ANN001
+        return (
+            {
+                "mode": "compiler",
+                "target_objects": [
+                    {"object_type": "groups", "target_count": 1, "priority": 1, "wave": 1},
+                    {"object_type": "automations", "target_count": 3, "priority": 3, "wave": 3},
+                ],
+                "assumptions": ["Generated from business brief"],
+            },
+            {"model": "test-planner"},
+        )
+
+    async def failing_generator(plan: dict, **kwargs):
+        object_type = str(plan.get("object_type", "triggers"))
+        if object_type == "groups":
+            return [
+                {
+                    "object_type": "groups",
+                    "title": "Claims Team",
+                    "conditions": [],
+                    "actions": [],
+                    "dependency_notes": [],
+                }
+            ]
+        raise RuntimeError("synthetic schema failure in automations")
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service._run_business_blueprint_compiler", fake_blueprint_compiler)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", failing_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "For claims support, create 1 group and 3 automations for open ticket follow-ups.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert payload["generated_counts"].get("automations", 0) >= 1
+    batch_id = payload["batch_id"]
+    preview_response = client.get(f"/api/import-assistant/preview/{batch_id}")
+    assert preview_response.status_code == 200
+    preview_records = preview_response.json().get("records", [])
+    automation_rows = [row for row in preview_records if row.get("object_type") == "automations"]
+    assert automation_rows
+    for row in automation_rows:
+        assert row.get("actions")
+        assert row.get("conditions")
+
+    chunking = payload.get("metadata", {}).get("chunking", {})
+    automation_chunks = [item for item in chunking.get("chunks", []) if item.get("object_type") == "automations"]
+    assert automation_chunks
+    assert all(item.get("deterministic_fallback") for item in automation_chunks)
+    assert all(item.get("fallback_reason") for item in automation_chunks)
+    assert all(item.get("mode_order", []) == ["json_object", "no_response_format"] for item in automation_chunks)
+
+
+def test_generate_business_blueprint_wave3_rule_fails_when_fallback_builder_returns_empty(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "automations", "intent": prompt, "confidence": 0.9, "ambiguity_score": 0.2}
+
+    async def fake_blueprint_compiler(**kwargs):  # noqa: ANN001
+        return (
+            {
+                "mode": "compiler",
+                "target_objects": [
+                    {"object_type": "groups", "target_count": 1, "priority": 1, "wave": 1},
+                    {"object_type": "automations", "target_count": 3, "priority": 3, "wave": 3},
+                ],
+                "assumptions": ["Generated from business brief"],
+            },
+            {"model": "test-planner"},
+        )
+
+    async def failing_generator(plan: dict, **kwargs):
+        object_type = str(plan.get("object_type", "triggers"))
+        if object_type == "groups":
+            return [
+                {
+                    "object_type": "groups",
+                    "title": "Claims Team",
+                    "conditions": [],
+                    "actions": [],
+                    "dependency_notes": [],
+                }
+            ]
+        raise RuntimeError("synthetic schema failure in automations")
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service._run_business_blueprint_compiler", fake_blueprint_compiler)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", failing_generator)
+    monkeypatch.setattr("app.services.import_assistant_service._build_deterministic_chunk_rows", lambda **kwargs: [])
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "For claims support, create 1 group and 3 automations for open ticket follow-ups.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["failure_stage"] == "generate"
+    assert detail["failure_code"] == "wave_generation_failed"
+    assert "Deterministic fallback could not build valid automations rows" in detail["failure_reason"]
+
+
+def test_generate_business_blueprint_ticket_fields_uses_deterministic_fallback_on_chunk_failure(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.9, "ambiguity_score": 0.2}
+
+    async def fake_blueprint_compiler(**kwargs):  # noqa: ANN001
+        return (
+            {
+                "mode": "compiler",
+                "target_objects": [
+                    {"object_type": "groups", "target_count": 1, "priority": 1, "wave": 1},
+                    {"object_type": "ticket_fields", "target_count": 4, "priority": 1, "wave": 1},
+                ],
+                "assumptions": ["Generated from business brief"],
+            },
+            {"model": "test-planner"},
+        )
+
+    async def failing_generator(plan: dict, **kwargs):
+        object_type = str(plan.get("object_type", "triggers"))
+        if object_type == "groups":
+            return [
+                {
+                    "object_type": "groups",
+                    "title": "Claims Group",
+                    "conditions": [],
+                    "actions": [],
+                    "dependency_notes": [],
+                }
+            ]
+        raise RuntimeError("synthetic json failure in ticket_fields")
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service._run_business_blueprint_compiler", fake_blueprint_compiler)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", failing_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "For claims, create 1 group and 4 ticket fields as dropdown values.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert payload["generated_counts"].get("ticket_fields", 0) >= 1
+    chunking = payload.get("metadata", {}).get("chunking", {})
+    field_chunks = [item for item in chunking.get("chunks", []) if item.get("object_type") == "ticket_fields"]
+    assert field_chunks
+    assert all(item.get("deterministic_fallback") for item in field_chunks)
+    assert all(item.get("mode_order", []) == ["json_object", "no_response_format"] for item in field_chunks)
+
+
+def test_generate_business_blueprint_orchestration_uses_single_parent_batch(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+    generator_calls: list[str] = []
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.88, "ambiguity_score": 0.22}
+
+    async def fake_blueprint_compiler(**kwargs):  # noqa: ANN001
+        return (
+            {
+                "mode": "compiler",
+                "target_objects": [
+                    {"object_type": "groups", "target_count": 2, "priority": 1, "wave": 1},
+                    {"object_type": "ticket_fields", "target_count": 2, "priority": 1, "wave": 1},
+                    {"object_type": "triggers", "target_count": 2, "priority": 3, "wave": 3},
+                ],
+                "assumptions": ["Generated from business brief"],
+            },
+            {"model": "test-planner"},
+        )
+
+    async def fake_generator(plan: dict, **kwargs):
+        object_type = str(plan.get("object_type", "triggers"))
+        generator_calls.append(object_type)
+        return [
+            {
+                "object_type": object_type,
+                "title": f"{object_type}-item-{len(generator_calls)}",
+                "conditions": [],
+                "actions": [{"field": "set_tags", "value": f"{object_type}_generated"}],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service._run_business_blueprint_compiler", fake_blueprint_compiler)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": (
+                "For our claims business, create 2 groups, 2 ticket fields, and 2 triggers "
+                "as an end-to-end setup."
+            ),
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    orchestration = payload.get("metadata", {}).get("orchestration", {})
+    assert orchestration.get("mode") == "business_blueprint"
+    assert len(orchestration.get("waves", [])) >= 2
+    assert payload["generated_counts"].get("groups", 0) >= 1
+    assert payload["generated_counts"].get("ticket_fields", 0) >= 1
+    assert payload["generated_counts"].get("triggers", 0) >= 1
+    assert "groups" in generator_calls
+    assert "ticket_fields" in generator_calls
+    assert "triggers" in generator_calls
+
+
+def test_generate_business_blueprint_wave_failure_aborts_before_staging(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+    stage_calls = {"count": 0}
+
+    class StageTrackingSheetsService(StubSheetsService):
+        def stage_batch(self, batch, planning, preview_records):  # noqa: ANN001
+            stage_calls["count"] += 1
+            return {"sheet_enabled": False, "message": "unexpected"}
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.9, "ambiguity_score": 0.2}
+
+    async def fake_blueprint_compiler(**kwargs):  # noqa: ANN001
+        return (
+            {
+                "mode": "compiler",
+                "target_objects": [
+                    {"object_type": "groups", "target_count": 1, "priority": 1, "wave": 1},
+                    {"object_type": "triggers", "target_count": 1, "priority": 3, "wave": 3},
+                ],
+                "assumptions": [],
+            },
+            {"model": "test-planner"},
+        )
+
+    async def failing_wave_generator(plan: dict, **kwargs):
+        object_type = str(plan.get("object_type", "triggers"))
+        if object_type == "groups":
+            raise RuntimeError("synthetic wave generation failure")
+        return [
+            {
+                "object_type": "triggers",
+                "title": "Claims Trigger",
+                "conditions": [{"field": "status", "operator": "less_than", "value": "solved"}],
+                "actions": [{"field": "set_tags", "value": "claims_route"}],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service._run_business_blueprint_compiler", fake_blueprint_compiler)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", failing_wave_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StageTrackingSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "For this business create one group and one trigger for claims routing.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["failure_stage"] == "generate"
+    assert detail["failure_code"] == "wave_generation_failed"
+    assert stage_calls["count"] == 0
+
+    batches = get_batch_store().list_batches()
+    assert batches
+    latest = sorted(batches, key=lambda item: item.get("updated_at", ""), reverse=True)[0]
+    assert latest["status"] == "failed"
+    statuses = [item.get("status") for item in latest.get("status_history", [])]
+    assert "staging" not in statuses
+
+
+def test_generate_single_item_explicit_prompt_bypasses_planner(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fail_if_planner_called(prompt: str, **kwargs):
+        raise AssertionError("Planner should be bypassed for explicit single-item prompts.")
+
+    async def fake_generator(plan: dict, **kwargs):
+        return [
+            {
+                "object_type": "triggers",
+                "title": "Billing Route",
+                "conditions": [{"field": "status", "operator": "is", "value": "open"}],
+                "actions": [{"field": "set_tags", "value": "billing_open"}],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fail_if_planner_called)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create one trigger named Billing Route that adds tag billing_open on open tickets.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert payload.get("metadata", {}).get("planning", {}).get("planner_bypassed") is True
+
+
+def test_generate_planner_rate_limited_fails_fast_without_generator(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+    planner_calls = {"count": 0}
+
+    async def rate_limited_planner(prompt: str, **kwargs):
+        planner_calls["count"] += 1
+        raise RuntimeError("Planner model call failed: Groq API request failed (429) [rate_limited]: too many requests")
+
+    async def fail_if_generator_called(plan: dict, **kwargs):
+        raise AssertionError("Generator should not be called when planner is rate-limited.")
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", rate_limited_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fail_if_generator_called)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create billing views for high priority unresolved tickets",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 429
+    detail = response.json()["detail"]
+    assert detail["failure_code"] == "rate_limited"
+    assert planner_calls["count"] == 1
+
+
+def test_generate_generator_rate_limited_maps_failure_code(monkeypatch, tmp_path):
+    from app.services.generator import GeneratorStructuredOutputError
+
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.95, "ambiguity_score": 0.1}
+
+    async def rate_limited_generator(plan: dict, **kwargs):
+        raise GeneratorStructuredOutputError(
+            "Generator rate limited before producing valid output.",
+            attempts=[{"mode": "json_object", "http_status": 429, "error_class": "rate_limited"}],
+            error_class="rate_limited",
+            provider_error_code="rate_limit_exceeded",
+        )
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", rate_limited_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create one trigger named Billing Route and add tag billing_open.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 429
+    detail = response.json()["detail"]
+    assert detail["failure_code"] == "rate_limited"
+    assert "rate-limit" in detail["next_step"].lower()
+
+
+def test_generate_post_generated_canonicalization_error_is_typed_failure(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.95, "ambiguity_score": 0.1}
+
+    async def fake_generator(plan: dict, **kwargs):
+        return [
+            {
+                "object_type": "triggers",
+                "title": "Route Billing",
+                "conditions": [{"field": "status", "operator": "is", "value": "open"}],
+                "actions": [{"field": "set_tags", "value": "billing"}],
+            }
+        ]
+
+    def fail_canonicalize(**kwargs):  # noqa: ANN001
+        raise ValueError("synthetic canonicalization failure")
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service._canonicalize_generated_rows", fail_canonicalize)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create one billing trigger with tag billing",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["failure_stage"] == "generate"
+    assert detail["failure_code"] == "generate_canonicalization_failed"
+    assert "canonicalization failed" in detail["failure_reason"].lower()
+
+    batches = get_batch_store().list_batches()
+    assert batches
+    latest = sorted(batches, key=lambda item: item.get("updated_at", ""), reverse=True)[0]
+    assert latest["status"] == "failed"
+    assert latest["metadata"]["failure"]["failure_code"] == "generate_canonicalization_failed"
+
+
+def test_generate_route_catch_all_returns_typed_runtime_error(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def boom(_request):  # noqa: ANN001
+        raise ValueError("unexpected route-level failure")
+
+    monkeypatch.setattr("app.routes.import_assistant.generate_import_assistant_batch", boom)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create one trigger",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["failure_stage"] == "generate"
+    assert detail["failure_code"] == "generate_runtime_error"
+    assert "unhandled generation error" in detail["failure_reason"].lower()
+
+
+def test_generate_pre_request_validated_failure_marks_batch_failed(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    def fail_context_bundle(**kwargs):  # noqa: ANN001
+        raise RuntimeError("synthetic pre-validation context failure")
+
+    monkeypatch.setattr(
+        "app.services.import_assistant_service._build_llm_context_bundle",
+        fail_context_bundle,
+    )
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create one trigger",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["failure_code"] == "generate_runtime_error"
+    assert "initialization failed" in detail["failure_reason"].lower()
+
+    batches = get_batch_store().list_batches()
+    assert batches
+    latest = sorted(batches, key=lambda item: item.get("updated_at", ""), reverse=True)[0]
+    assert latest["status"] == "failed"
+    assert latest["metadata"]["failure"]["failure_code"] == "generate_runtime_error"
+    statuses = [item.get("status") for item in latest.get("status_history", [])]
+    assert "failed" in statuses
+
+
+def test_generate_ticket_form_sparse_output_infers_fields_from_prompt(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "ticket_forms", "intent": prompt, "confidence": 0.91}
+
+    async def fake_generator(plan: dict, **kwargs):
+        return [
+            {
+                "object_type": "ticket_forms",
+                "title": "Claims Intake Form",
+                "conditions": [],
+                "actions": [],
+                "dependency_notes": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create ticket form called Claims Intake Form including fields Claim Status and Claim Number",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+            "reference_catalog": {
+                "ticket_fields": [
+                    {"id": "101", "name": "Claim Status", "object_type": "ticket_field"},
+                    {"id": "102", "name": "Claim Number", "object_type": "ticket_field"},
+                ]
+            },
+            "focus_object_types": ["ticket_forms"],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert payload["validation_summary"]["blocked"] == 0
+
+    preview = client.get(f"/api/import-assistant/preview/{payload['batch_id']}")
+    assert preview.status_code == 200
+    records = preview.json()["records"]
+    assert records
+    form_record = records[0]
+    assert form_record["object_type"] == "ticket_forms"
+    assert form_record["blocked_reason"] is None
+    action_fields = {item["field"] for item in form_record.get("actions", [])}
+    assert "ticket_field_ids" in action_fields or "ticket_field_names" in action_fields
