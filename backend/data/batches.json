@@ -12530,6 +12530,687 @@
         },
         "failure": null
       }
+    },
+    "BATCH-20260519-194136-38FA7C": {
+      "batch_id": "BATCH-20260519-194136-38FA7C",
+      "status": "failed",
+      "prompt": "We are setting up Zendesk for a company called BrightWave Internet Services. They are a fibre internet provider with three support teams: Technical Support, Billing Support, and Cancellations.  Please create the following:  1. Three ticket fields:    - A dropdown called \"Issue Category\" with options: Connection Issue,      Speed Problem, Billing Query, Contract Question, Cancellation Request    - A dropdown called \"Service Type\" with options: Fibre 10MB, Fibre 50MB,      Fibre 100MB, Business Fibre    - A text field called \"Account Reference Number\"  2. Three triggers:    - When a ticket is created and Issue Category is \"Billing Query\",      assign it to the Billing Support team and add tag \"billing\"    - When a ticket is created and Issue Category is \"Cancellation Request\",      assign it to the Cancellations team, add tag \"cancellation\",      and set priority to High    - When a ticket is created and Issue Category is \"Connection Issue\",      assign it to Technical Support and add tag \"technical\"  3. Three views:    - All open Billing Support tickets assigned to the Billing Support team    - All open Cancellation tickets with High priority    - All unassigned Technical Support tickets  4. Three macros:    - A macro called \"Acknowledge Billing Query\" that sends a reply:      \"Thank you for contacting BrightWave Billing Support. We have received      your query and will respond within 24 hours.\" and adds tag \"billing_acknowledged\"    - A macro called \"Escalate to Cancellations\" that assigns the ticket to      the Cancellations team, sets priority to High, and adds tag \"escalated\"    - A macro called \"Request Account Number\" that sends a reply:      \"To assist you further, please provide your BrightWave account reference      number.\" and adds tag \"awaiting_account_number\"  5. One ticket form:    - A form called \"BrightWave Support Form\" that includes the following      fields in order: Subject, Description, Issue Category, Service Type,      Account Reference Number, Priority",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-19T19:41:36.279091+00:00",
+      "updated_at": "2026-05-19T19:43:36.539529+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-19T19:41:36.279091+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-19T19:41:36.390825+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner bypassed for explicit single-item prompt; using deterministic inference.",
+          "at": "2026-05-19T19:41:36.467962+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-19T19:41:36.533055+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-19T19:41:36.647062+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-19T19:41:36.740939+00:00"
+        },
+        {
+          "status": "failed",
+          "message": "Generator JSON validation failed: Generator JSON validation failed after retry ladder.",
+          "at": "2026-05-19T19:43:36.437685+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "macros",
+        "intent": "We are setting up Zendesk for a company called BrightWave Internet Services. They are a fibre internet provider with three support teams: Technical Support, Billing Support, and Cancellations.  Please create the following:  1. Three ticket fields:    - A dropdown called \"Issue Category\" with options: Connection Issue,      Speed Problem, Billing Query, Contract Question, Cancellation Request    - A dropdown called \"Service Type\" with options: Fibre 10MB, Fibre 50MB,      Fibre 100MB, Business Fibre    - A text field called \"Account Reference Number\"  2. Three triggers:    - When a ticket is created and Issue Category is \"Billing Query\",      assign it to the Billing Support team and add tag \"billing\"    - When a ticket is created and Issue Category is \"Cancellation Request\",      assign it to the Cancellations team, add tag \"cancellation\",      and set priority to High    - When a ticket is created and Issue Category is \"Connection Issue\",      assign it to Technical Support and add tag \"technical\"  3. Three views:    - All open Billing Support tickets assigned to the Billing Support team    - All open Cancellation tickets with High priority    - All unassigned Technical Support tickets  4. Three macros:    - A macro called \"Acknowledge Billing Query\" that sends a reply:      \"Thank you for contacting BrightWave Billing Support. We have received      your query and will respond within 24 hours.\" and adds tag \"billing_acknowledged\"    - A macro called \"Escalate to Cancellations\" that assigns the ticket to      the Cancellations team, sets priority to High, and adds tag \"escalated\"    - A macro called \"Request Account Number\" that sends a reply:      \"To assist you further, please provide your BrightWave account reference      number.\" and adds tag \"awaiting_account_number\"  5. One ticket form:    - A form called \"BrightWave Support Form\" that includes the following      fields in order: Subject, Description, Issue Category, Service Type,      Account Reference Number, Priority",
+        "confidence": 0.84,
+        "ambiguity_score": 0.18,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "Deterministic planner bypass applied for explicit single-item request.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 9,
+          "ticket_forms": 8,
+          "triggers": 22,
+          "automations": 17,
+          "macros": 4,
+          "views": 32,
+          "ticket_fields": 60,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 10,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "deterministic_inference",
+          "strict_schema": false,
+          "telemetry": {
+            "bypassed": true,
+            "bypass_reason": "single_item_explicit_prompt",
+            "dependency_mode": "match_existing_or_create_new",
+            "estimated_requested_records": 1
+          }
+        },
+        "orchestration_mode": "explicit_fast_path"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "planning": {
+          "planner_bypassed": true,
+          "mode": "deterministic",
+          "estimated_requested_records": 1
+        },
+        "inference_assumptions": [],
+        "base_object_match": null,
+        "inference_confidence": 0.8360000000000001,
+        "orchestration": {
+          "mode": "explicit_fast_path",
+          "activation_reason": "multi_object_intent",
+          "waves": [],
+          "reconciliation_summary": {
+            "create": 0,
+            "reuse": 0,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": []
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 3,
+          "max_chunks": 12,
+          "trigger_min_records": 3,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "failed",
+          "abort_reason": "Generator JSON validation failed after retry ladder.",
+          "forced_deterministic_object_types": [],
+          "object_failure_counts": {}
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 420,
+            "strict_schema": false
+          },
+          "generator_wave3": "qwen/qwen3-32b",
+          "generator_wave4": "qwen/qwen3-32b",
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "bypassed": true,
+            "bypass_reason": "single_item_explicit_prompt",
+            "dependency_mode": "match_existing_or_create_new",
+            "estimated_requested_records": 1
+          },
+          "generator": {
+            "model": "openai/gpt-oss-20b",
+            "http_status": 400,
+            "final_status": "http_error",
+            "retry_count": 0,
+            "pre_request_wait_ms": 12000.0,
+            "wait_reason": "header_budget",
+            "error_class": "schema_validation_failure",
+            "provider_error_code": "json_validate_failed"
+          },
+          "terminal_error_class": "schema_validation_failure",
+          "generator_error": {
+            "error_class": "schema_validation_failure",
+            "provider_error_code": "json_validate_failed",
+            "validator_reason": "Model output was not parseable JSON."
+          }
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: We are setting up Zendesk for a company called BrightWave Internet Services. They are a fibre internet provider with three support teams: Technical Support, Billing Support, and Cancellations.  Please create the following:  1. Three ticket fields:    - A dropdown called \"Issue Category\" with options: Connection Issue,      Speed Problem, Billing Query, Contract Question, Cancellation Request    - A dropdown called \"Service Type\" with options: Fibre 10MB, Fibre 50MB,      Fibre 100MB, Business Fibre    - A text field called \"Account Reference Number\"  2. Three triggers:    - When a ticket is created and Issue Category is \"Billing Query\",      assign it to the Billing Support team and add tag \"billing\"    - When a ticket is created and Issue Category is \"Cancellation Request\",      assign it to the Cancellations team, add tag \"cancellation\",      and set priority to High    - When a ticket is created and Issue Category is \"Connection Issue\",      assign it to Technical Support and add tag \"technical\"  3. Three views:    - All open Billing Support tickets assigned to the Billing Support team    - All open Cancellation tickets with High priority    - All unassigned Technical Support tickets  4. Three macros:    - A macro called \"Acknowledge Billing Query\" that sends a reply:      \"Thank you for contacting BrightWave Billing Support. We have received      your query and will respond within 24 hours.\" and adds tag \"billing_acknowledged\"    - A macro called \"Escalate to Cancellations\" that assigns the ticket to      the Cancellations team, sets priority to High, and adds tag \"escalated\"    - A macro called \"Request Account Number\" that sends a reply:      \"To assist you further, please provide your BrightWave account reference      number.\" and adds tag \"awaiting_account_number\"  5. One ticket form:    - A form called \"BrightWave Support Form\" that includes the following      fields in order: Subject, Description, Issue Category, Service Type,      Account Reference Number, Priority"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "generator_json_validation_failed",
+          "failure_reason": "Generator could not produce schema-valid JSON after recovery attempts.",
+          "next_step": "Retry with narrower scope and explicit Zendesk action fields (status/group_id/set_tags/field_type/custom_field_options). Example: Example answer: Yes, generate one trigger record only with JSON fields object_type/title/conditions/actions/dependency_notes and no prose."
+        }
+      }
+    },
+    "BATCH-20260519-195145-43055C": {
+      "batch_id": "BATCH-20260519-195145-43055C",
+      "status": "preview_ready",
+      "prompt": "We are setting up Zendesk for a company called BrightWave Internet Services. They are a fibre internet provider with three support teams: Technical Support, Billing Support, and Cancellations.  Please create the following:  1. Three ticket fields:    - A dropdown called \"Issue Category\" with options: Connection Issue,      Speed Problem, Billing Query, Contract Question, Cancellation Request    - A dropdown called \"Service Type\" with options: Fibre 10MB, Fibre 50MB,      Fibre 100MB, Business Fibre    - A text field called \"Account Reference Number\"",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-19T19:51:45.222794+00:00",
+      "updated_at": "2026-05-19T19:52:19.655475+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-19T19:51:45.222794+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-19T19:51:45.262330+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner bypassed for explicit single-item prompt; using deterministic inference.",
+          "at": "2026-05-19T19:51:45.288404+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-19T19:51:45.326103+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-19T19:51:45.360016+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-19T19:51:45.393794+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-19T19:51:46.666254+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-19T19:51:46.725043+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Combined Apps Script pipeline unavailable; using legacy staging/validation/preview actions.",
+          "at": "2026-05-19T19:51:50.035782+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-19T19:51:59.186513+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-19T19:51:59.311705+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-05-19T19:52:19.565634+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-19T19:52:19.609169+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "ticket_fields",
+          "title": "Issue Category",
+          "preview_summary": "Ticket Fields configuration record.",
+          "validation_status": "failed",
+          "warnings": [
+            "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+            "Generation safety gate blocked deployment. Regenerate and retry."
+          ],
+          "blocked_reason": "Generated output does not satisfy explicit prompt constraints.",
+          "import_decision": "blocked",
+          "deployable": false,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "field_type",
+              "value": "tagger"
+            },
+            {
+              "field": "custom_field_options",
+              "value": [
+                {
+                  "name": "Connection Issue",
+                  "value": "connection_issue"
+                },
+                {
+                  "name": "Speed Problem",
+                  "value": "speed_problem"
+                },
+                {
+                  "name": "Billing Query",
+                  "value": "billing_query"
+                }
+              ]
+            },
+            {
+              "field": "agent_can_edit",
+              "value": true
+            },
+            {
+              "field": "visible_in_portal",
+              "value": true
+            },
+            {
+              "field": "editable_in_portal",
+              "value": false
+            },
+            {
+              "field": "required",
+              "value": false
+            },
+            {
+              "field": "required_in_portal",
+              "value": false
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        }
+      ],
+      "generated_counts": {
+        "ticket_fields": 1
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 1,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "ticket_fields",
+        "intent": "We are setting up Zendesk for a company called BrightWave Internet Services. They are a fibre internet provider with three support teams: Technical Support, Billing Support, and Cancellations.  Please create the following:  1. Three ticket fields:    - A dropdown called \"Issue Category\" with options: Connection Issue,      Speed Problem, Billing Query, Contract Question, Cancellation Request    - A dropdown called \"Service Type\" with options: Fibre 10MB, Fibre 50MB,      Fibre 100MB, Business Fibre    - A text field called \"Account Reference Number\"",
+        "confidence": 0.84,
+        "ambiguity_score": 0.18,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "Deterministic planner bypass applied for explicit single-item request.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 9,
+          "ticket_forms": 8,
+          "triggers": 22,
+          "automations": 17,
+          "macros": 4,
+          "views": 32,
+          "ticket_fields": 60,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 10,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "deterministic_inference",
+          "strict_schema": false,
+          "telemetry": {
+            "bypassed": true,
+            "bypass_reason": "single_item_explicit_prompt",
+            "dependency_mode": "match_existing_or_create_new",
+            "estimated_requested_records": 1
+          }
+        },
+        "orchestration_mode": "explicit_fast_path"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "planning": {
+          "planner_bypassed": true,
+          "mode": "deterministic",
+          "estimated_requested_records": 1
+        },
+        "orchestration": {
+          "mode": "explicit_fast_path",
+          "activation_reason": "multi_object_intent",
+          "waves": [],
+          "reconciliation_summary": {
+            "create": 0,
+            "reuse": 0,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": []
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 2,
+          "max_chunks": 12,
+          "trigger_min_records": 2,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "default"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ]
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null,
+          "forced_deterministic_object_types": [],
+          "object_failure_counts": {}
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 420,
+            "strict_schema": false
+          },
+          "generator_wave3": "qwen/qwen3-32b",
+          "generator_wave4": "qwen/qwen3-32b",
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "bypassed": true,
+            "bypass_reason": "single_item_explicit_prompt",
+            "dependency_mode": "match_existing_or_create_new",
+            "estimated_requested_records": 1
+          },
+          "generator": {
+            "model": "openai/gpt-oss-20b",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 0,
+            "pre_request_wait_ms": 0.0,
+            "wait_reason": null,
+            "error_class": "none",
+            "provider_error_code": null
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 10,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 10,
+            "recent_batch_context": 1
+          },
+          "generator_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          }
+        },
+        "inference_assumptions": [],
+        "base_object_match": null,
+        "inference_confidence": 0.8360000000000001,
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: We are setting up Zendesk for a company called BrightWave Internet Services. They are a fibre internet provider with three support teams: Technical Support, Billing Support, and Cancellations.  Please create the following:  1. Three ticket fields:    - A dropdown called \"Issue Category\" with options: Connection Issue,      Speed Problem, Billing Query, Contract Question, Cancellation Request    - A dropdown called \"Service Type\" with options: Fibre 10MB, Fibre 50MB,      Fibre 100MB, Business Fibre    - A text field called \"Account Reference Number\""
+        ],
+        "ambiguity_score": 0.18,
+        "ambiguity_threshold": 0.58,
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [],
+          "generated_types": [
+            "ticket_fields"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": true,
+          "reasons": [
+            "Generated output does not satisfy explicit prompt constraints."
+          ],
+          "confidence": 0.84,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [
+            "Requested title contains 'brightwave internet services', but generated title does not match."
+          ],
+          "blocked_record_ids": [
+            "REC-0001"
+          ]
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [
+            {
+              "title": "Issue Category",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            }
+          ],
+          "total_records": 1
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0,
+          "inference_hints_count": 0,
+          "inference_sources": []
+        },
+        "canonicalization": {
+          "trigger_article": {
+            "rules_processed": 0,
+            "articles_processed": 0,
+            "alias_mappings": 0,
+            "defaults_applied": 0,
+            "warnings": 0,
+            "blocked_records": 0
+          }
+        },
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260519-195145-43055C",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Ticket Fields": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260519-195145-43055C",
+            "summary": {
+              "passed": 0,
+              "warnings": 1,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-19T19:52:07.174Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null
+      }
     }
   }
 }
