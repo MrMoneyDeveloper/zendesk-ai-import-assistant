@@ -180,6 +180,28 @@ BUSINESS_BRIEF_SIGNAL_PATTERNS = (
     r"\bwhole (?:system|workspace|instance)\b",
     r"\bfor (?:a|an|the) (?:business|company|organization)\b",
 )
+NUMBER_WORD_VALUES = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+}
 
 
 class GenerateFailureError(RuntimeError):
@@ -481,8 +503,41 @@ def _is_schema_validation_failure(exc: Exception) -> bool:
 
 
 def _normalize_object_type(raw: str) -> str:
-    normalized = raw.strip().lower()
-    return TAB_OBJECT_TYPES.get(normalized, "triggers")
+    normalized = str(raw or "").strip().lower()
+    if not normalized:
+        return "triggers"
+    direct_match = TAB_OBJECT_TYPES.get(normalized)
+    if direct_match:
+        return direct_match
+
+    normalized_key = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+    alias_map = {
+        "trigger": "triggers",
+        "triggers": "triggers",
+        "automation": "automations",
+        "automations": "automations",
+        "macro": "macros",
+        "macros": "macros",
+        "view": "views",
+        "views": "views",
+        "group": "groups",
+        "groups": "groups",
+        "ticket_field": "ticket_fields",
+        "ticket_fields": "ticket_fields",
+        "field": "ticket_fields",
+        "fields": "ticket_fields",
+        "custom_field": "ticket_fields",
+        "custom_fields": "ticket_fields",
+        "ticket_form": "ticket_forms",
+        "ticket_forms": "ticket_forms",
+        "form": "ticket_forms",
+        "forms": "ticket_forms",
+        "article": "articles",
+        "articles": "articles",
+        "help_center_article": "articles",
+        "help_center_articles": "articles",
+    }
+    return alias_map.get(normalized_key, "triggers")
 
 
 def _normalize_focus_object_types(raw: list[str] | None) -> list[str]:
@@ -522,10 +577,18 @@ def _normalize_title_for_constraint_match(title: object) -> str:
 def _count_enumerated_items(prompt: str) -> int:
     if not prompt:
         return 0
-    lines = str(prompt).splitlines()
-    enumerated_pattern = re.compile(r"^\s*(?:\d+[\).\]]|[-*•])\s+\S+")
-    matches = [line for line in lines if enumerated_pattern.match(line or "")]
-    return len(matches)
+    text = str(prompt)
+    lines = text.splitlines()
+    line_enumerated_pattern = re.compile(r"^\s*(?:\d+[\).\]]|[-*\u2022])\s+\S+")
+    line_matches = [line for line in lines if line_enumerated_pattern.match(line or "")]
+
+    inline_numbered_pattern = re.compile(
+        r"(?:(?<=^)|(?<=[\s;:,]))(\d{1,2})\s*[\).:]\s+(?=[a-z])",
+        flags=re.IGNORECASE,
+    )
+    inline_matches = inline_numbered_pattern.findall(text)
+
+    return max(len(line_matches), len(inline_matches))
 
 
 def _estimate_requested_record_count(prompt: str) -> dict:
@@ -564,6 +627,34 @@ def _estimate_requested_record_count(prompt: str) -> dict:
         )
         numeric_values.append(value)
 
+    number_word_pattern = "|".join(
+        sorted(NUMBER_WORD_VALUES.keys(), key=lambda item: len(item), reverse=True)
+    )
+    number_word_numeric_pattern = re.compile(
+        rf"\b({number_word_pattern})\s+"
+        r"(?:(?:[a-z][\w/-]{0,30})\s+){0,3}?"
+        r"("
+        r"triggers?|automations?|macros?|views?|groups?|"
+        r"ticket\s*forms?|forms?|ticket\s*fields?|fields?|articles?"
+        r")\b",
+        flags=re.IGNORECASE,
+    )
+    for match in number_word_numeric_pattern.finditer(text):
+        number_word = str(match.group(1) or "").strip().lower()
+        value = int(NUMBER_WORD_VALUES.get(number_word, 0) or 0)
+        if value <= 0:
+            continue
+        object_hint = _normalize_object_type(match.group(2))
+        numeric_matches.append(
+            {
+                "value": value,
+                "object_hint": object_hint,
+                "raw": match.group(0),
+                "source": "number_word_intent",
+            }
+        )
+        numeric_values.append(value)
+
     enumerated_items = _count_enumerated_items(text)
     candidates = [*numeric_values]
     if enumerated_items > 0:
@@ -577,6 +668,12 @@ def _estimate_requested_record_count(prompt: str) -> dict:
         sources = []
         if numeric_values:
             sources.append("numeric_intent")
+            if any(
+                str(item.get("source", "")).strip().lower() == "number_word_intent"
+                for item in numeric_matches
+                if isinstance(item, dict)
+            ):
+                sources.append("number_word_intent")
         if enumerated_items > 0:
             sources.append("enumerated_items")
 
@@ -686,6 +783,51 @@ def _is_business_blueprint_prompt(
     if has_business_signal and (focus_multi or estimated_count > 1):
         return True, "business_brief_signal"
     return False, "standard_record_prompt"
+
+
+def _should_force_wave_chunk_path(
+    *,
+    prompt: str,
+    estimated_count: int,
+    object_targets: dict[str, int],
+    chunk_estimate: dict | None = None,
+) -> tuple[bool, str]:
+    lowered = str(prompt or "").strip().lower()
+    estimate = chunk_estimate if isinstance(chunk_estimate, dict) else {}
+    enumerated_items = int(estimate.get("enumerated_items", 0) or 0)
+    numeric_matches = list(estimate.get("numeric_matches", []) or [])
+    number_word_matches = sum(
+        1
+        for item in numeric_matches
+        if isinstance(item, dict)
+        and str(item.get("source", "")).strip().lower() == "number_word_intent"
+    )
+    target_total = sum(max(int(value or 0), 0) for value in object_targets.values())
+    object_type_count = len([key for key, value in object_targets.items() if int(value or 0) > 0])
+    has_create_following_signal = bool(
+        re.search(
+            r"\b(?:create|build|configure|set\s*up|setup)\b[\s\S]{0,80}\bfollowing\b",
+            lowered,
+            flags=re.IGNORECASE,
+        )
+    )
+    has_large_list_signal = bool(
+        re.search(
+            r"\b(?:create|build|configure|set\s*up|setup)\b[\s\S]{0,80}\b(?:the\s+)?(?:below|list)\b",
+            lowered,
+            flags=re.IGNORECASE,
+        )
+    )
+
+    if has_create_following_signal and (enumerated_items >= 2 or object_type_count >= 2):
+        return True, "create_following_numbered_prompt"
+    if has_large_list_signal and (enumerated_items >= 2 or target_total >= 3):
+        return True, "explicit_list_prompt"
+    if object_type_count >= 2 and target_total >= 3:
+        return True, "multi_object_target_prompt"
+    if estimated_count >= 3 and (enumerated_items >= 2 or number_word_matches >= 2):
+        return True, "numbered_multi_item_prompt"
+    return False, "standard_prompt"
 
 
 def _resolve_wave_for_object_type(object_type: str) -> int:
@@ -1520,7 +1662,7 @@ def _extract_title_hints(prompt: str) -> list[str]:
         return []
     hints: list[str] = []
     patterns = [
-        r"\b(?:named|called|titled)\s+[\"“']([^\"”']{2,200})[\"”']",
+        r"\b(?:named|called|titled)\s+[\"'\u201c\u201d]([^\"'\u201c\u201d]{2,200})[\"'\u201c\u201d]",
         r"\b(?:named|called|titled)\s+([A-Za-z0-9][A-Za-z0-9 _&\-/]{2,120})",
     ]
     for pattern in patterns:
@@ -3554,6 +3696,9 @@ async def generate_import_assistant_batch(
     generator_telemetry: dict = {}
     chunk_estimate: dict = {"estimated_count": 1, "sources": ["default"], "numeric_matches": [], "enumerated_items": 0}
     estimated_requested_records = 1
+    pre_planner_object_targets: dict[str, int] = {}
+    force_wave_chunk_path = False
+    force_wave_chunk_reason = "standard_prompt"
     planner_bypassed = False
     orchestration_mode = "explicit_fast_path"
     orchestration_metadata: dict = {
@@ -3599,7 +3744,23 @@ async def generate_import_assistant_batch(
             request.prompt,
             inferred_object_type_for_explicitness,
         )
-        planner_bypassed = estimated_requested_records == 1 and prompt_explicit_for_bypass
+        pre_planner_object_targets = _extract_object_type_targets(
+            prompt=request.prompt,
+            focus_object_types=focus_object_types,
+            estimated_count=estimated_requested_records,
+            chunk_estimate=chunk_estimate,
+        )
+        force_wave_chunk_path, force_wave_chunk_reason = _should_force_wave_chunk_path(
+            prompt=request.prompt,
+            estimated_count=estimated_requested_records,
+            object_targets=pre_planner_object_targets,
+            chunk_estimate=chunk_estimate,
+        )
+        planner_bypassed = (
+            estimated_requested_records == 1
+            and prompt_explicit_for_bypass
+            and not force_wave_chunk_path
+        )
         store.append_status(batch_id, "request_validated", "Incoming request validated.")
     except Exception as exc:  # noqa: BLE001
         failure_reason = f"Request initialization failed: {exc}"
@@ -3669,6 +3830,16 @@ async def generate_import_assistant_batch(
                     next_step="Wait for the provider rate-limit window to reset, then retry this prompt.",
                 ) from planner_exc
             raise
+
+    if force_wave_chunk_path:
+        store.append_status(
+            batch_id,
+            "planning",
+            (
+                "Large multi-item prompt detected; forcing wave/chunk orchestration "
+                f"({force_wave_chunk_reason})."
+            ),
+        )
 
     if planner_bypassed:
         store.append_status(
@@ -3743,7 +3914,7 @@ async def generate_import_assistant_batch(
     base_object_match = inference_result.get("base_object_match")
     inference_confidence = float(inference_result.get("inference_confidence", 0.0) or 0.0)
     prompt_explicit = _is_explicit_enough_for_generation(request.prompt, resolved_object_type)
-    object_targets = _extract_object_type_targets(
+    object_targets = dict(pre_planner_object_targets) or _extract_object_type_targets(
         prompt=request.prompt,
         focus_object_types=focus_object_types,
         estimated_count=estimated_requested_records,
@@ -3756,6 +3927,9 @@ async def generate_import_assistant_batch(
         prompt_explicit=prompt_explicit,
         object_targets=object_targets,
     )
+    if force_wave_chunk_path:
+        use_business_blueprint = True
+        business_reason = force_wave_chunk_reason
     blueprint_payload: dict = {}
     orchestration_backlog: list[dict] = []
     try:
@@ -3865,6 +4039,8 @@ async def generate_import_assistant_batch(
                         "planner_bypassed": planner_bypassed,
                         "mode": "deterministic" if planner_bypassed else "llm",
                         "estimated_requested_records": estimated_requested_records,
+                        "force_wave_chunk_path": force_wave_chunk_path,
+                        "force_wave_chunk_reason": force_wave_chunk_reason,
                     },
                     "orchestration": orchestration_metadata,
                     "llm_routes": llm_routes_metadata,
@@ -3961,6 +4137,8 @@ async def generate_import_assistant_batch(
                         "planner_bypassed": planner_bypassed,
                         "mode": "deterministic" if planner_bypassed else "llm",
                         "estimated_requested_records": estimated_requested_records,
+                        "force_wave_chunk_path": force_wave_chunk_path,
+                        "force_wave_chunk_reason": force_wave_chunk_reason,
                     },
                     "inference_assumptions": inference_assumptions,
                     "base_object_match": base_object_match,
@@ -3998,7 +4176,14 @@ async def generate_import_assistant_batch(
     single_item_compatibility_first = (
         int(chunking_metadata.get("estimated_requested_records", 1) or 1) == 1
         and not bool(chunking_metadata.get("activated"))
+        and not force_wave_chunk_path
     )
+    deterministic_failover_threshold = (
+        1 if force_wave_chunk_path else OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD
+    )
+    chunking_metadata["forced_wave_chunk_path"] = force_wave_chunk_path
+    chunking_metadata["forced_wave_chunk_reason"] = force_wave_chunk_reason
+    chunking_metadata["deterministic_failover_threshold"] = deterministic_failover_threshold
     chunked_form_field_compatibility_first = (
         bool(chunking_metadata.get("activated"))
         and _force_compatibility_payload_shape(str(plan.get("object_type", "")))
@@ -4317,7 +4502,7 @@ async def generate_import_assistant_batch(
                         if chunk_error is not None:
                             object_failure_count = int(failure_count_by_object_type.get(object_type, 0) or 0) + 1
                             failure_count_by_object_type[object_type] = object_failure_count
-                            if object_failure_count >= OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD:
+                            if object_failure_count >= deterministic_failover_threshold:
                                 if object_type not in forced_deterministic_object_types:
                                     forced_deterministic_object_types.add(object_type)
                                     store.append_status(
@@ -4550,7 +4735,7 @@ async def generate_import_assistant_batch(
                             failure_count_by_object_type.get(current_object_type, 0) or 0
                         ) + 1
                         failure_count_by_object_type[current_object_type] = object_failure_count
-                        if object_failure_count >= OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD:
+                        if object_failure_count >= deterministic_failover_threshold:
                             if current_object_type not in forced_deterministic_object_types:
                                 forced_deterministic_object_types.add(current_object_type)
                                 store.append_status(
@@ -4795,6 +4980,8 @@ async def generate_import_assistant_batch(
                         "planner_bypassed": planner_bypassed,
                         "mode": "deterministic" if planner_bypassed else "llm",
                         "estimated_requested_records": estimated_requested_records,
+                        "force_wave_chunk_path": force_wave_chunk_path,
+                        "force_wave_chunk_reason": force_wave_chunk_reason,
                     },
                     "inference_assumptions": inference_assumptions,
                     "base_object_match": base_object_match,
@@ -4879,6 +5066,8 @@ async def generate_import_assistant_batch(
                 "planner_bypassed": planner_bypassed,
                 "mode": "deterministic" if planner_bypassed else "llm",
                 "estimated_requested_records": estimated_requested_records,
+                "force_wave_chunk_path": force_wave_chunk_path,
+                "force_wave_chunk_reason": force_wave_chunk_reason,
             },
             "orchestration": orchestration_metadata,
             "chunking": chunking_metadata,
