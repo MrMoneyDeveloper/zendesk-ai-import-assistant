@@ -1489,6 +1489,63 @@ def _build_deterministic_chunk_rows(
     return rows
 
 
+def _supplement_chunk_rows_to_target(
+    *,
+    object_type: str,
+    target_count: int,
+    chunk_rows: list[dict],
+    prompt: str,
+    reference_catalog: dict[str, list[dict]],
+    existing_titles: list[str] | None,
+    generated_rows: list[dict] | None,
+    reason: str,
+) -> tuple[list[dict], int]:
+    normalized_target = max(int(target_count or 1), 1)
+    current_rows = list(chunk_rows or [])
+    if len(current_rows) >= normalized_target:
+        return current_rows, 0
+
+    missing = normalized_target - len(current_rows)
+    title_seed = list(existing_titles or [])
+    for row in current_rows:
+        title = str(row.get("title", "")).strip()
+        if title:
+            title_seed.append(title)
+
+    supplements = _build_deterministic_chunk_rows(
+        object_type=object_type,
+        target_count=missing,
+        prompt=prompt,
+        reference_catalog=reference_catalog,
+        existing_titles=title_seed,
+        generated_rows=list(generated_rows or []) + current_rows,
+        reason=reason,
+    )
+    if not supplements:
+        return current_rows, 0
+    return current_rows + supplements, len(supplements)
+
+
+def _enforce_expected_object_type(
+    *,
+    rows: list[dict],
+    expected_object_type: str,
+) -> tuple[list[dict], int]:
+    expected = _normalize_object_type(expected_object_type)
+    aligned: list[dict] = []
+    mismatched = 0
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        row_type = _normalize_object_type(str(row.get("object_type", "")))
+        if row_type != expected:
+            mismatched += 1
+            continue
+        row["object_type"] = expected
+        aligned.append(row)
+    return aligned, mismatched
+
+
 def _dedupe_generated_rows(rows: list[dict]) -> tuple[list[dict], int]:
     deduped: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -2365,6 +2422,20 @@ def _extract_explicit_constraints(prompt: str) -> dict:
         return _normalize_title_for_constraint_match(cleaned)
 
     text = prompt.strip().lower()
+
+    def _is_valid_title_constraint_context(*, full_text: str, match_start: int) -> bool:
+        window_start = max(0, int(match_start) - 64)
+        context = full_text[window_start:int(match_start)]
+        disallowed_context = (
+            "company called",
+            "business called",
+            "organization called",
+            "instance called",
+            "workspace called",
+        )
+        if any(token in context for token in disallowed_context):
+            return False
+        return True
     explicit = {
         "title": None,
         "tag": None,
@@ -2374,15 +2445,18 @@ def _extract_explicit_constraints(prompt: str) -> dict:
     }
 
     title_patterns = [
-        r"\b(?:called|named)\s+([a-z0-9][a-z0-9 _-]{0,120})",
+        r"\b(?:trigger|automation|macro|view|group|ticket\s*form|form|ticket\s*field|field|article|rule)\s+(?:called|named)\s+([a-z0-9][a-z0-9 _-]{0,120})",
         r"\bname(?:\s+it)?\s+(?:as|to)?\s*([a-z0-9][a-z0-9 _-]{0,120})",
     ]
     for pattern in title_patterns:
-        match = re.search(pattern, text)
-        if match:
+        for match in re.finditer(pattern, text):
+            if not _is_valid_title_constraint_context(full_text=text, match_start=match.start()):
+                continue
             normalized_title = _normalize_title_constraint(match.group(1))
             if normalized_title:
                 explicit["title"] = normalized_title
+                break
+        if explicit["title"]:
             break
 
     tag_match = re.search(
@@ -4623,6 +4697,69 @@ async def generate_import_assistant_batch(
                                     f"chunk {local_chunk_index}/{len(item_chunk_targets)} used compact context."
                                 ),
                             )
+                        topup_reason = (
+                            "Model returned fewer rows than chunk target; deterministic top-up applied."
+                        )
+                        chunk_rows, deterministic_topup_count = _supplement_chunk_rows_to_target(
+                            object_type=object_type,
+                            target_count=int(item_chunk_target),
+                            chunk_rows=chunk_rows,
+                            prompt=request.prompt,
+                            reference_catalog=reference_catalog,
+                            existing_titles=chunked_titles[-200:],
+                            generated_rows=generated_data,
+                            reason=topup_reason,
+                        )
+                        if deterministic_topup_count > 0:
+                            used_deterministic_fallback = True
+                            if fallback_reason:
+                                fallback_reason = f"{fallback_reason} | {topup_reason}"
+                            else:
+                                fallback_reason = topup_reason
+                            store.append_status(
+                                batch_id,
+                                "generating",
+                                (
+                                    f"Wave {wave_position}/{total_wave_count} {object_type} "
+                                    f"chunk {local_chunk_index}/{len(item_chunk_targets)} topped up "
+                                    f"{deterministic_topup_count} record(s) deterministically."
+                                ),
+                            )
+                        chunk_rows, mismatched_object_count = _enforce_expected_object_type(
+                            rows=chunk_rows,
+                            expected_object_type=object_type,
+                        )
+                        if mismatched_object_count > 0:
+                            mismatch_reason = (
+                                f"Filtered {mismatched_object_count} row(s) with wrong object_type for "
+                                f"{object_type} wave chunk."
+                            )
+                            store.append_status(
+                                batch_id,
+                                "generating",
+                                (
+                                    f"Wave {wave_position}/{total_wave_count} {object_type} "
+                                    f"chunk {local_chunk_index}/{len(item_chunk_targets)} dropped "
+                                    f"{mismatched_object_count} mismatched row(s)."
+                                ),
+                            )
+                            chunk_rows, alignment_topup_count = _supplement_chunk_rows_to_target(
+                                object_type=object_type,
+                                target_count=int(item_chunk_target),
+                                chunk_rows=chunk_rows,
+                                prompt=request.prompt,
+                                reference_catalog=reference_catalog,
+                                existing_titles=chunked_titles[-200:],
+                                generated_rows=generated_data,
+                                reason=mismatch_reason,
+                            )
+                            if alignment_topup_count > 0:
+                                used_deterministic_fallback = True
+                                deterministic_topup_count += alignment_topup_count
+                                if fallback_reason:
+                                    fallback_reason = f"{fallback_reason} | {mismatch_reason}"
+                                else:
+                                    fallback_reason = mismatch_reason
 
                         before_chunk_dedupe_count = len(generated_data)
                         raw_chunk_count = len(chunk_rows)
@@ -4683,6 +4820,8 @@ async def generate_import_assistant_batch(
                             "object_failure_count_in_run": object_failure_count_for_chunk,
                             "forced_reason": forced_reason,
                             "fallback_reason": fallback_reason,
+                            "deterministic_topup_records": deterministic_topup_count,
+                            "mismatched_object_rows_dropped": mismatched_object_count,
                         }
                         generator_chunk_telemetry.append(chunk_entry)
                     item_meta["status"] = "completed"
@@ -4850,6 +4989,33 @@ async def generate_import_assistant_batch(
                         "generating",
                         f"Chunk {index}/{len(chunk_targets)} used compact context profile.",
                     )
+                topup_reason = (
+                    "Model returned fewer rows than chunk target; deterministic top-up applied."
+                )
+                chunk_rows, deterministic_topup_count = _supplement_chunk_rows_to_target(
+                    object_type=current_object_type,
+                    target_count=int(target_count),
+                    chunk_rows=chunk_rows,
+                    prompt=request.prompt,
+                    reference_catalog=reference_catalog,
+                    existing_titles=chunked_titles[-200:],
+                    generated_rows=generated_data,
+                    reason=topup_reason,
+                )
+                if deterministic_topup_count > 0:
+                    used_deterministic_fallback = True
+                    if fallback_reason:
+                        fallback_reason = f"{fallback_reason} | {topup_reason}"
+                    else:
+                        fallback_reason = topup_reason
+                    store.append_status(
+                        batch_id,
+                        "generating",
+                        (
+                            f"Chunk {index}/{len(chunk_targets)} topped up "
+                            f"{deterministic_topup_count} record(s) deterministically."
+                        ),
+                    )
 
                 before_chunk_dedupe_count = len(generated_data)
                 raw_chunk_count = len(chunk_rows)
@@ -4889,6 +5055,7 @@ async def generate_import_assistant_batch(
                     "object_failure_count_in_run": object_failure_count_for_chunk,
                     "forced_reason": forced_reason,
                     "fallback_reason": fallback_reason,
+                    "deterministic_topup_records": deterministic_topup_count,
                     "object_type": _normalize_object_type(str(plan.get("object_type", ""))),
                     "wave": _resolve_wave_for_object_type(str(plan.get("object_type", ""))),
                 }
