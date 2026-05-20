@@ -1236,12 +1236,14 @@ def _build_chunk_instruction(
 
 def _can_use_deterministic_chunk_fallback(object_type: str) -> bool:
     return _normalize_object_type(object_type) in {
+        "groups",
         "ticket_fields",
         "ticket_forms",
         "views",
         "triggers",
         "macros",
         "automations",
+        "articles",
     }
 
 
@@ -1317,6 +1319,30 @@ def _build_deterministic_chunk_rows(
             )
         return rows
 
+    if normalized_object_type == "groups":
+        title_hints = _extract_title_hints(prompt_text)
+        base_title = title_hints[0] if title_hints else "Generated Support Group"
+        description_match = re.search(
+            r"\b(?:for|supports?)\s+([a-z0-9][a-z0-9 &/_-]{2,120})",
+            prompt_text,
+            flags=re.IGNORECASE,
+        )
+        description_hint = str(description_match.group(1)).strip() if description_match else ""
+        for index in range(1, requested_count + 1):
+            actions = []
+            if description_hint:
+                actions.append({"field": "description", "value": f"Support group for {description_hint}."})
+            rows.append(
+                {
+                    "object_type": "groups",
+                    "title": _next_unique_title(base_title, index),
+                    "conditions": [],
+                    "actions": actions,
+                    "dependency_notes": [fallback_note],
+                }
+            )
+        return rows
+
     if normalized_object_type == "ticket_forms":
         referenced_fields = _extract_ticket_form_field_hints_from_prompt(
             prompt=prompt_text,
@@ -1366,6 +1392,35 @@ def _build_deterministic_chunk_rows(
                     "title": _next_unique_title("Generated Work Queue", index),
                     "conditions": default_conditions,
                     "actions": [{"field": "output_columns", "value": ["status", "updated", "subject"]}],
+                    "dependency_notes": [fallback_note],
+                }
+            )
+        return rows
+
+    if normalized_object_type == "articles":
+        section_id: str | None = None
+        for section in reference_catalog.get("sections", []) or []:
+            if not isinstance(section, dict):
+                continue
+            candidate = str(section.get("id", "")).strip()
+            if candidate.isdigit():
+                section_id = candidate
+                break
+        title_hints = _extract_title_hints(prompt_text)
+        base_title = title_hints[0] if title_hints else "Generated Help Article"
+        for index in range(1, requested_count + 1):
+            actions = [
+                {"field": "locale", "value": "en-us"},
+                {"field": "body", "value": "<p>Draft article generated from business brief fallback.</p>"},
+            ]
+            if section_id:
+                actions.append({"field": "section_id", "value": section_id})
+            rows.append(
+                {
+                    "object_type": "articles",
+                    "title": _next_unique_title(base_title, index),
+                    "conditions": [],
+                    "actions": actions,
                     "dependency_notes": [fallback_note],
                 }
             )
