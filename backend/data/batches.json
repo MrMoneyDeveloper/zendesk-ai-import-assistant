@@ -13211,6 +13211,408 @@
         },
         "failure": null
       }
+    },
+    "BATCH-20260520-202154-255204": {
+      "batch_id": "BATCH-20260520-202154-255204",
+      "status": "failed",
+      "prompt": "We are setting up Zendesk for a company called BrightWave Internet Services. They are a fibre internet provider with three support teams: Technical Support, Billing Support, and Cancellations.  Please create the following:  1. Three ticket fields:    - A dropdown called \"Issue Category\" with options: Connection Issue,      Speed Problem, Billing Query, Contract Question, Cancellation Request    - A dropdown called \"Service Type\" with options: Fibre 10MB, Fibre 50MB,      Fibre 100MB, Business Fibre    - A text field called \"Account Reference Number\"  2. Three triggers:    - When a ticket is created and Issue Category is \"Billing Query\",      assign it to the Billing Support team and add tag \"billing\"    - When a ticket is created and Issue Category is \"Cancellation Request\",      assign it to the Cancellations team, add tag \"cancellation\",      and set priority to High    - When a ticket is created and Issue Category is \"Connection Issue\",      assign it to Technical Support and add tag \"technical\"  3. Three views:    - All open Billing Support tickets assigned to the Billing Support team    - All open Cancellation tickets with High priority    - All unassigned Technical Support tickets  4. Three macros:    - A macro called \"Acknowledge Billing Query\" that sends a reply:      \"Thank you for contacting BrightWave Billing Support. We have received      your query and will respond within 24 hours.\" and adds tag \"billing_acknowledged\"    - A macro called \"Escalate to Cancellations\" that assigns the ticket to      the Cancellations team, sets priority to High, and adds tag \"escalated\"    - A macro called \"Request Account Number\" that sends a reply:      \"To assist you further, please provide your BrightWave account reference      number.\" and adds tag \"awaiting_account_number\"  5. One ticket form:    - A form called \"BrightWave Support Form\" that includes the following      fields in order: Subject, Description, Issue Category, Service Type,      Account Reference Number, Priority",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-20T20:21:54.410479+00:00",
+      "updated_at": "2026-05-20T20:24:17.881052+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-20T20:21:54.410479+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-20T20:21:54.548982+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Large multi-item prompt detected; forcing wave/chunk orchestration (create_following_numbered_prompt).",
+          "at": "2026-05-20T20:21:54.631600+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-20T20:21:54.696345+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner returned deterministic JSON failure; switching to heuristic planner fallback.",
+          "at": "2026-05-20T20:21:58.505365+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-20T20:22:03.169731+00:00"
+        },
+        {
+          "status": "business_blueprinting",
+          "message": "Compiling business brief into executable blueprint.",
+          "at": "2026-05-20T20:22:03.267044+00:00"
+        },
+        {
+          "status": "backlog_building",
+          "message": "Building deterministic backlog and dependency order.",
+          "at": "2026-05-20T20:22:05.337420+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-20T20:22:05.424448+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-20T20:22:05.487355+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "Executing deterministic orchestration waves.",
+          "at": "2026-05-20T20:22:05.551987+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 groups chunk 1/1 (target=1).",
+          "at": "2026-05-20T20:22:05.615536+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Object-level failover activated for groups: 1 generation failures in this run. Remaining chunks will use deterministic synthesis.",
+          "at": "2026-05-20T20:24:17.573703+00:00"
+        },
+        {
+          "status": "failed",
+          "message": "Generator JSON validation failed: Generator JSON validation failed after retry ladder.",
+          "at": "2026-05-20T20:24:17.795988+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "We are setting up Zendesk for a company called BrightWave Internet Services. They are a fibre internet provider with three support teams: Technical Support, Billing Support, and Cancellations.  Please create the following:  1. Three ticket fields:    - A dropdown called \"Issue Category\" with options: Connection Issue,      Speed Problem, Billing Query, Contract Question, Cancellation Request    - A dropdown called \"Service Type\" with options: Fibre 10MB, Fibre 50MB,      Fibre 100MB, Business Fibre    - A text field called \"Account Reference Number\"  2. Three triggers:    - When a ticket is created and Issue Category is \"Billing Query\",      assign it to the Billing Support team and add tag \"billing\"    - When a ticket is created and Issue Category is \"Cancellation Request\",      assign it to the Cancellations team, add tag \"cancellation\",      and set priority to High    - When a ticket is created and Issue Category is \"Connection Issue\",      assign it to Technical Support and add tag \"technical\"  3. Three views:    - All open Billing Support tickets assigned to the Billing Support team    - All open Cancellation tickets with High priority    - All unassigned Technical Support tickets  4. Three macros:    - A macro called \"Acknowledge Billing Query\" that sends a reply:      \"Thank you for contacting BrightWave Billing Support. We have received      your query and will respond within 24 hours.\" and adds tag \"billing_acknowledged\"    - A macro called \"Escalate to Cancellations\" that assigns the ticket to      the Cancellations team, sets priority to High, and adds tag \"escalated\"    - A macro called \"Request Account Number\" that sends a reply:      \"To assist you further, please provide your BrightWave account reference      number.\" and adds tag \"awaiting_account_number\"  5. One ticket form:    - A form called \"BrightWave Support Form\" that includes the following      fields in order: Subject, Description, Issue Category, Service Type,      Account Reference Number, Priority",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 9,
+          "ticket_forms": 8,
+          "triggers": 22,
+          "automations": 17,
+          "macros": 4,
+          "views": 32,
+          "ticket_fields": 60,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 10,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        },
+        "orchestration_mode": "business_blueprint"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "planning": {
+          "planner_bypassed": false,
+          "mode": "llm",
+          "estimated_requested_records": 14,
+          "force_wave_chunk_path": true,
+          "force_wave_chunk_reason": "create_following_numbered_prompt"
+        },
+        "inference_assumptions": [
+          {
+            "kind": "business_blueprint_mode",
+            "message": "Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          }
+        ],
+        "base_object_match": null,
+        "inference_confidence": 0.6599999999999999,
+        "orchestration": {
+          "mode": "business_blueprint",
+          "activation_reason": "create_following_numbered_prompt",
+          "blueprint": {
+            "mode": "deterministic_fallback",
+            "capabilities": [
+              "inference_first",
+              "match_existing_or_create"
+            ],
+            "assumptions": [
+              "No clarification loop is used; missing details are inferred from prompt and catalog context."
+            ],
+            "priorities": [
+              "deterministic_wave_order",
+              "reuse_before_create",
+              "fail_whole_run"
+            ],
+            "dependency_hints": [],
+            "target_objects": [
+              {
+                "object_type": "ticket_fields",
+                "target_count": 3,
+                "priority": 1,
+                "wave": 1
+              },
+              {
+                "object_type": "triggers",
+                "target_count": 3,
+                "priority": 3,
+                "wave": 3
+              },
+              {
+                "object_type": "views",
+                "target_count": 3,
+                "priority": 2,
+                "wave": 2
+              },
+              {
+                "object_type": "macros",
+                "target_count": 3,
+                "priority": 3,
+                "wave": 3
+              },
+              {
+                "object_type": "ticket_forms",
+                "target_count": 1,
+                "priority": 2,
+                "wave": 2
+              },
+              {
+                "object_type": "groups",
+                "target_count": 1,
+                "priority": 1,
+                "wave": 1
+              }
+            ]
+          },
+          "backlog_size": 6,
+          "waves": [
+            {
+              "wave": 1,
+              "position": 1,
+              "total_waves": 3,
+              "generator_model": "openai/gpt-oss-20b",
+              "status": "running",
+              "items": [
+                {
+                  "backlog_id": "BL-001",
+                  "object_type": "groups",
+                  "target_count": 1,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "reuse",
+                  "match_score": 0.78,
+                  "match_source": "unique_fuzzy",
+                  "base_object": {
+                    "object_type": "groups",
+                    "match_type": "unique_fuzzy",
+                    "id": "27421168409116",
+                    "name": "support",
+                    "description": "None"
+                  },
+                  "status": "running",
+                  "chunks": 0,
+                  "generated_records": 0,
+                  "deduped_records_added": 0
+                }
+              ],
+              "created": 0,
+              "reused": 1,
+              "updated": 0,
+              "blocked": 0,
+              "chunks": 0,
+              "generated_records": 0,
+              "deduped_records_added": 0
+            }
+          ],
+          "reconciliation_summary": {
+            "create": 0,
+            "reuse": 1,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": [
+            "No clarification loop is used; missing details are inferred from prompt and catalog context."
+          ],
+          "final_status": "failed",
+          "abort_reason": "Generator JSON validation failed after retry ladder."
+        },
+        "chunking": {
+          "activated": true,
+          "estimated_requested_records": 14,
+          "chunk_size": 3,
+          "max_chunks": 12,
+          "trigger_min_records": 3,
+          "total_chunks": 5,
+          "chunk_targets": [
+            3,
+            3,
+            3,
+            3,
+            2
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "numeric_intent",
+            "number_word_intent",
+            "enumerated_items"
+          ],
+          "numeric_matches": [
+            {
+              "value": 3,
+              "object_hint": "ticket_fields",
+              "raw": "Three ticket fields",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 3,
+              "object_hint": "triggers",
+              "raw": "Three triggers",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 3,
+              "object_hint": "views",
+              "raw": "Three views",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 3,
+              "object_hint": "macros",
+              "raw": "Three macros",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 1,
+              "object_hint": "ticket_forms",
+              "raw": "One ticket form",
+              "source": "number_word_intent"
+            }
+          ],
+          "enumerated_items": 5,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "failed",
+          "abort_reason": "Generator JSON validation failed after retry ladder.",
+          "forced_wave_chunk_path": true,
+          "forced_wave_chunk_reason": "create_following_numbered_prompt",
+          "deterministic_failover_threshold": 1,
+          "forced_deterministic_object_types": [
+            "groups"
+          ],
+          "object_failure_counts": {
+            "groups": 1
+          }
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 420,
+            "strict_schema": false
+          },
+          "generator_wave3": "qwen/qwen3-32b",
+          "generator_wave4": "qwen/qwen3-32b",
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1298,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400,
+            "wait_reason": null,
+            "error_class": "schema_validation_failure",
+            "breaker_state": "open:schema_validation_failure",
+            "provider_error_code": "json_validate_failed",
+            "provider_failed_generation_excerpt": null
+          },
+          "generator": {
+            "model": "openai/gpt-oss-20b",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 0,
+            "pre_request_wait_ms": 12000.0,
+            "wait_reason": "header_budget",
+            "error_class": "none",
+            "provider_error_code": null
+          },
+          "terminal_error_class": "none",
+          "generator_error": {
+            "error_class": "none",
+            "provider_error_code": "json_validate_failed",
+            "validator_reason": "Model output was not parseable JSON."
+          }
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: We are setting up Zendesk for a company called BrightWave Internet Services. They are a fibre internet provider with three support teams: Technical Support, Billing Support, and Cancellations.  Please create the following:  1. Three ticket fields:    - A dropdown called \"Issue Category\" with options: Connection Issue,      Speed Problem, Billing Query, Contract Question, Cancellation Request    - A dropdown called \"Service Type\" with options: Fibre 10MB, Fibre 50MB,      Fibre 100MB, Business Fibre    - A text field called \"Account Reference Number\"  2. Three triggers:    - When a ticket is created and Issue Category is \"Billing Query\",      assign it to the Billing Support team and add tag \"billing\"    - When a ticket is created and Issue Category is \"Cancellation Request\",      assign it to the Cancellations team, add tag \"cancellation\",      and set priority to High    - When a ticket is created and Issue Category is \"Connection Issue\",      assign it to Technical Support and add tag \"technical\"  3. Three views:    - All open Billing Support tickets assigned to the Billing Support team    - All open Cancellation tickets with High priority    - All unassigned Technical Support tickets  4. Three macros:    - A macro called \"Acknowledge Billing Query\" that sends a reply:      \"Thank you for contacting BrightWave Billing Support. We have received      your query and will respond within 24 hours.\" and adds tag \"billing_acknowledged\"    - A macro called \"Escalate to Cancellations\" that assigns the ticket to      the Cancellations team, sets priority to High, and adds tag \"escalated\"    - A macro called \"Request Account Number\" that sends a reply:      \"To assist you further, please provide your BrightWave account reference      number.\" and adds tag \"awaiting_account_number\"  5. One ticket form:    - A form called \"BrightWave Support Form\" that includes the following      fields in order: Subject, Description, Issue Category, Service Type,      Account Reference Number, Priority"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "generator_json_validation_failed",
+          "failure_reason": "Generator could not produce schema-valid JSON after recovery attempts.",
+          "next_step": "Retry with narrower scope and explicit Zendesk action fields (status/group_id/set_tags/field_type/custom_field_options). Example: Example answer: Yes, generate one trigger record only with JSON fields object_type/title/conditions/actions/dependency_notes and no prose."
+        }
+      }
     }
   }
 }
