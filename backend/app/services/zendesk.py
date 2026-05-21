@@ -530,8 +530,6 @@ def _parse_custom_field_options(raw: object) -> list[dict]:
     options: list[dict[str, str]] = []
 
     def _clean_option_name(name: str) -> str:
-        import re
-
         cleaned = str(name or "").strip().strip("\"'")
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         cleaned = re.sub(
@@ -570,8 +568,6 @@ def _parse_custom_field_options(raw: object) -> list[dict]:
             else:
                 _append(str(item))
     elif isinstance(raw, str):
-        import re
-
         for token in [part.strip() for part in re.split(r"[\n,|;]", raw) if part.strip()]:
             _append(token)
     elif raw is not None:
