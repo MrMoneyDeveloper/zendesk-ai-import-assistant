@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import random
 import time
@@ -232,9 +233,19 @@ class GrokClient:
                 return True
         return False
 
-    def _get_model_usage_state(self, model: str) -> dict[str, float | int | None]:
+    @staticmethod
+    def _usage_state_key(model: str, api_key_profile: str | None) -> str:
+        profile = str(api_key_profile or "default").strip() or "default"
+        return f"{model}::{profile}"
+
+    def _get_model_usage_state(
+        self,
+        model: str,
+        api_key_profile: str | None = None,
+    ) -> dict[str, float | int | None]:
         now_mono = time.monotonic()
-        state = self._MODEL_USAGE_STATE.get(model)
+        state_key = self._usage_state_key(model, api_key_profile)
+        state = self._MODEL_USAGE_STATE.get(state_key)
         if not state:
             state = {
                 "window_started_at": now_mono,
@@ -243,7 +254,7 @@ class GrokClient:
                 "reset_tokens_seconds": None,
                 "limit_tokens": None,
             }
-            self._MODEL_USAGE_STATE[model] = state
+            self._MODEL_USAGE_STATE[state_key] = state
             return state
 
         started = float(state.get("window_started_at") or now_mono)
@@ -256,16 +267,23 @@ class GrokClient:
         self,
         model: str,
         *,
+        api_key_profile: str | None = None,
         state: dict[str, float | int | None] | None = None,
     ) -> int:
-        working_state = state or self._get_model_usage_state(model)
+        working_state = state or self._get_model_usage_state(model, api_key_profile)
         header_limit = working_state.get("limit_tokens")
         if isinstance(header_limit, (int, float)) and header_limit > 0:
             return int(header_limit)
         return self._MODEL_TPM_DEFAULTS.get(model, 2500)
 
-    def _apply_rate_headers(self, model: str, response: httpx.Response) -> None:
-        state = self._get_model_usage_state(model)
+    def _apply_rate_headers(
+        self,
+        model: str,
+        response: httpx.Response,
+        *,
+        api_key_profile: str | None = None,
+    ) -> None:
+        state = self._get_model_usage_state(model, api_key_profile)
         remaining = self._parse_int_header(
             response.headers.get("x-ratelimit-remaining-tokens")
             or response.headers.get("x-ratelimit-remaining-token")
@@ -286,10 +304,16 @@ class GrokClient:
         if limit_tokens is not None and limit_tokens > 0:
             state["limit_tokens"] = limit_tokens
 
-    def _record_usage(self, model: str, tokens_used: int) -> None:
+    def _record_usage(
+        self,
+        model: str,
+        tokens_used: int,
+        *,
+        api_key_profile: str | None = None,
+    ) -> None:
         if tokens_used <= 0:
             return
-        state = self._get_model_usage_state(model)
+        state = self._get_model_usage_state(model, api_key_profile)
         window_used = float(state.get("window_used_tokens") or 0.0)
         state["window_used_tokens"] = max(window_used + float(tokens_used), 0.0)
         remaining = state.get("remaining_tokens")
@@ -307,13 +331,21 @@ class GrokClient:
         estimated_tokens: int,
         *,
         task: str | None,
+        api_key_profile: str | None = None,
     ) -> tuple[float, str | None]:
         if not self.settings.llm_rate_guard_enabled:
             return 0.0, None
 
-        state = self._get_model_usage_state(model)
+        state = self._get_model_usage_state(model, api_key_profile)
         now_mono = time.monotonic()
-        tpm_budget = max(self._resolve_model_tpm_budget(model, state=state), 1)
+        tpm_budget = max(
+            self._resolve_model_tpm_budget(
+                model,
+                api_key_profile=api_key_profile,
+                state=state,
+            ),
+            1,
+        )
         safety_ratio = self.settings.llm_rate_guard_safety_ratio
         min_headroom = self.settings.llm_rate_guard_min_headroom_tokens
 
@@ -412,6 +444,7 @@ class GrokClient:
                 "wait_reason": metrics.get("wait_reason"),
                 "error_class": metrics.get("error_class"),
                 "breaker_state": metrics.get("breaker_state"),
+                "api_key_profile": metrics.get("api_key_profile"),
                 "provider_error_code": metrics.get("provider_error_code"),
                 "provider_failed_generation_excerpt": metrics.get("provider_failed_generation_excerpt"),
             },
@@ -424,6 +457,7 @@ class GrokClient:
         *,
         task: str | None = None,
         initial_breaker_state: str = "closed",
+        api_key_profile: str | None = None,
     ) -> dict[str, Any]:
         attempts = max(self.settings.llm_retry_max_attempts, 1)
         backoff = max(self.settings.llm_retry_backoff_seconds, 0.0)
@@ -440,6 +474,7 @@ class GrokClient:
                 model,
                 estimated_tokens,
                 task=task,
+                api_key_profile=api_key_profile,
             )
             if pre_wait_reason:
                 wait_reason = pre_wait_reason
@@ -460,7 +495,11 @@ class GrokClient:
                     headers=headers,
                 )
             last_response = response
-            self._apply_rate_headers(model, response)
+            self._apply_rate_headers(
+                model,
+                response,
+                api_key_profile=api_key_profile,
+            )
 
             error_class, detail, error_code, failed_generation = self._classify_http_error(response)
             if response.status_code == 429 and attempt < attempts:
@@ -481,7 +520,11 @@ class GrokClient:
                 )
                 total_wait_seconds += sleep_seconds
                 wait_reason = "retry_after" if retry_after is not None else "backoff_retry"
-                self._record_usage(model, estimated_tokens)
+                self._record_usage(
+                    model,
+                    estimated_tokens,
+                    api_key_profile=api_key_profile,
+                )
                 await asyncio.sleep(sleep_seconds)
                 continue
 
@@ -504,6 +547,7 @@ class GrokClient:
                         "wait_reason": wait_reason,
                         "error_class": error_class,
                         "breaker_state": breaker_state,
+                        "api_key_profile": api_key_profile,
                         "provider_error_code": error_code,
                         "provider_failed_generation_excerpt": (
                             failed_generation[:500] if isinstance(failed_generation, str) else None
@@ -521,7 +565,11 @@ class GrokClient:
 
             data = response.json()
             used_tokens = self._extract_usage_tokens(data) or estimated_tokens
-            self._record_usage(model, used_tokens)
+            self._record_usage(
+                model,
+                used_tokens,
+                api_key_profile=api_key_profile,
+            )
             self._record_breaker_success(task, model)
             self._record_call_metrics(
                 task,
@@ -537,6 +585,7 @@ class GrokClient:
                     "wait_reason": wait_reason,
                     "error_class": "none",
                     "breaker_state": breaker_state,
+                    "api_key_profile": api_key_profile,
                     "provider_error_code": None,
                     "provider_failed_generation_excerpt": None,
                 },
@@ -557,6 +606,7 @@ class GrokClient:
                     "wait_reason": wait_reason,
                     "error_class": "transport_error",
                     "breaker_state": breaker_state,
+                    "api_key_profile": api_key_profile,
                     "provider_error_code": None,
                     "provider_failed_generation_excerpt": None,
                 },
@@ -580,6 +630,7 @@ class GrokClient:
                 "wait_reason": wait_reason,
                 "error_class": error_class,
                 "breaker_state": breaker_state,
+                "api_key_profile": api_key_profile,
                 "provider_error_code": error_code,
                 "provider_failed_generation_excerpt": (
                     failed_generation[:500] if isinstance(failed_generation, str) else None
@@ -614,6 +665,7 @@ class GrokClient:
         active_api_key = str(api_key_override or self.settings.xai_api_key or "").strip()
         if not active_api_key:
             raise RuntimeError("XAI_API_KEY is missing from environment.")
+        api_key_profile = f"key_{hashlib.sha256(active_api_key.encode('utf-8')).hexdigest()[:10]}"
 
         selected_model = model or self.settings.xai_model or RECOMMENDED_MODEL
         breaker_state = "closed"
@@ -680,11 +732,13 @@ class GrokClient:
                 headers,
                 task=task,
                 initial_breaker_state=breaker_state,
+                api_key_profile=api_key_profile,
             )
             if task:
                 latest = deepcopy(self._LAST_CALL_METRICS.get(task, {}))
                 latest["response_format_mode"] = response_format_mode
                 latest["model"] = selected_model
+                latest["api_key_profile"] = api_key_profile
                 self._LAST_CALL_METRICS[task] = latest
             return self._extract_response_text(data)
         except LLMRequestError as exc:
@@ -709,11 +763,13 @@ class GrokClient:
                 headers,
                 task=task,
                 initial_breaker_state=f"open:{exc.error_class}",
+                api_key_profile=api_key_profile,
             )
             if task:
                 latest = deepcopy(self._LAST_CALL_METRICS.get(task, {}))
                 latest["response_format_mode"] = "json_object_fallback"
                 latest["model"] = selected_model
                 latest["error_class"] = exc.error_class
+                latest["api_key_profile"] = api_key_profile
                 self._LAST_CALL_METRICS[task] = latest
             return self._extract_response_text(data)

@@ -111,6 +111,8 @@ class Settings:
     xai_api_key: str
     xai_api_key_wave3: str
     xai_api_key_wave4: str
+    xai_api_key_secondary: str
+    xai_api_key_tertiary: str
     xai_base_url: str
     xai_model: str
     xai_request_timeout_seconds: float
@@ -121,6 +123,8 @@ class Settings:
     llm_model_generator: str
     llm_model_generator_wave3: str
     llm_model_generator_wave4: str
+    llm_model_generator_secondary: str
+    llm_model_generator_tertiary: str
     llm_model_clarifier: str
     llm_planner_max_output_tokens: int
     llm_generator_max_output_tokens: int
@@ -180,11 +184,14 @@ class Settings:
     appscript_timeout_seconds: float
     appscript_health_timeout_seconds: float
     integrations_health_cache_seconds: float
+    deploy_watchdog_seconds: float
+    deploy_stale_recovery_seconds: float
     zendesk_subdomain: str
     zendesk_email: str
     zendesk_api_token: str
     zendesk_target_environment: str
     zendesk_fallback_404_cooldown_seconds: int
+    llm_wave_object_deterministic_failover_threshold: int
 
 
 @lru_cache
@@ -209,6 +216,14 @@ def get_settings() -> Settings:
         xai_api_key=api_key,
         xai_api_key_wave3=os.getenv("XAI_API_KEY_WAVE3", "").strip(),
         xai_api_key_wave4=os.getenv("XAI_API_KEY_WAVE4", "").strip(),
+        xai_api_key_secondary=(
+            os.getenv("XAI_API_KEY_SECONDARY", "").strip()
+            or os.getenv("XAI_API_KEY_WAVE3", "").strip()
+        ),
+        xai_api_key_tertiary=(
+            os.getenv("XAI_API_KEY_TERTIARY", "").strip()
+            or os.getenv("XAI_API_KEY_WAVE4", "").strip()
+        ),
         xai_base_url=_resolve_base_url(provider, os.getenv("XAI_BASE_URL", "")),
         xai_model=default_model,
         xai_request_timeout_seconds=_as_float(os.getenv("XAI_REQUEST_TIMEOUT_SECONDS"), 60.0),
@@ -219,6 +234,16 @@ def get_settings() -> Settings:
         llm_model_generator=os.getenv("LLM_MODEL_GENERATOR", "").strip() or default_generator_model,
         llm_model_generator_wave3=os.getenv("LLM_MODEL_GENERATOR_WAVE3", "").strip(),
         llm_model_generator_wave4=os.getenv("LLM_MODEL_GENERATOR_WAVE4", "").strip(),
+        llm_model_generator_secondary=(
+            os.getenv("LLM_MODEL_GENERATOR_SECONDARY", "").strip()
+            or os.getenv("LLM_MODEL_GENERATOR_WAVE3", "").strip()
+            or default_generator_model
+        ),
+        llm_model_generator_tertiary=(
+            os.getenv("LLM_MODEL_GENERATOR_TERTIARY", "").strip()
+            or os.getenv("LLM_MODEL_GENERATOR_WAVE4", "").strip()
+            or default_generator_model
+        ),
         llm_model_clarifier=os.getenv("LLM_MODEL_CLARIFIER", "").strip() or default_clarifier_model,
         llm_planner_max_output_tokens=_as_int(
             os.getenv("LLM_PLANNER_MAX_OUTPUT_TOKENS"),
@@ -400,6 +425,14 @@ def get_settings() -> Settings:
             _as_float(os.getenv("INTEGRATIONS_HEALTH_CACHE_SECONDS"), 45.0),
             0.0,
         ),
+        deploy_watchdog_seconds=max(
+            _as_float(os.getenv("DEPLOY_WATCHDOG_SECONDS"), 240.0),
+            30.0,
+        ),
+        deploy_stale_recovery_seconds=max(
+            _as_float(os.getenv("DEPLOY_STALE_RECOVERY_SECONDS"), 300.0),
+            30.0,
+        ),
         zendesk_subdomain=os.getenv("ZENDESK_SUBDOMAIN", "").strip(),
         zendesk_email=os.getenv("ZENDESK_EMAIL", "").strip(),
         zendesk_api_token=os.getenv("ZENDESK_API_TOKEN", "").strip(),
@@ -407,5 +440,9 @@ def get_settings() -> Settings:
         zendesk_fallback_404_cooldown_seconds=max(
             _as_int(os.getenv("ZENDESK_FALLBACK_404_COOLDOWN_SECONDS"), 1800),
             60,
+        ),
+        llm_wave_object_deterministic_failover_threshold=max(
+            _as_int(os.getenv("LLM_WAVE_OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD"), 3),
+            2,
         ),
     )

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import math
 import random
 import re
+import time
 from uuid import uuid4
 
 from app.api.grok.client import GrokClient, LLMRequestError
@@ -390,11 +391,19 @@ def _build_llm_routes_metadata(
         "generator": generator_route.__dict__,
         "generator_wave3": str(settings.llm_model_generator_wave3 or "").strip() or None,
         "generator_wave4": str(settings.llm_model_generator_wave4 or "").strip() or None,
+        "generator_secondary": str(getattr(settings, "llm_model_generator_secondary", "") or "").strip() or None,
+        "generator_tertiary": str(getattr(settings, "llm_model_generator_tertiary", "") or "").strip() or None,
         "generator_wave3_api_key_configured": bool(
             str(getattr(settings, "xai_api_key_wave3", "") or "").strip()
         ),
         "generator_wave4_api_key_configured": bool(
             str(getattr(settings, "xai_api_key_wave4", "") or "").strip()
+        ),
+        "generator_secondary_api_key_configured": bool(
+            str(getattr(settings, "xai_api_key_secondary", "") or "").strip()
+        ),
+        "generator_tertiary_api_key_configured": bool(
+            str(getattr(settings, "xai_api_key_tertiary", "") or "").strip()
         ),
     }
 
@@ -407,8 +416,16 @@ def _resolve_wave_generator_model(
     primary_model = str(settings.llm_model_generator or "").strip()
     if not primary_model:
         return ""
-    wave3_model = str(settings.llm_model_generator_wave3 or "").strip()
-    wave4_model = str(settings.llm_model_generator_wave4 or "").strip()
+    wave3_model = str(
+        getattr(settings, "llm_model_generator_secondary", "")
+        or settings.llm_model_generator_wave3
+        or ""
+    ).strip()
+    wave4_model = str(
+        getattr(settings, "llm_model_generator_tertiary", "")
+        or settings.llm_model_generator_wave4
+        or ""
+    ).strip()
     if wave >= 4 and wave4_model:
         return wave4_model
     if wave >= 3 and wave3_model:
@@ -422,13 +439,89 @@ def _resolve_wave_api_key(
     wave: int,
 ) -> str:
     primary_key = str(getattr(settings, "xai_api_key", "") or "").strip()
-    wave3_key = str(getattr(settings, "xai_api_key_wave3", "") or "").strip()
-    wave4_key = str(getattr(settings, "xai_api_key_wave4", "") or "").strip()
+    wave3_key = str(
+        getattr(settings, "xai_api_key_secondary", "")
+        or getattr(settings, "xai_api_key_wave3", "")
+        or ""
+    ).strip()
+    wave4_key = str(
+        getattr(settings, "xai_api_key_tertiary", "")
+        or getattr(settings, "xai_api_key_wave4", "")
+        or ""
+    ).strip()
     if wave >= 4 and wave4_key:
         return wave4_key
     if wave >= 3 and wave3_key:
         return wave3_key
     return primary_key
+
+
+def _build_wave_generator_routes(
+    *,
+    settings,
+    wave: int,
+) -> list[dict]:
+    primary_model = str(settings.llm_model_generator or "").strip()
+    primary_key = str(getattr(settings, "xai_api_key", "") or "").strip()
+    secondary_model = str(
+        getattr(settings, "llm_model_generator_secondary", "")
+        or getattr(settings, "llm_model_generator_wave3", "")
+        or primary_model
+    ).strip()
+    tertiary_model = str(
+        getattr(settings, "llm_model_generator_tertiary", "")
+        or getattr(settings, "llm_model_generator_wave4", "")
+        or primary_model
+    ).strip()
+    secondary_key = str(
+        getattr(settings, "xai_api_key_secondary", "")
+        or getattr(settings, "xai_api_key_wave3", "")
+        or ""
+    ).strip()
+    tertiary_key = str(
+        getattr(settings, "xai_api_key_tertiary", "")
+        or getattr(settings, "xai_api_key_wave4", "")
+        or ""
+    ).strip()
+
+    if wave >= 4:
+        ordered = [
+            ("tertiary", tertiary_model, tertiary_key),
+            ("secondary", secondary_model, secondary_key),
+            ("primary", primary_model, primary_key),
+        ]
+    elif wave >= 3:
+        ordered = [
+            ("secondary", secondary_model, secondary_key),
+            ("tertiary", tertiary_model, tertiary_key),
+            ("primary", primary_model, primary_key),
+        ]
+    else:
+        ordered = [
+            ("primary", primary_model, primary_key),
+            ("secondary", secondary_model, secondary_key),
+            ("tertiary", tertiary_model, tertiary_key),
+        ]
+
+    routes: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for profile, model, api_key in ordered:
+        model_clean = str(model or "").strip()
+        api_key_clean = str(api_key or "").strip()
+        if not model_clean or not api_key_clean:
+            continue
+        identity = (model_clean, api_key_clean)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        routes.append(
+            {
+                "profile": profile,
+                "model": model_clean,
+                "api_key": api_key_clean,
+            }
+        )
+    return routes
 
 
 def _should_retry_chunk_on_primary_model(exc: Exception) -> bool:
@@ -1242,7 +1335,6 @@ def _build_chunk_instruction(
 
 def _can_use_deterministic_chunk_fallback(object_type: str) -> bool:
     return _normalize_object_type(object_type) in {
-        "groups",
         "ticket_fields",
         "ticket_forms",
         "views",
@@ -2081,6 +2173,32 @@ def _normalize_set_tags_value(raw_value: object) -> str | None:
     return " ".join(cleaned)
 
 
+def _is_placeholder_reference_token(raw_value: object) -> bool:
+    text = str(raw_value or "").strip().lower()
+    if not text:
+        return False
+    if re.search(r"^\{\{[^{}]+\}\}$", text):
+        return True
+    if re.search(r"^<[^<>]+>$", text):
+        return True
+    if re.search(r"^\[\[[^\[\]]+\]\]$", text):
+        return True
+    placeholder_tokens = {
+        "tbd",
+        "todo",
+        "placeholder",
+        "replace_me",
+        "replace-this",
+        "your_value",
+        "your_id",
+        "insert_here",
+    }
+    normalized = re.sub(r"[^a-z0-9_:-]+", "_", text).strip("_")
+    if normalized in placeholder_tokens:
+        return True
+    return bool(re.search(r"\b(?:tbd|todo|placeholder|replace[_ -]?me)\b", text))
+
+
 def _normalize_rule_entries(
     row: dict,
     *,
@@ -2121,6 +2239,16 @@ def _normalize_rule_entries(
                     f"Dropped empty tag action from {bucket_name}; set_tags requires at least one tag."
                 )
                 continue
+        if (
+            normalized_field == "comment_value"
+            and not treat_as_conditions
+            and not str(value or "").strip()
+        ):
+            dropped_invalid += 1
+            warnings.append(
+                f"Dropped empty comment action from {bucket_name}; comment_value requires text."
+            )
+            continue
 
         normalized_entry: dict[str, object] = {
             "field": normalized_field,
@@ -2173,19 +2301,43 @@ def _canonicalize_rule_record(
         )
     )
 
-    if object_type in {"triggers", "automations"}:
+    if object_type in {"triggers", "automations", "macros", "views"}:
         actions = list(row.get("actions", []) or [])
+        conditions = list(row.get("conditions", []) or [])
+        known_ids_by_type: dict[str, set[str]] = {}
+        for reference_type in {"group", "ticket_form", "brand"}:
+            values: set[str] = set()
+            for lookup in (
+                (related_lookup or {}).get(reference_type, {}),
+                (catalog_lookup or {}).get(reference_type, {}),
+            ):
+                for candidate in lookup.values():
+                    candidate_text = str(candidate).strip()
+                    if candidate_text:
+                        values.add(candidate_text)
+            known_ids_by_type[reference_type] = values
+
         known_group_ids = {
             str(value).strip()
             for lookup in ((related_lookup or {}).get("group", {}), (catalog_lookup or {}).get("group", {}))
             for value in lookup.values()
             if str(value).strip()
         }
-        for entry in actions:
+        for entry in [*conditions, *actions]:
             if not isinstance(entry, dict):
                 continue
             field = str(entry.get("field", "")).strip().lower()
             value_text = str(entry.get("value", "")).strip()
+            if _is_placeholder_reference_token(value_text):
+                row.setdefault("validation_overrides", {})
+                row["validation_overrides"]["blocked_reason"] = (
+                    f"Placeholder token detected for '{field}'. Replace it with a real Zendesk value."
+                )
+                info["blocked"] = True
+                warnings.append(
+                    f"Blocked: placeholder token used for '{field}'."
+                )
+                break
             if field == "assignee_id":
                 if re.search(r"\bassign\b", info["title"], flags=re.IGNORECASE) and not re.search(
                     r"\b(agent|assignee|user)\b",
@@ -2209,8 +2361,24 @@ def _canonicalize_rule_record(
                     f"Blocked: group_id '{value_text}' is not present in synced group catalog."
                 )
                 break
+            reference_type = REFERENCE_OBJECT_BY_FIELD.get(field)
+            if (
+                reference_type in known_ids_by_type
+                and value_text.isdigit()
+                and known_ids_by_type.get(reference_type)
+                and value_text not in known_ids_by_type.get(reference_type, set())
+            ):
+                row.setdefault("validation_overrides", {})
+                row["validation_overrides"]["blocked_reason"] = (
+                    f"{field} '{value_text}' is not present in synced {reference_type} catalog."
+                )
+                info["blocked"] = True
+                warnings.append(
+                    f"Blocked: {field} '{value_text}' does not match any synced {reference_type}."
+                )
+                break
 
-    if object_type in {"triggers", "automations"} and not list(row.get("actions", []) or []):
+    if object_type in {"triggers", "automations", "macros"} and not list(row.get("actions", []) or []):
         row.setdefault("validation_overrides", {})
         row["validation_overrides"]["blocked_reason"] = (
             "No valid actions remained after canonicalization; add at least one Zendesk action."
@@ -3157,6 +3325,26 @@ def _canonicalize_ticket_field_record(
             raw_options = prompt_option_hints
             info["alias_mappings"].append("inferred custom_field_options from prompt")
     parsed_options, option_warnings = _parse_custom_field_options(raw_options)
+    cleaned_options: list[dict[str, str]] = []
+    dropped_options = 0
+    for option in parsed_options:
+        if not isinstance(option, dict):
+            dropped_options += 1
+            continue
+        option_name = str(option.get("name", "")).strip()
+        option_value = str(option.get("value", "")).strip()
+        if _is_placeholder_reference_token(option_name) or _is_placeholder_reference_token(option_value):
+            dropped_options += 1
+            continue
+        if len(option_name) > 100:
+            dropped_options += 1
+            continue
+        cleaned_options.append({"name": option_name, "value": option_value})
+    if dropped_options > 0:
+        option_warnings.append(
+            f"Dropped {dropped_options} malformed/placeholder option value(s) during cleanup."
+        )
+    parsed_options = cleaned_options
     info["warnings"].extend(option_warnings)
     _drop_row_entries_by_aliases(row, TICKET_FIELD_OPTIONS_FIELDS)
     if parsed_options:
@@ -3331,6 +3519,11 @@ def _canonicalize_generated_rows(
         item_id = str(item.get("id", "")).strip()
         if name and item_id:
             existing_field_map[name] = item_id
+    known_field_ids = {
+        str(value).strip()
+        for value in existing_field_map.values()
+        if str(value).strip()
+    }
 
     generated_field_titles: set[str] = set()
     for row in rows:
@@ -3407,7 +3600,22 @@ def _canonicalize_generated_rows(
             ref_text = str(ref).strip()
             if not ref_text:
                 continue
+            if _is_placeholder_reference_token(ref_text):
+                row.setdefault("validation_overrides", {})
+                row["validation_overrides"]["blocked_reason"] = (
+                    "Ticket form contains placeholder field reference tokens. "
+                    "Replace placeholders with real field names or IDs."
+                )
+                form_resolution["unresolved"].append(ref_text)
+                continue
             if ref_text.isdigit():
+                if known_field_ids and ref_text not in known_field_ids:
+                    row.setdefault("validation_overrides", {})
+                    row["validation_overrides"]["blocked_reason"] = (
+                        f"ticket_field_id '{ref_text}' is not present in synced ticket field catalog."
+                    )
+                    form_resolution["unresolved"].append(ref_text)
+                    continue
                 resolved_ids.append(int(ref_text))
                 form_resolution["resolved_ids"] += 1
                 continue
@@ -4465,9 +4673,12 @@ async def generate_import_assistant_batch(
         and not bool(chunking_metadata.get("activated"))
         and not force_wave_chunk_path
     )
-    deterministic_failover_threshold = (
-        1 if force_wave_chunk_path else OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD
-    )
+    deterministic_failover_threshold = OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD
+    if force_wave_chunk_path:
+        deterministic_failover_threshold = max(
+            int(getattr(settings, "llm_wave_object_deterministic_failover_threshold", 3) or 3),
+            OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD,
+        )
     chunking_metadata["forced_wave_chunk_path"] = force_wave_chunk_path
     chunking_metadata["forced_wave_chunk_reason"] = force_wave_chunk_reason
     chunking_metadata["deterministic_failover_threshold"] = deterministic_failover_threshold
@@ -4680,8 +4891,26 @@ async def generate_import_assistant_batch(
                         used_deterministic_fallback = False
                         forced_deterministic_for_chunk = False
                         forced_reason: str | None = None
-                        selected_model_for_chunk = item_generator_model or primary_generator_model or None
-                        selected_api_key_for_chunk = item_generator_api_key or primary_generator_api_key or None
+                        wave_routes = _build_wave_generator_routes(
+                            settings=settings,
+                            wave=int(wave),
+                        )
+                        if not wave_routes:
+                            raise GenerateFailureError(
+                                code="wave_generation_failed",
+                                reason=(
+                                    f"No API key/model route is configured for wave {wave_position}/"
+                                    f"{total_wave_count} ({object_type})."
+                                ),
+                                next_step=(
+                                    "Configure at least one generator model/API key route for this wave and retry."
+                                ),
+                            )
+                        active_route = dict(wave_routes[0])
+                        selected_model_for_chunk = active_route.get("model")
+                        selected_api_key_for_chunk = active_route.get("api_key")
+                        selected_api_key_profile = str(active_route.get("profile", "primary")).strip() or "primary"
+                        chunk_route_failovers: list[dict[str, str]] = []
                         chunk_error: RuntimeError | None = None
                         fallback_reason: str | None = None
                         chunk_rows: list[dict] = []
@@ -4747,45 +4976,67 @@ async def generate_import_assistant_batch(
                                 failure_count_by_object_type[object_type] = 0
                             except RuntimeError as chunk_exc:
                                 chunk_error = chunk_exc
-                        if (
-                            chunk_error is not None
-                            and selected_model_for_chunk
-                            and primary_generator_model
-                            and selected_model_for_chunk != primary_generator_model
-                            and _should_retry_chunk_on_primary_model(chunk_error)
-                        ):
-                            store.append_status(
-                                batch_id,
-                                "generating",
-                                (
-                                    f"Wave {wave_position}/{total_wave_count} {object_type} "
-                                    f"chunk {local_chunk_index}/{len(item_chunk_targets)} "
-                                    f"retrying on primary model {primary_generator_model} after secondary-model failure."
-                                ),
-                            )
-                            try:
-                                chunk_rows, chunk_runtime_metrics, context_profile = await _run_generator_with_context_fallback(
-                                    plan=item_plan,
-                                    request=generator_request,
-                                    focus_object_types=focus_object_types,
-                                    standard_context_bundle=generator_context_bundle,
-                                    aggressive_context_bundle=llm_context_aggressive,
-                                    chunk_instruction=chunk_instruction,
-                                    chunk_target_count=int(item_chunk_target),
-                                    chunk_index=local_chunk_index,
-                                    chunk_total=len(item_chunk_targets),
-                                    existing_titles=chunked_titles[-200:],
-                                    compatibility_first=compatibility_first_for_item,
-                                    compatibility_only=compatibility_only_for_item,
-                                    model_override=primary_generator_model,
-                                    api_key_override=primary_generator_api_key,
+                        if chunk_error is not None and _is_rate_limited_error(chunk_error):
+                            for fallback_route in wave_routes[1:]:
+                                fallback_profile = (
+                                    str(fallback_route.get("profile", "")).strip() or "fallback"
                                 )
-                                chunk_error = None
-                                failure_count_by_object_type[object_type] = 0
-                                chunk_runtime_metrics = dict(chunk_runtime_metrics or {})
-                                chunk_runtime_metrics["model_fallback_from"] = selected_model_for_chunk
-                            except RuntimeError as primary_chunk_exc:
-                                chunk_error = primary_chunk_exc
+                                fallback_model = str(fallback_route.get("model", "")).strip()
+                                fallback_key = str(fallback_route.get("api_key", "")).strip()
+                                if not fallback_model or not fallback_key:
+                                    continue
+                                if (
+                                    fallback_model == str(selected_model_for_chunk or "").strip()
+                                    and fallback_key == str(selected_api_key_for_chunk or "").strip()
+                                ):
+                                    continue
+                                store.append_status(
+                                    batch_id,
+                                    "generating",
+                                    (
+                                        f"Wave {wave_position}/{total_wave_count} {object_type} "
+                                        f"chunk {local_chunk_index}/{len(item_chunk_targets)} "
+                                        f"rate-limited on {selected_api_key_profile}; switching to "
+                                        f"{fallback_profile} route."
+                                    ),
+                                )
+                                chunk_route_failovers.append(
+                                    {
+                                        "from_profile": selected_api_key_profile,
+                                        "to_profile": fallback_profile,
+                                        "from_model": str(selected_model_for_chunk or ""),
+                                        "to_model": fallback_model,
+                                    }
+                                )
+                                selected_model_for_chunk = fallback_model
+                                selected_api_key_for_chunk = fallback_key
+                                selected_api_key_profile = fallback_profile
+                                try:
+                                    chunk_rows, chunk_runtime_metrics, context_profile = await _run_generator_with_context_fallback(
+                                        plan=item_plan,
+                                        request=generator_request,
+                                        focus_object_types=focus_object_types,
+                                        standard_context_bundle=generator_context_bundle,
+                                        aggressive_context_bundle=llm_context_aggressive,
+                                        chunk_instruction=chunk_instruction,
+                                        chunk_target_count=int(item_chunk_target),
+                                        chunk_index=local_chunk_index,
+                                        chunk_total=len(item_chunk_targets),
+                                        existing_titles=chunked_titles[-200:],
+                                        compatibility_first=compatibility_first_for_item,
+                                        compatibility_only=compatibility_only_for_item,
+                                        model_override=selected_model_for_chunk,
+                                        api_key_override=selected_api_key_for_chunk,
+                                    )
+                                    chunk_error = None
+                                    failure_count_by_object_type[object_type] = 0
+                                    chunk_runtime_metrics = dict(chunk_runtime_metrics or {})
+                                    chunk_runtime_metrics["route_failover"] = True
+                                    break
+                                except RuntimeError as route_chunk_exc:
+                                    chunk_error = route_chunk_exc
+                                    if not _is_rate_limited_error(chunk_error):
+                                        break
                         if chunk_error is not None:
                             object_failure_count = int(failure_count_by_object_type.get(object_type, 0) or 0) + 1
                             failure_count_by_object_type[object_type] = object_failure_count
@@ -4961,13 +5212,8 @@ async def generate_import_assistant_batch(
                             "model": chunk_runtime_metrics.get("model"),
                             "model_requested": selected_model_for_chunk,
                             "model_fallback_from": chunk_runtime_metrics.get("model_fallback_from"),
-                            "api_key_profile": (
-                                "secondary"
-                                if selected_api_key_for_chunk
-                                and primary_generator_api_key
-                                and selected_api_key_for_chunk != primary_generator_api_key
-                                else "primary"
-                            ),
+                            "api_key_profile": selected_api_key_profile,
+                            "key_route_failovers": chunk_route_failovers,
                             "mode_order": item_mode_order,
                             "wave": wave,
                             "object_type": object_type,
@@ -5099,7 +5345,11 @@ async def generate_import_assistant_batch(
                                         "Remaining chunks will use deterministic synthesis."
                                     ),
                                 )
-                        if _can_use_deterministic_chunk_fallback(current_object_type):
+                        if _can_use_deterministic_chunk_fallback(current_object_type) and (
+                            _is_deterministic_llm_error(chunk_exc)
+                            or _is_rate_limited_error(chunk_exc)
+                            or _is_schema_validation_failure(chunk_exc)
+                        ):
                             chunk_rows = _build_deterministic_chunk_rows(
                                 object_type=current_object_type,
                                 target_count=int(target_count),
@@ -6002,6 +6252,91 @@ async def deploy_batch_to_zendesk(
     if not batch:
         raise KeyError(batch_id)
 
+    def _parse_iso_timestamp(value: object) -> float:
+        text = str(value or "").strip()
+        if not text:
+            return 0.0
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(text).timestamp()
+        except ValueError:
+            return 0.0
+
+    def _finalize_deploy_failure(
+        *,
+        code: str,
+        reason: str,
+        next_step: str,
+        terminal_error_class: str,
+        summary: dict | None = None,
+        results: list | None = None,
+        execution_log: dict | None = None,
+    ) -> dict:
+        current = store.get_batch(batch_id) or batch
+        metadata = current.get("metadata", {}) if isinstance(current.get("metadata", {}), dict) else {}
+        existing_zendesk_deploy = (
+            metadata.get("zendesk_deploy", {})
+            if isinstance(metadata.get("zendesk_deploy", {}), dict)
+            else {}
+        )
+        failure_payload = {
+            "failure_stage": "deploy",
+            "failure_code": code,
+            "failure_reason": reason,
+            "next_step": next_step,
+        }
+        deploy_metadata = {
+            **existing_zendesk_deploy,
+            "summary": summary or existing_zendesk_deploy.get("summary", {}),
+            "results": results or existing_zendesk_deploy.get("results", []),
+            "execution_log": execution_log
+            or existing_zendesk_deploy.get("execution_log", {}),
+            "terminal_error_class": terminal_error_class,
+            "failed_at": _utc_now(),
+            "watchdog_seconds": float(settings.deploy_watchdog_seconds),
+            "failure": failure_payload,
+        }
+        store.update_batch(
+            batch_id,
+            {
+                "status": "deploy_failed",
+                "metadata": {
+                    **metadata,
+                    "zendesk_deploy": deploy_metadata,
+                    "failure": failure_payload,
+                },
+            },
+        )
+        store.append_status(batch_id, "deploy_failed", reason)
+        return failure_payload
+
+    stale_seconds = max(float(getattr(settings, "deploy_stale_recovery_seconds", 300.0)), 30.0)
+    current_status = str(batch.get("status", "")).strip().lower()
+    if current_status == "deploying":
+        last_ts = _parse_iso_timestamp(batch.get("updated_at"))
+        age_seconds = time.time() - last_ts if last_ts > 0 else stale_seconds + 1.0
+        if age_seconds >= stale_seconds:
+            stale_reason = (
+                f"Recovered stale deploying batch after {int(age_seconds)}s without progress."
+            )
+            _finalize_deploy_failure(
+                code="deploy_watchdog_timeout",
+                reason=stale_reason,
+                next_step="Run deploy again explicitly after verifying credentials/connectivity.",
+                terminal_error_class="stale_recovery",
+            )
+            store.append_status(
+                batch_id,
+                "approved",
+                "Stale deploy state recovered. Batch is ready for explicit redeploy.",
+            )
+            batch = store.get_batch(batch_id) or batch
+        else:
+            raise RuntimeError(
+                "Batch is already deploying. Wait for completion or retry after watchdog timeout window."
+            )
+
     records = batch.get("records", [])
     approved_records = [
         row for row in records
@@ -6030,153 +6365,231 @@ async def deploy_batch_to_zendesk(
         )
 
     store.append_status(batch_id, "deploying", "Deploying approved records to Zendesk.")
+    store.append_status(batch_id, "deploying", "Deploy phase start: validating approved records and dependencies.")
 
-    deployment = await deploy_records_to_zendesk(
-        subdomain=subdomain,
-        email=email,
-        api_token=api_token,
-        records=records,
-        dry_run=dry_run,
-        on_existing=on_existing,
-    )
-    dependency_auto_create = deployment.get("dependency_auto_create", {}) if isinstance(deployment, dict) else {}
-    dependency_events = (
-        dependency_auto_create.get("events", [])
-        if isinstance(dependency_auto_create, dict)
-        else []
-    )
-    if isinstance(dependency_events, list) and dependency_events:
-        for item in dependency_events[:6]:
+    watchdog_seconds = max(float(getattr(settings, "deploy_watchdog_seconds", 240.0)), 30.0)
+    deployment: dict = {}
+    summary: dict = {}
+    results: list = []
+    updated_records: list[dict] = []
+    dependency_auto_create: dict = {}
+    execution_log_result: dict = {}
+    terminal_error_class = "ok"
+
+    try:
+        deployment = await asyncio.wait_for(
+            deploy_records_to_zendesk(
+                subdomain=subdomain,
+                email=email,
+                api_token=api_token,
+                records=records,
+                dry_run=dry_run,
+                on_existing=on_existing,
+            ),
+            timeout=watchdog_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        terminal_error_class = "watchdog_timeout"
+        reason = (
+            f"Deployment exceeded watchdog timeout ({int(watchdog_seconds)}s) and was finalized as failed."
+        )
+        _finalize_deploy_failure(
+            code="deploy_watchdog_timeout",
+            reason=reason,
+            next_step="Run deploy again explicitly after reducing batch scope or checking API responsiveness.",
+            terminal_error_class=terminal_error_class,
+        )
+        raise RuntimeError(reason) from exc
+    except Exception as exc:  # noqa: BLE001
+        terminal_error_class = "deploy_runtime_error"
+        reason = f"Deploy runtime error: {exc}"
+        _finalize_deploy_failure(
+            code="deploy_runtime_error",
+            reason=reason,
+            next_step="Retry deployment explicitly after resolving the runtime issue above.",
+            terminal_error_class=terminal_error_class,
+        )
+        raise RuntimeError(reason) from exc
+
+    try:
+        dependency_auto_create = (
+            deployment.get("dependency_auto_create", {})
+            if isinstance(deployment, dict)
+            else {}
+        )
+        dependency_events = (
+            dependency_auto_create.get("events", [])
+            if isinstance(dependency_auto_create, dict)
+            else []
+        )
+        if isinstance(dependency_events, list) and dependency_events:
+            for item in dependency_events[:10]:
+                if not isinstance(item, dict):
+                    continue
+                event_status = str(item.get("status", "created")).strip()
+                object_type = str(item.get("object_type", "dependency")).strip()
+                title = str(item.get("title", "untitled")).strip()
+                created_id = str(item.get("created_id", "")).strip()
+                suffix = f" (id={created_id})" if created_id else ""
+                store.append_status(
+                    batch_id,
+                    "deploying",
+                    f"Dependency {event_status}: {object_type.rstrip('s')} '{title}'{suffix}.",
+                )
+        summary = deployment.get("summary", {}) if isinstance(deployment, dict) else {}
+        results = deployment.get("results", []) if isinstance(deployment, dict) else []
+
+        for item in results[:15]:
             if not isinstance(item, dict):
                 continue
-            event_status = str(item.get("status", "created")).strip()
-            object_type = str(item.get("object_type", "dependency")).strip()
-            title = str(item.get("title", "untitled")).strip()
-            created_id = str(item.get("created_id", "")).strip()
-            suffix = f" (id={created_id})" if created_id else ""
             store.append_status(
                 batch_id,
                 "deploying",
-                f"Dependency {event_status}: {object_type.rstrip('s')} '{title}'{suffix}.",
-            )
-    summary = deployment.get("summary", {})
-    results = deployment.get("results", [])
-
-    result_by_record = {item.get("record_id"): item for item in results}
-    updated_records = []
-    for row in records:
-        record_id = row.get("record_id")
-        result = result_by_record.get(record_id, {})
-        row["deployment_status"] = result.get("deployment_status", row.get("deployment_status", "pending"))
-        row["zendesk_object_id"] = result.get("zendesk_object_id")
-        row["execution_message"] = result.get("execution_message", "")
-        updated_records.append(row)
-
-    execution_log_result: dict = {}
-    if appscript.enabled:
-        execution_payload = {
-            "batch_id": batch_id,
-            "results": results,
-        }
-        bounded_timeout = max(float(settings.appscript_health_timeout_seconds), 0.5) + 1.0
-        try:
-            execution_log = await asyncio.wait_for(
-                appscript.invoke(
-                    action="write_execution_log",
-                    payload=execution_payload,
+                (
+                    f"Record {str(item.get('record_id', '?'))}: "
+                    f"{str(item.get('deployment_status', 'pending'))} | "
+                    f"{str(item.get('object_type', 'object'))}"
                 ),
-                timeout=bounded_timeout,
             )
-            execution_log = _normalize_appscript_action_result(
-                execution_log,
-                action="write_execution_log",
-            )
-            execution_log_result = {
-                "mode": "appscript",
-                "status": execution_log.get("status"),
-                "detail": execution_log.get("detail"),
-                "http_status": execution_log.get("http_status"),
-                "data": execution_log.get("data", {}),
-            }
-        except asyncio.TimeoutError:
-            execution_log_result = {
-                "mode": "appscript",
-                "status": "deferred",
-                "detail": "Execution log write exceeded bounded timeout; scheduled asynchronous follow-up.",
-                "http_status": None,
-                "data": {},
-            }
 
-            async def _flush_execution_log_later() -> None:
-                try:
-                    await appscript.invoke(
+        result_by_record = {
+            item.get("record_id"): item
+            for item in results
+            if isinstance(item, dict)
+        }
+        for row in records:
+            record_id = row.get("record_id")
+            result = result_by_record.get(record_id, {})
+            row["deployment_status"] = result.get("deployment_status", row.get("deployment_status", "pending"))
+            row["zendesk_object_id"] = result.get("zendesk_object_id")
+            row["execution_message"] = result.get("execution_message", "")
+            updated_records.append(row)
+
+        if appscript.enabled:
+            execution_payload = {
+                "batch_id": batch_id,
+                "results": results,
+            }
+            bounded_timeout = max(float(settings.appscript_health_timeout_seconds), 0.5) + 1.0
+            try:
+                execution_log = await asyncio.wait_for(
+                    appscript.invoke(
                         action="write_execution_log",
                         payload=execution_payload,
-                        timeout_seconds=settings.appscript_timeout_seconds,
-                    )
-                except Exception:
-                    return
+                    ),
+                    timeout=bounded_timeout,
+                )
+                execution_log = _normalize_appscript_action_result(
+                    execution_log,
+                    action="write_execution_log",
+                )
+                execution_log_result = {
+                    "mode": "appscript",
+                    "status": execution_log.get("status"),
+                    "detail": execution_log.get("detail"),
+                    "http_status": execution_log.get("http_status"),
+                    "data": execution_log.get("data", {}),
+                }
+            except asyncio.TimeoutError:
+                execution_log_result = {
+                    "mode": "appscript",
+                    "status": "deferred",
+                    "detail": "Execution log write exceeded bounded timeout; scheduled asynchronous follow-up.",
+                    "http_status": None,
+                    "data": {},
+                }
 
-            asyncio.create_task(_flush_execution_log_later())
+                async def _flush_execution_log_later() -> None:
+                    try:
+                        await appscript.invoke(
+                            action="write_execution_log",
+                            payload=execution_payload,
+                            timeout_seconds=settings.appscript_timeout_seconds,
+                        )
+                    except Exception:
+                        return
 
-    deployed = int(summary.get("deployed", 0))
-    failed = int(summary.get("failed", 0))
-    attempted = int(summary.get("attempted", 0))
-    if attempted == 0:
-        final_status = "deployed_partial"
-        final_message = "No approved deployable records were found for deployment."
-    elif deployed == 0 and failed == 0:
-        final_status = "deployed_partial"
-        final_message = "No objects were created or updated. All approved items were skipped."
-    elif failed > 0 and deployed > 0:
-        final_status = "deployed_partial"
-        final_message = "Deployment completed with partial failures."
-    elif failed > 0 and deployed == 0:
-        final_status = "deploy_failed"
-        final_message = "Deployment failed."
-    else:
-        final_status = "deployed"
-        final_message = "Deployment completed successfully."
+                asyncio.create_task(_flush_execution_log_later())
 
-    store.update_batch(
-        batch_id,
-        {
-            "records": updated_records,
-            "metadata": {
-                **batch.get("metadata", {}),
-                "zendesk_deploy": {
-                    "summary": summary,
-                    "results": results,
-                    "base_url": deployment.get("base_url"),
-                    "execution_log": execution_log_result,
-                    "dependency_auto_create": dependency_auto_create,
+        deployed = int(summary.get("deployed", 0))
+        failed = int(summary.get("failed", 0))
+        attempted = int(summary.get("attempted", 0))
+        if attempted == 0:
+            final_status = "deployed_partial"
+            final_message = "No approved deployable records were found for deployment."
+        elif deployed == 0 and failed == 0:
+            final_status = "deployed_partial"
+            final_message = "No objects were created or updated. All approved items were skipped."
+        elif failed > 0 and deployed > 0:
+            final_status = "deployed_partial"
+            final_message = "Deployment completed with partial failures."
+        elif failed > 0 and deployed == 0:
+            final_status = "deploy_failed"
+            final_message = "Deployment failed."
+        else:
+            final_status = "deployed"
+            final_message = "Deployment completed successfully."
+
+        metadata = batch.get("metadata", {}) if isinstance(batch.get("metadata", {}), dict) else {}
+        failure_metadata = (
+            {
+                "failure_stage": "deploy",
+                "failure_code": "deploy_failed",
+                "failure_reason": final_message,
+                "next_step": "Review failed rows in execution details and resolve those issues before redeploying.",
+            }
+            if final_status in {"deploy_failed", "deployed_partial"} and failed > 0
+            else None
+        )
+        store.update_batch(
+            batch_id,
+            {
+                "records": updated_records,
+                "metadata": {
+                    **metadata,
+                    "zendesk_deploy": {
+                        "summary": summary,
+                        "results": results,
+                        "base_url": deployment.get("base_url"),
+                        "execution_log": execution_log_result,
+                        "dependency_auto_create": dependency_auto_create,
+                        "terminal_error_class": terminal_error_class,
+                        "watchdog_seconds": watchdog_seconds,
+                    },
+                    "failure": failure_metadata,
                 },
             },
-        },
-    )
-    store.append_status(batch_id, final_status, final_message)
+        )
+        store.append_status(batch_id, final_status, final_message)
+        store.append_status(batch_id, final_status, "Deploy phase finished.")
 
-    return {
-        "batch_id": batch_id,
-        "status": final_status,
-        "summary": summary,
-        "results": results,
-        "message": final_message,
-        "metadata": {
-            "base_url": deployment.get("base_url"),
-            "execution_log": execution_log_result,
-            "dry_run": dry_run,
-            "on_existing": on_existing,
-            "dependency_auto_create": dependency_auto_create,
-            "failure": (
-                {
-                    "failure_stage": "deploy",
-                    "failure_code": "deploy_failed",
-                    "failure_reason": final_message,
-                    "next_step": "Review failed rows in execution details and resolve those issues before redeploying.",
-                }
-                if final_status in {"deploy_failed", "deployed_partial"} and failed > 0
-                else None
-            ),
-        },
-    }
+        return {
+            "batch_id": batch_id,
+            "status": final_status,
+            "summary": summary,
+            "results": results,
+            "message": final_message,
+            "metadata": {
+                "base_url": deployment.get("base_url"),
+                "execution_log": execution_log_result,
+                "dry_run": dry_run,
+                "on_existing": on_existing,
+                "dependency_auto_create": dependency_auto_create,
+                "terminal_error_class": terminal_error_class,
+                "watchdog_seconds": watchdog_seconds,
+                "failure": failure_metadata,
+            },
+        }
+    except Exception as exc:  # noqa: BLE001
+        terminal_error_class = "deploy_post_processing_error"
+        reason = f"Deploy finalization error: {exc}"
+        _finalize_deploy_failure(
+            code="deploy_runtime_error",
+            reason=reason,
+            next_step="Retry deployment explicitly after resolving deploy finalization/runtime errors.",
+            terminal_error_class=terminal_error_class,
+            summary=summary,
+            results=results,
+            execution_log=execution_log_result,
+        )
+        raise RuntimeError(reason) from exc

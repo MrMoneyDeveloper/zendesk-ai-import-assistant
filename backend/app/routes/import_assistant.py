@@ -276,6 +276,14 @@ async def deploy_to_zendesk(request: ZendeskDeployRequest) -> ZendeskDeployRespo
             next_step="Retry deployment after resolving Zendesk/API runtime errors.",
         )
         raise HTTPException(status_code=502, detail=detail) from exc
+    except Exception as exc:  # noqa: BLE001
+        detail = _build_failure_detail(
+            stage="deploy",
+            code="deploy_runtime_error",
+            reason=f"Unhandled deploy error: {exc}",
+            next_step="Retry deployment after resolving the runtime error shown above.",
+        )
+        raise HTTPException(status_code=502, detail=detail) from exc
 
 
 @router.get("/appscript/health", response_model=AppScriptActionResponse)
