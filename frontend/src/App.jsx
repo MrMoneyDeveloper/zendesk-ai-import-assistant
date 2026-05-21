@@ -114,6 +114,9 @@ function objectTypeLabel(value) {
   const text = String(value || "").trim().toLowerCase();
   if (!text) return "Object";
   const mapping = {
+    brands: "Brand",
+    categories: "Category",
+    sections: "Section",
     triggers: "Trigger",
     automations: "Automation",
     macros: "Macro",
@@ -205,6 +208,9 @@ const PREVIEW_POLL_ACTIVE_STATUSES = new Set([
 ]);
 
 const FOCUS_TO_CATALOG_KEYS = {
+  brands: ["brands"],
+  categories: ["categories", "help_centers", "brands"],
+  sections: ["sections", "categories", "help_centers", "brands"],
   triggers: ["triggers", "groups", "ticket_forms", "brands"],
   automations: ["automations", "groups", "ticket_forms", "brands"],
   macros: ["macros", "groups", "ticket_forms", "ticket_fields"],

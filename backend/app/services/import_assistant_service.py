@@ -2,6 +2,7 @@ import asyncio
 from collections import Counter
 from datetime import UTC, datetime
 import math
+from pathlib import Path
 import random
 import re
 import time
@@ -31,6 +32,12 @@ from app.services.sheets_service import SheetsService
 from app.services.zendesk import deploy_records_to_zendesk
 
 TAB_OBJECT_TYPES = {
+    "brand": "brands",
+    "brands": "brands",
+    "category": "categories",
+    "categories": "categories",
+    "section": "sections",
+    "sections": "sections",
     "trigger": "triggers",
     "triggers": "triggers",
     "automation": "automations",
@@ -61,6 +68,9 @@ REFERENCE_OBJECT_BY_FIELD = {
 }
 
 FOCUS_TO_CATALOG_KEYS = {
+    "brands": {"brands"},
+    "categories": {"categories", "help_centers", "brands"},
+    "sections": {"sections", "categories", "help_centers", "brands"},
     "triggers": {"triggers", "groups", "ticket_forms", "brands"},
     "automations": {"automations", "groups", "ticket_forms", "brands"},
     "macros": {"macros", "groups", "ticket_forms", "ticket_fields"},
@@ -153,6 +163,9 @@ DETERMINISTIC_LLM_ERROR_MARKERS = {
 }
 
 BUSINESS_BLUEPRINT_OBJECT_HINTS = {
+    "brands": [r"\bbrand\b", r"\bbrands\b"],
+    "categories": [r"\bcategory\b", r"\bcategories\b"],
+    "sections": [r"\bsection\b", r"\bsections\b"],
     "groups": [r"\bgroup\b", r"\bgroups\b", r"\bteam\b", r"\bteams\b"],
     "ticket_fields": [r"\bfield\b", r"\bfields\b", r"\bcustom field\b", r"\bcustom fields\b"],
     "ticket_forms": [r"\bform\b", r"\bforms\b", r"\bticket form\b", r"\bticket forms\b"],
@@ -164,10 +177,12 @@ BUSINESS_BLUEPRINT_OBJECT_HINTS = {
 }
 
 ORCHESTRATION_WAVES = {
-    1: ["groups", "ticket_fields"],
-    2: ["ticket_forms", "views"],
-    3: ["triggers", "macros", "automations"],
-    4: ["articles"],
+    0: ["brands"],
+    1: ["categories", "sections"],
+    2: ["groups", "ticket_fields"],
+    3: ["ticket_forms", "views"],
+    4: ["triggers", "macros", "automations"],
+    5: ["articles"],
 }
 
 ORCHESTRATION_WAVE_BY_OBJECT = {
@@ -177,6 +192,30 @@ ORCHESTRATION_WAVE_BY_OBJECT = {
 }
 WAVE3_RULE_OBJECT_TYPES = {"triggers", "macros", "automations"}
 OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD = 3
+
+ARTICLE_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "content" / "article_templates"
+ARTICLE_TEMPLATE_INDEX = {
+    "billing": {
+        "filename": "billing.md",
+        "keywords": ("billing", "invoice", "payment", "charge", "refund"),
+    },
+    "claims": {
+        "filename": "claims.md",
+        "keywords": ("claim", "payout", "benefit", "benefits"),
+    },
+    "onboarding": {
+        "filename": "onboarding.md",
+        "keywords": ("onboard", "onboarding", "new customer", "new member", "getting started"),
+    },
+    "troubleshooting": {
+        "filename": "troubleshooting.md",
+        "keywords": ("troubleshoot", "error", "issue", "problem", "fix"),
+    },
+    "policy": {
+        "filename": "policy.md",
+        "keywords": ("policy", "compliance", "regulation", "terms"),
+    },
+}
 
 BUSINESS_BRIEF_SIGNAL_PATTERNS = (
     r"\bbusiness\b",
@@ -294,6 +333,9 @@ def _infer_object_type_from_prompt(
     _score("macros", [r"\bmacro\b"])
     _score("views", [r"\bview\b"])
     _score("groups", [r"\bgroup\b"])
+    _score("brands", [r"\bbrand\b"])
+    _score("categories", [r"\bcategory\b"])
+    _score("sections", [r"\bsection\b"])
     _score("articles", [r"\barticle\b", r"\bhelp center\b", r"\bknowledge base\b"])
     if "ticket_forms" not in scored and re.search(r"\bform\b", lowered):
         scored["ticket_forms"] = scored.get("ticket_forms", 0) + 1
@@ -553,11 +595,11 @@ def _resolve_object_chunk_profile(
         return base_chunk_size, base_trigger_min_records
     normalized = _normalize_object_type(str(object_type or ""))
 
-    # Quality-first micro-chunking profile for fragile object types.
+    # Balanced-fast profile for object-specific chunking.
     if normalized == "ticket_fields":
-        return max(1, min(base_chunk_size, 2)), 2
+        return max(1, min(base_chunk_size, 3)), 2
     if normalized in {"ticket_forms", "views", "articles"}:
-        return 1, 1
+        return max(1, min(base_chunk_size, 2)), 2
     if normalized in {"triggers", "macros", "automations"}:
         return max(1, min(base_chunk_size, 3)), min(base_trigger_min_records, 3)
 
@@ -611,6 +653,12 @@ def _normalize_object_type(raw: str) -> str:
 
     normalized_key = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
     alias_map = {
+        "brand": "brands",
+        "brands": "brands",
+        "category": "categories",
+        "categories": "categories",
+        "section": "sections",
+        "sections": "sections",
         "trigger": "triggers",
         "triggers": "triggers",
         "automation": "automations",
@@ -705,7 +753,7 @@ def _estimate_requested_record_count(prompt: str) -> dict:
         r"\b(\d{1,4})\s+"
         r"(?:(?:[a-z][\w/-]{0,30})\s+){0,3}?"
         r"("
-        r"triggers?|automations?|macros?|views?|groups?|"
+        r"triggers?|automations?|macros?|views?|groups?|brands?|categories?|sections?|"
         r"ticket\s*forms?|forms?|ticket\s*fields?|fields?|articles?"
         r")\b",
         flags=re.IGNORECASE,
@@ -733,7 +781,7 @@ def _estimate_requested_record_count(prompt: str) -> dict:
         rf"\b({number_word_pattern})\s+"
         r"(?:(?:[a-z][\w/-]{0,30})\s+){0,3}?"
         r"("
-        r"triggers?|automations?|macros?|views?|groups?|"
+        r"triggers?|automations?|macros?|views?|groups?|brands?|categories?|sections?|"
         r"ticket\s*forms?|forms?|ticket\s*fields?|fields?|articles?"
         r")\b",
         flags=re.IGNORECASE,
@@ -808,6 +856,9 @@ def _extract_object_type_targets(
             targets[object_hint] = targets.get(object_hint, 0) + value
 
     direct_numeric_patterns = {
+        "brands": [r"\b(\d{1,4})\s+brands?\b"],
+        "categories": [r"\b(\d{1,4})\s+categories\b", r"\b(\d{1,4})\s+category\b"],
+        "sections": [r"\b(\d{1,4})\s+sections\b", r"\b(\d{1,4})\s+section\b"],
         "triggers": [r"\b(\d{1,4})\s+triggers?\b"],
         "automations": [r"\b(\d{1,4})\s+automations?\b"],
         "macros": [r"\b(\d{1,4})\s+macros?\b"],
@@ -1040,9 +1091,9 @@ async def _run_business_blueprint_compiler(
                 "Return strict JSON object only with keys: capabilities, target_objects, assumptions, "
                 "priorities, dependency_hints. "
                 "target_objects must be array of {object_type,target_count,priority,wave}. "
-                "object_type values must be one of: groups,ticket_fields,ticket_forms,views,triggers,macros,automations,articles. "
-                "Respect this deterministic wave order: wave1 groups+ticket_fields, wave2 ticket_forms+views, "
-                "wave3 triggers+macros+automations, wave4 articles."
+                "object_type values must be one of: brands,categories,sections,groups,ticket_fields,ticket_forms,views,triggers,macros,automations,articles. "
+                "Respect this deterministic wave order: wave0 brands, wave1 categories+sections, "
+                "wave2 groups+ticket_fields, wave3 ticket_forms+views, wave4 triggers+macros+automations, wave5 articles."
             ),
         },
         {
@@ -1246,6 +1297,99 @@ def _build_wave_prompt(
     )
 
 
+def _load_article_template_text(template_key: str) -> str | None:
+    spec = ARTICLE_TEMPLATE_INDEX.get(template_key)
+    if not isinstance(spec, dict):
+        return None
+    filename = str(spec.get("filename", "")).strip()
+    if not filename:
+        return None
+    template_path = ARTICLE_TEMPLATE_DIR / filename
+    try:
+        if not template_path.exists():
+            return None
+        return template_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
+def _select_article_template_key(prompt: str) -> str | None:
+    text = str(prompt or "").strip().lower()
+    if not text:
+        return None
+    best_key: str | None = None
+    best_score = 0
+    for key, spec in ARTICLE_TEMPLATE_INDEX.items():
+        keywords = tuple(spec.get("keywords", ()) if isinstance(spec, dict) else ())
+        score = sum(1 for token in keywords if token and token in text)
+        if score > best_score:
+            best_score = score
+            best_key = key
+    if best_score <= 0:
+        return None
+    return best_key
+
+
+def _extract_company_name_from_prompt(prompt: str) -> str | None:
+    text = str(prompt or "").strip()
+    if not text:
+        return None
+    patterns = (
+        r"\b(?:for|about)\s+([A-Z][A-Za-z0-9&' .-]{2,80})\b",
+        r"\bcompany\s*(?:name)?\s*(?:is|=|:)\s*([A-Za-z0-9&' .-]{2,80})\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        candidate = str(match.group(1) or "").strip(" .,:;")
+        if candidate:
+            return candidate
+    return None
+
+
+def _build_article_template_variables(
+    *,
+    prompt: str,
+    reference_catalog: dict[str, list[dict]],
+) -> dict[str, str]:
+    brand_rows = reference_catalog.get("brands", []) if isinstance(reference_catalog, dict) else []
+    first_brand = brand_rows[0] if isinstance(brand_rows, list) and brand_rows else {}
+    brand_name = str(first_brand.get("name", "")).strip() if isinstance(first_brand, dict) else ""
+    company_name = _extract_company_name_from_prompt(prompt) or brand_name or "Your Company"
+    product_match = re.search(
+        r"\b(?:for|about)\s+([a-z0-9][a-z0-9 &/_-]{2,80})\s+(?:support|workflows?|operations?)\b",
+        str(prompt or "").lower(),
+    )
+    product_or_service = (
+        str(product_match.group(1) or "").strip().title()
+        if product_match
+        else "your services"
+    )
+    return {
+        "company_name": company_name,
+        "brand_name": brand_name or company_name,
+        "product_or_service": product_or_service,
+        "support_hours": "Monday-Friday, 08:00-17:00",
+        "contact_channel": "support portal",
+    }
+
+
+def _render_article_template(
+    *,
+    template_text: str,
+    variables: dict[str, str],
+) -> tuple[str, list[str]]:
+    warnings: list[str] = []
+    rendered = str(template_text or "")
+    for key, value in variables.items():
+        rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
+    unresolved = sorted(set(re.findall(r"\{\{([a-zA-Z0-9_]+)\}\}", rendered)))
+    for token in unresolved:
+        warnings.append(f"Template variable '{token}' was not provided; default text retained.")
+    return rendered.strip(), warnings
+
+
 def _build_chunk_plan(
     *,
     settings,
@@ -1335,6 +1479,9 @@ def _build_chunk_instruction(
 
 def _can_use_deterministic_chunk_fallback(object_type: str) -> bool:
     return _normalize_object_type(object_type) in {
+        "brands",
+        "categories",
+        "sections",
         "groups",
         "ticket_fields",
         "ticket_forms",
@@ -1456,6 +1603,66 @@ def _build_deterministic_chunk_rows(
             rows.append(
                 {
                     "object_type": "groups",
+                    "title": _next_unique_title(base_title, index),
+                    "conditions": [],
+                    "actions": actions,
+                    "dependency_notes": [fallback_note],
+                }
+            )
+        return rows
+
+    if normalized_object_type == "brands":
+        title_hints = _extract_title_hints(prompt_text)
+        base_title = title_hints[0] if title_hints else "Generated Brand"
+        for index in range(1, requested_count + 1):
+            rows.append(
+                {
+                    "object_type": "brands",
+                    "title": _next_unique_title(base_title, index),
+                    "conditions": [],
+                    "actions": [
+                        {"field": "subdomain", "value": _slugify_option_value(f"{base_title}-{index}")[:25]},
+                    ],
+                    "dependency_notes": [fallback_note],
+                }
+            )
+        return rows
+
+    if normalized_object_type == "categories":
+        title_hints = _extract_title_hints(prompt_text)
+        base_title = title_hints[0] if title_hints else "General Information"
+        for index in range(1, requested_count + 1):
+            rows.append(
+                {
+                    "object_type": "categories",
+                    "title": _next_unique_title(base_title, index),
+                    "conditions": [],
+                    "actions": [
+                        {"field": "locale", "value": "en-us"},
+                    ],
+                    "dependency_notes": [fallback_note],
+                }
+            )
+        return rows
+
+    if normalized_object_type == "sections":
+        category_id: str | None = None
+        for category in reference_catalog.get("categories", []) or []:
+            if not isinstance(category, dict):
+                continue
+            candidate = str(category.get("id", "")).strip()
+            if candidate.isdigit():
+                category_id = candidate
+                break
+        title_hints = _extract_title_hints(prompt_text)
+        base_title = title_hints[0] if title_hints else "General Support"
+        for index in range(1, requested_count + 1):
+            actions = [{"field": "locale", "value": "en-us"}]
+            if category_id:
+                actions.append({"field": "category_id", "value": category_id})
+            rows.append(
+                {
+                    "object_type": "sections",
                     "title": _next_unique_title(base_title, index),
                     "conditions": [],
                     "actions": actions,
@@ -2446,6 +2653,7 @@ def _extract_article_value_from_row(row: dict, aliases: set[str]) -> object | No
 def _canonicalize_article_record(
     row: dict,
     *,
+    prompt: str,
     reference_catalog: dict[str, list[dict]],
     related_lookup: dict[str, dict[str, str]] | None,
     catalog_lookup: dict[str, dict[str, str]] | None,
@@ -2457,6 +2665,7 @@ def _canonicalize_article_record(
         "defaults_applied": [],
         "warnings": [],
         "blocked": False,
+        "template_key": None,
     }
 
     locale_value = _extract_article_value_from_row(row, ARTICLE_FIELD_ALIASES["locale"])
@@ -2468,8 +2677,26 @@ def _canonicalize_article_record(
     body_value = _extract_article_value_from_row(row, ARTICLE_FIELD_ALIASES["body"])
     body_text = str(body_value or "").strip()
     if not body_text:
-        body_text = f"<p>{info['title']}</p>"
-        info["defaults_applied"].append("body=title_template")
+        template_key = _select_article_template_key(prompt)
+        if template_key:
+            template_text = _load_article_template_text(template_key)
+            if template_text:
+                variables = _build_article_template_variables(
+                    prompt=prompt,
+                    reference_catalog=reference_catalog,
+                )
+                rendered, template_warnings = _render_article_template(
+                    template_text=template_text,
+                    variables=variables,
+                )
+                if rendered:
+                    body_text = rendered
+                    info["template_key"] = template_key
+                    info["defaults_applied"].append(f"body=template:{template_key}")
+                    info["warnings"].extend(template_warnings)
+        if not body_text:
+            body_text = f"<p>{info['title']}</p>"
+            info["defaults_applied"].append("body=title_template")
     _set_action_value(row, "body", body_text)
 
     draft_value = _extract_article_value_from_row(row, ARTICLE_FIELD_ALIASES["draft"])
@@ -3135,7 +3362,7 @@ def _build_preview_records(
         if not title:
             blocked_reason = "Missing title."
             validation_status = "failed"
-        if not actions and object_type != "ticket_forms":
+        if not actions and object_type not in {"ticket_forms", "brands", "categories", "sections"}:
             row_warnings.append("No actions defined for this record.")
         if object_type == "ticket_forms" and not actions and not blocked_reason:
             blocked_reason = (
@@ -3510,6 +3737,8 @@ def _canonicalize_generated_rows(
         "defaults_applied": 0,
         "warnings": 0,
         "blocked_records": 0,
+        "template_applied_count": 0,
+        "template_keys": [],
     }
 
     existing_field_map: dict[str, str] = {}
@@ -3554,6 +3783,7 @@ def _canonicalize_generated_rows(
         elif row["object_type"] == "articles":
             info = _canonicalize_article_record(
                 row,
+                prompt=prompt,
                 reference_catalog=reference_catalog,
                 related_lookup=related_lookup,
                 catalog_lookup=catalog_lookup,
@@ -3564,6 +3794,15 @@ def _canonicalize_generated_rows(
             trigger_article_summary["warnings"] += len(info.get("warnings", []))
             if bool(info.get("blocked")):
                 trigger_article_summary["blocked_records"] += 1
+            template_key = str(info.get("template_key", "")).strip()
+            if template_key:
+                trigger_article_summary["template_applied_count"] += 1
+                existing_template_keys = set(trigger_article_summary.get("template_keys", []))
+                if template_key not in existing_template_keys:
+                    trigger_article_summary["template_keys"] = [
+                        *trigger_article_summary.get("template_keys", []),
+                        template_key,
+                    ]
         normalized_rows.append(row)
 
     for row in normalized_rows:
@@ -5779,6 +6018,15 @@ async def generate_import_assistant_batch(
             catalog_lookup=catalog_lookup,
             settings=settings,
         )
+        trigger_article_meta = (
+            canonicalization_metadata.get("trigger_article", {})
+            if isinstance(canonicalization_metadata.get("trigger_article", {}), dict)
+            else {}
+        )
+        orchestration_metadata["template_usage"] = {
+            "applied_count": int(trigger_article_meta.get("template_applied_count", 0) or 0),
+            "template_keys": list(trigger_article_meta.get("template_keys", []) or []),
+        }
 
         post_generation_stage = "dependency_resolution"
         generated_data, dependency_resolution = _apply_dependency_resolution(
@@ -5787,6 +6035,11 @@ async def generate_import_assistant_batch(
             catalog_lookup=catalog_lookup,
             dependency_mode=request.dependency_mode,
         )
+        orchestration_metadata["taxonomy_resolution"] = {
+            "resolved_links": int(dependency_resolution.get("resolved_links", 0) or 0),
+            "unresolved_links": int(dependency_resolution.get("unresolved_links", 0) or 0),
+            "unresolved_samples": list(dependency_resolution.get("unresolved_samples", []) or []),
+        }
         generated_data, focus_diagnostics = _annotate_focus_object_constraints(
             generated_data,
             focus_object_types=focus_object_type_set,
@@ -6470,6 +6723,7 @@ async def deploy_batch_to_zendesk(
     results: list = []
     updated_records: list[dict] = []
     dependency_auto_create: dict = {}
+    deploy_sanitization_stats: dict = {}
     execution_log_result: dict = {}
     terminal_error_class = "ok"
 
@@ -6511,6 +6765,11 @@ async def deploy_batch_to_zendesk(
     try:
         dependency_auto_create = (
             deployment.get("dependency_auto_create", {})
+            if isinstance(deployment, dict)
+            else {}
+        )
+        deploy_sanitization_stats = (
+            deployment.get("sanitization_stats", {})
             if isinstance(deployment, dict)
             else {}
         )
@@ -6650,6 +6909,7 @@ async def deploy_batch_to_zendesk(
                         "base_url": deployment.get("base_url"),
                         "execution_log": execution_log_result,
                         "dependency_auto_create": dependency_auto_create,
+                        "sanitization_stats": deploy_sanitization_stats,
                         "terminal_error_class": terminal_error_class,
                         "watchdog_seconds": watchdog_seconds,
                     },
@@ -6672,6 +6932,7 @@ async def deploy_batch_to_zendesk(
                 "dry_run": dry_run,
                 "on_existing": on_existing,
                 "dependency_auto_create": dependency_auto_create,
+                "deploy_sanitization_stats": deploy_sanitization_stats,
                 "terminal_error_class": terminal_error_class,
                 "watchdog_seconds": watchdog_seconds,
                 "failure": failure_metadata,

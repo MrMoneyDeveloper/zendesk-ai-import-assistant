@@ -313,8 +313,8 @@ def get_settings() -> Settings:
             _as_int(os.getenv("LLM_RATE_GUARD_MIN_HEADROOM_TOKENS"), 250),
             0,
         ),
-        llm_prewait_max_seconds_planner=_stage_prewait(6.0, "LLM_PREWAIT_MAX_SECONDS_PLANNER"),
-        llm_prewait_max_seconds_generator=_stage_prewait(12.0, "LLM_PREWAIT_MAX_SECONDS_GENERATOR"),
+        llm_prewait_max_seconds_planner=_stage_prewait(3.0, "LLM_PREWAIT_MAX_SECONDS_PLANNER"),
+        llm_prewait_max_seconds_generator=_stage_prewait(6.0, "LLM_PREWAIT_MAX_SECONDS_GENERATOR"),
         llm_context_max_related_objects=max(
             _as_int(os.getenv("LLM_CONTEXT_MAX_RELATED_OBJECTS"), 16),
             5,
@@ -347,11 +347,11 @@ def get_settings() -> Settings:
             2,
         ),
         llm_auto_chunk_pacing_seconds=max(
-            _as_float(os.getenv("LLM_AUTO_CHUNK_PACING_SECONDS"), 0.35),
+            _as_float(os.getenv("LLM_AUTO_CHUNK_PACING_SECONDS"), 0.15),
             0.0,
         ),
         llm_auto_chunk_pacing_jitter_seconds=max(
-            _as_float(os.getenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS"), 0.25),
+            _as_float(os.getenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS"), 0.10),
             0.0,
         ),
         benchmark_mode_enabled=_as_bool(os.getenv("BENCHMARK_MODE"), False),

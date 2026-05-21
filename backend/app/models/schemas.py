@@ -38,6 +38,9 @@ DependencyMode = Literal[
 ]
 OnExistingMode = Literal["create_new", "overwrite_existing", "skip_existing"]
 FocusObjectType = Literal[
+    "brands",
+    "categories",
+    "sections",
     "triggers",
     "automations",
     "macros",
@@ -49,6 +52,12 @@ FocusObjectType = Literal[
 ]
 
 FOCUS_OBJECT_TYPES = {
+    "brand": "brands",
+    "brands": "brands",
+    "category": "categories",
+    "categories": "categories",
+    "section": "sections",
+    "sections": "sections",
     "trigger": "triggers",
     "triggers": "triggers",
     "automation": "automations",

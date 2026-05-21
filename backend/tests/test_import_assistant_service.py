@@ -646,7 +646,7 @@ def test_chunk_plan_math_and_cap_detection():
     assert capped["exceeds_cap"] is True
 
 
-def test_chunk_plan_uses_micro_chunk_profile_for_form_field_view_objects():
+def test_chunk_plan_uses_balanced_fast_profile_for_form_field_view_objects():
     settings = SimpleNamespace(
         llm_auto_chunk_enabled=True,
         llm_auto_chunk_size=6,
@@ -655,18 +655,18 @@ def test_chunk_plan_uses_micro_chunk_profile_for_form_field_view_objects():
     )
     fields = _build_chunk_plan(settings=settings, estimated_count=12, object_type="ticket_fields")
     assert fields["activated"] is True
-    assert fields["chunk_size"] == 2
-    assert fields["chunk_targets"] == [2, 2, 2, 2, 2, 2]
+    assert fields["chunk_size"] == 3
+    assert fields["chunk_targets"] == [3, 3, 3, 3]
 
     forms = _build_chunk_plan(settings=settings, estimated_count=4, object_type="ticket_forms")
     assert forms["activated"] is True
-    assert forms["chunk_size"] == 1
-    assert forms["chunk_targets"] == [1, 1, 1, 1]
+    assert forms["chunk_size"] == 2
+    assert forms["chunk_targets"] == [2, 2]
 
     views = _build_chunk_plan(settings=settings, estimated_count=5, object_type="views")
     assert views["activated"] is True
-    assert views["chunk_size"] == 1
-    assert views["chunk_targets"] == [1, 1, 1, 1, 1]
+    assert views["chunk_size"] == 2
+    assert views["chunk_targets"] == [2, 2, 1]
 
 
 def test_dedupe_generated_rows_drops_duplicate_titles_by_object_type():

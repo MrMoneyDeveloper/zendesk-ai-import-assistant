@@ -43,6 +43,25 @@ TICKET_FORM_REFERENCE_FIELDS = {
 
 _HELP_CENTER_FALLBACK_404_COOLDOWN: dict[str, float] = {}
 
+RULE_ACTION_ALLOWLIST = {
+    "group_id",
+    "assignee_id",
+    "set_tags",
+    "status",
+    "priority",
+    "comment_value",
+    "notification_user",
+    "notification_group",
+}
+VIEW_CONDITION_ALLOWLIST = {
+    "status",
+    "group_id",
+    "priority",
+    "ticket_form_id",
+    "brand_id",
+    "tags",
+}
+
 
 def _build_base_url(subdomain: str) -> str:
     return f"https://{subdomain}.zendesk.com"
@@ -128,16 +147,51 @@ def _normalize_action(action: dict) -> dict:
         "group_name": "group_id",
         "assignee": "assignee_id",
         "team": "group_id",
+        "add_tags": "set_tags",
+        "add_tag": "set_tags",
+        "tag": "set_tags",
+        "tags": "set_tags",
+        "request_type": "set_tags",
         "add_note": "comment_value",
         "comment": "comment_value",
         "comment_body": "comment_value",
         "comment_text": "comment_value",
     }
     normalized_field = field_aliases.get(raw_field, raw_field)
+    raw_value = action.get("value")
+    if normalized_field == "set_tags":
+        if isinstance(raw_value, list):
+            normalized_tokens = [str(item).strip() for item in raw_value if str(item).strip()]
+            raw_value = " ".join(normalized_tokens)
+        else:
+            raw_text = str(raw_value or "").strip()
+            if "," in raw_text or "|" in raw_text or ";" in raw_text:
+                raw_text = " ".join(
+                    part.strip()
+                    for part in re.split(r"[,|;]", raw_text)
+                    if part.strip()
+                )
+            raw_value = raw_text
     return {
         "field": normalized_field,
-        "value": action.get("value"),
+        "value": raw_value,
     }
+
+
+def _sanitize_rule_actions(actions: list[dict]) -> list[dict]:
+    sanitized: list[dict] = []
+    for item in actions or []:
+        if not isinstance(item, dict):
+            continue
+        normalized = _normalize_action(item)
+        field = str(normalized.get("field", "")).strip().lower()
+        value = normalized.get("value")
+        if not field or field not in RULE_ACTION_ALLOWLIST:
+            continue
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        sanitized.append({"field": field, "value": value})
+    return sanitized
 
 
 def _normalize_ticket_field_type(raw: object) -> str:
@@ -452,9 +506,14 @@ async def fetch_zendesk_reference_catalog(
 def _build_rule_payload(record: dict, root_key: str) -> dict:
     conditions = record.get("conditions", []) or []
     actions = record.get("actions", []) or []
-    all_conditions = [_normalize_condition(item) for item in conditions if item.get("field")]
+    all_conditions = [
+        _normalize_condition(item)
+        for item in conditions
+        if item.get("field")
+    ]
     if not all_conditions:
         all_conditions = [{"field": "status", "operator": "less_than", "value": "solved"}]
+    normalized_actions = _sanitize_rule_actions(actions)
     return {
         root_key: {
             "title": str(record.get("title", "Untitled trigger")).strip() or "Untitled trigger",
@@ -463,7 +522,7 @@ def _build_rule_payload(record: dict, root_key: str) -> dict:
                 "all": all_conditions,
                 "any": [],
             },
-            "actions": [_normalize_action(item) for item in actions if item.get("field")],
+            "actions": normalized_actions,
         }
     }
 
@@ -614,7 +673,7 @@ def _extract_ticket_form_field_references(record: dict) -> list[str]:
 
 
 def _build_macro_payload(record: dict) -> dict:
-    actions = [_normalize_action(item) for item in (record.get("actions", []) or []) if item.get("field")]
+    actions = _sanitize_rule_actions(record.get("actions", []) or [])
     return {
         "macro": {
             "title": str(record.get("title", "Untitled macro")).strip() or "Untitled macro",
@@ -626,7 +685,12 @@ def _build_macro_payload(record: dict) -> dict:
 
 def _build_view_payload(record: dict) -> dict:
     conditions = record.get("conditions", []) or []
-    all_conditions = [_normalize_condition(item) for item in conditions if item.get("field")]
+    all_conditions = [
+        _normalize_condition(item)
+        for item in conditions
+        if item.get("field")
+        and str(item.get("field", "")).strip().lower() in VIEW_CONDITION_ALLOWLIST
+    ]
     if not all_conditions:
         all_conditions = [{"field": "status", "operator": "less_than", "value": "solved"}]
 
@@ -656,6 +720,50 @@ def _build_group_payload(record: dict) -> dict:
     if description_value:
         payload["group"]["description"] = str(description_value)
     return payload
+
+
+def _slugify_brand_subdomain(value: str) -> str:
+    base = re.sub(r"[^a-z0-9-]+", "-", str(value or "").strip().lower())
+    base = re.sub(r"-{2,}", "-", base).strip("-")
+    return (base or "brand")[:40]
+
+
+def _build_brand_payload(record: dict) -> dict:
+    name = str(record.get("title", "")).strip() or "Untitled brand"
+    subdomain_value = _find_first_value(record, "subdomain")
+    subdomain = _slugify_brand_subdomain(str(subdomain_value or name))
+    payload = {"brand": {"name": name, "subdomain": subdomain}}
+    active_value = _find_first_value(record, "active")
+    active_bool = _coerce_bool(active_value)
+    if active_bool is not None:
+        payload["brand"]["active"] = active_bool
+    return payload
+
+
+def _build_category_payload(record: dict) -> dict:
+    name = str(record.get("title", "")).strip() or "Untitled category"
+    locale = str(_find_first_value(record, "locale") or "en-us").strip().lower()
+    payload = {"category": {"name": name, "locale": locale}}
+    description_value = _find_first_value(record, "description")
+    if description_value:
+        payload["category"]["description"] = str(description_value).strip()
+    return payload
+
+
+def _build_section_payload(record: dict) -> tuple[dict, str | None]:
+    name = str(record.get("title", "")).strip() or "Untitled section"
+    locale = str(_find_first_value(record, "locale") or "en-us").strip().lower()
+    category_value = _find_first_value(record, "category_id")
+    payload = {"section": {"name": name, "locale": locale}}
+    description_value = _find_first_value(record, "description")
+    if description_value:
+        payload["section"]["description"] = str(description_value).strip()
+    if category_value is None:
+        return payload, None
+    category_id_text = str(category_value).strip()
+    if not category_id_text.isdigit():
+        return payload, "Section category_id must be numeric."
+    return payload, category_id_text
 
 
 def _build_ticket_form_payload(record: dict) -> tuple[dict, list[str]]:
@@ -834,8 +942,19 @@ async def deploy_records_to_zendesk(
     skipped = 0
     existing_cache: dict[str, dict[str, str]] = {}
     dependency_events: list[dict] = []
+    sanitization_stats = {
+        "records_checked": 0,
+        "actions_dropped": 0,
+        "empty_rule_actions_blocked": 0,
+    }
 
     object_mappings = {
+        "brand": "brands",
+        "brands": "brands",
+        "category": "categories",
+        "categories": "categories",
+        "section": "sections",
+        "sections": "sections",
         "trigger": "triggers",
         "triggers": "triggers",
         "automation": "automations",
@@ -854,6 +973,9 @@ async def deploy_records_to_zendesk(
         "articles": "articles",
     }
     deploy_priority_by_type = {
+        "brands": 5,
+        "categories": 8,
+        "sections": 9,
         "groups": 10,
         "ticket_fields": 20,
         "ticket_forms": 30,
@@ -868,12 +990,46 @@ async def deploy_records_to_zendesk(
         "category_id": "categories",
         "help_center_id": "help_centers",
     }
-    creatable_dependency_types = {"groups", "ticket_fields", "ticket_forms"}
+    creatable_dependency_types = {
+        "brands",
+        "categories",
+        "sections",
+        "groups",
+        "ticket_fields",
+        "ticket_forms",
+    }
 
     def _record_deploy_priority(record: dict) -> tuple[int, str]:
         raw = str(record.get("object_type", "")).strip().lower()
         normalized = object_mappings.get(raw, raw)
         return deploy_priority_by_type.get(normalized, 100), normalized
+
+    def _apply_payload_title_suffix(
+        *,
+        payload: dict,
+        object_type: str,
+        new_title: str,
+    ) -> dict:
+        root_by_type = {
+            "triggers": ("trigger", "title"),
+            "automations": ("automation", "title"),
+            "macros": ("macro", "title"),
+            "views": ("view", "title"),
+            "groups": ("group", "name"),
+            "ticket_forms": ("ticket_form", "name"),
+            "ticket_fields": ("ticket_field", "title"),
+            "articles": ("article", "title"),
+            "brands": ("brand", "name"),
+            "categories": ("category", "name"),
+            "sections": ("section", "name"),
+        }
+        root_key, field_key = root_by_type.get(object_type, ("", ""))
+        if not root_key or not field_key:
+            return payload
+        root = payload.get(root_key, {}) if isinstance(payload.get(root_key), dict) else {}
+        root[field_key] = new_title
+        payload[root_key] = root
+        return payload
 
     async with httpx.AsyncClient(timeout=30) as client:
         async def _safe_list(path: str) -> dict:
@@ -913,6 +1069,9 @@ async def deploy_records_to_zendesk(
                 return existing_cache[object_type]
 
             endpoint_by_type = {
+                "brands": "/api/v2/brands.json",
+                "categories": "/api/v2/help_center/categories.json?per_page=100",
+                "sections": "/api/v2/help_center/sections.json?per_page=100",
                 "triggers": "/api/v2/triggers.json",
                 "automations": "/api/v2/automations.json",
                 "macros": "/api/v2/macros.json",
@@ -923,6 +1082,9 @@ async def deploy_records_to_zendesk(
                 "articles": "/api/v2/help_center/articles.json?per_page=100",
             }
             items_key_by_type = {
+                "brands": "brands",
+                "categories": "categories",
+                "sections": "sections",
                 "triggers": "triggers",
                 "automations": "automations",
                 "macros": "macros",
@@ -948,7 +1110,7 @@ async def deploy_records_to_zendesk(
                 item_id = str(item.get("id", "")).strip()
                 if not item_id:
                     continue
-                if object_type in {"groups", "ticket_forms"}:
+                if object_type in {"groups", "ticket_forms", "brands", "categories", "sections"}:
                     name = str(item.get("name", "")).strip().lower()
                 else:
                     name = str(item.get("title", item.get("name", ""))).strip().lower()
@@ -961,6 +1123,7 @@ async def deploy_records_to_zendesk(
             *,
             object_type: str,
             title: str,
+            category_id: str | None = None,
         ) -> tuple[str | None, str | None]:
             if dry_run:
                 dry_id = "99999999"
@@ -976,20 +1139,53 @@ async def deploy_records_to_zendesk(
                 return dry_id, None
 
             payload_by_type = {
+                "brands": {
+                    "brand": {
+                        "name": title,
+                        "subdomain": _slugify_brand_subdomain(title),
+                    }
+                },
+                "categories": {
+                    "category": {
+                        "name": title,
+                        "locale": "en-us",
+                    }
+                },
                 "groups": {"group": {"name": title}},
                 "ticket_fields": {"ticket_field": {"title": title, "type": "text"}},
                 "ticket_forms": {"ticket_form": {"name": title}},
             }
             endpoint_by_type = {
+                "brands": "/api/v2/brands.json",
+                "categories": "/api/v2/help_center/categories.json",
                 "groups": "/api/v2/groups.json",
                 "ticket_fields": "/api/v2/ticket_fields.json",
                 "ticket_forms": "/api/v2/ticket_forms.json",
             }
             root_by_type = {
+                "brands": "brand",
+                "categories": "category",
                 "groups": "group",
                 "ticket_fields": "ticket_field",
                 "ticket_forms": "ticket_form",
             }
+
+            if object_type == "sections":
+                if not (category_id and str(category_id).strip().isdigit()):
+                    return None, (
+                        "Auto-create for sections requires a category_id context. "
+                        "Provide category_id or include one existing category in context."
+                    )
+                payload_by_type["sections"] = {
+                    "section": {
+                        "name": title,
+                        "locale": "en-us",
+                    }
+                }
+                endpoint_by_type["sections"] = (
+                    f"/api/v2/help_center/categories/{str(category_id).strip()}/sections.json"
+                )
+                root_by_type["sections"] = "section"
 
             payload = payload_by_type.get(object_type)
             endpoint = endpoint_by_type.get(object_type)
@@ -1081,13 +1277,38 @@ async def deploy_records_to_zendesk(
             if existing_id:
                 return existing_id, None
 
+            dependency_title = raw
+            category_id_hint: str | None = None
+            if object_type == "sections":
+                parsed = re.split(r"\s*(?:>|/|::)\s*", raw, maxsplit=1)
+                if len(parsed) == 2:
+                    maybe_category = str(parsed[0] or "").strip()
+                    maybe_section = str(parsed[1] or "").strip()
+                    if maybe_section:
+                        dependency_title = maybe_section
+                    if maybe_category:
+                        if maybe_category.isdigit():
+                            category_id_hint = maybe_category
+                        else:
+                            category_map = await _load_existing_map("categories")
+                            category_id_hint = category_map.get(maybe_category.lower())
+                if not category_id_hint:
+                    category_map = await _load_existing_map("categories")
+                    if len(category_map) == 1:
+                        category_id_hint = next(iter(category_map.values()))
+
+                existing_section_id = existing_map.get(str(dependency_title).strip().lower())
+                if existing_section_id:
+                    return existing_section_id, None
+
             created_id, create_error = await _create_dependency(
                 object_type=object_type,
-                title=raw,
+                title=dependency_title,
+                category_id=category_id_hint,
             )
             if create_error:
                 return None, (
-                    f"Missing dependency '{raw}' ({object_type}) could not be auto-created. {create_error}"
+                    f"Missing dependency '{raw}' ({object_type}) cannot be auto-created. {create_error}"
                 )
             return created_id, None
 
@@ -1096,6 +1317,7 @@ async def deploy_records_to_zendesk(
             key=lambda item: (_record_deploy_priority(item[1])[0], item[0]),
         )
         for _, record in ordered_records:
+            sanitization_stats["records_checked"] += 1
             record_id = str(record.get("record_id", "")).strip()
             raw_object_type = str(record.get("object_type", "")).strip().lower()
             object_type = object_mappings.get(raw_object_type, raw_object_type)
@@ -1122,6 +1344,9 @@ async def deploy_records_to_zendesk(
             attempted += 1
 
             supported_types = {
+                "brands",
+                "categories",
+                "sections",
                 "triggers",
                 "automations",
                 "macros",
@@ -1156,6 +1381,73 @@ async def deploy_records_to_zendesk(
                 create_path = "/api/v2/triggers.json"
                 update_path_template = "/api/v2/triggers/{id}.json"
                 response_root = "trigger"
+            elif object_type == "brands":
+                payload = _build_brand_payload(record)
+                create_path = "/api/v2/brands.json"
+                update_path_template = "/api/v2/brands/{id}.json"
+                response_root = "brand"
+            elif object_type == "categories":
+                payload = _build_category_payload(record)
+                create_path = "/api/v2/help_center/categories.json"
+                update_path_template = "/api/v2/help_center/categories/{id}.json"
+                response_root = "category"
+            elif object_type == "sections":
+                payload, category_id_or_error = _build_section_payload(record)
+                if not payload:
+                    failed += 1
+                    results.append(
+                        {
+                            "record_id": record_id,
+                            "object_type": object_type,
+                            "title": title,
+                            "deployment_status": "failed",
+                            "zendesk_object_id": None,
+                            "execution_message": str(category_id_or_error),
+                            "executed_at": executed_at,
+                        }
+                    )
+                    continue
+                resolved_category_id: str | None = None
+                if category_id_or_error and str(category_id_or_error).strip().isdigit():
+                    resolved_category_id = str(category_id_or_error).strip()
+                elif category_id_or_error and "numeric" in str(category_id_or_error).lower():
+                    failed += 1
+                    results.append(
+                        {
+                            "record_id": record_id,
+                            "object_type": object_type,
+                            "title": title,
+                            "deployment_status": "failed",
+                            "zendesk_object_id": None,
+                            "execution_message": str(category_id_or_error),
+                            "executed_at": executed_at,
+                        }
+                    )
+                    continue
+                elif not category_id_or_error:
+                    fallback_categories = await _load_existing_map("categories")
+                    if len(fallback_categories) == 1:
+                        resolved_category_id = next(iter(fallback_categories.values()))
+                if not resolved_category_id:
+                    failed += 1
+                    results.append(
+                        {
+                            "record_id": record_id,
+                            "object_type": object_type,
+                            "title": title,
+                            "deployment_status": "failed",
+                            "zendesk_object_id": None,
+                            "execution_message": (
+                                "Section requires category_id. Provide category_id or include one existing "
+                                "category in context for unambiguous auto-linking."
+                            ),
+                            "executed_at": executed_at,
+                        }
+                    )
+                    continue
+                create_path = f"/api/v2/help_center/categories/{resolved_category_id}/sections.json"
+                update_path_template = "/api/v2/help_center/sections/{id}.json"
+                response_root = "section"
             elif object_type == "automations":
                 payload = _build_automation_payload(record)
                 create_path = "/api/v2/automations.json"
@@ -1251,6 +1543,7 @@ async def deploy_records_to_zendesk(
                 response_root = "article"
 
             if object_type in {"triggers", "automations", "macros", "views"}:
+                raw_actions_count = len(list(record.get("actions", []) or []))
                 if object_type == "triggers":
                     entry_actions = payload.get("trigger", {}).get("actions", [])
                     entry_conditions = payload.get("trigger", {}).get("conditions", {}).get("all", [])
@@ -1264,7 +1557,11 @@ async def deploy_records_to_zendesk(
                     entry_actions = []
                     entry_conditions = payload.get("view", {}).get("all", [])
 
+                if object_type in {"triggers", "automations", "macros"}:
+                    sanitization_stats["actions_dropped"] += max(raw_actions_count - len(entry_actions), 0)
+
                 if object_type in {"triggers", "automations", "macros"} and not entry_actions:
+                    sanitization_stats["empty_rule_actions_blocked"] += 1
                     failed += 1
                     results.append(
                         {
@@ -1336,6 +1633,23 @@ async def deploy_records_to_zendesk(
                     }
                 )
                 continue
+
+            if on_existing == "create_new" and title:
+                existing_map = await _load_existing_map(object_type)
+                if title.strip().lower() in existing_map:
+                    suffix = 2
+                    candidate_title = title
+                    while True:
+                        candidate_title = f"{title} ({suffix})"
+                        if candidate_title.strip().lower() not in existing_map:
+                            break
+                        suffix += 1
+                    payload = _apply_payload_title_suffix(
+                        payload=payload,
+                        object_type=object_type,
+                        new_title=candidate_title,
+                    )
+                    title = candidate_title
 
             method = "POST"
             request_path = create_path
@@ -1468,6 +1782,7 @@ async def deploy_records_to_zendesk(
         },
         "results": results,
         "base_url": base_url,
+        "sanitization_stats": sanitization_stats,
         "dependency_auto_create": {
             "events": dependency_events,
             "created_count": len([item for item in dependency_events if item.get("status") in {"created", "simulated"}]),

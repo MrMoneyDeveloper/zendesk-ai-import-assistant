@@ -889,7 +889,7 @@ def test_generate_chunked_ticket_fields_forces_compatibility_first(monkeypatch, 
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "preview_ready"
-    assert seen_chunks == [1, 2, 3, 4]
+    assert seen_chunks == [1, 2, 3]
     assert compatibility_flags
     assert all(compatibility_flags)
     assert compatibility_only_flags
@@ -1439,7 +1439,7 @@ def test_generate_business_blueprint_orchestration_uses_single_parent_batch(monk
     assert "triggers" in generator_calls
 
 
-def test_generate_business_blueprint_wave_failure_aborts_before_staging(monkeypatch, tmp_path):
+def test_generate_business_blueprint_wave_failure_uses_deterministic_fallback(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
     monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
@@ -1502,18 +1502,19 @@ def test_generate_business_blueprint_wave_failure_aborts_before_staging(monkeypa
             "requester": "pytest-user",
         },
     )
-    assert response.status_code == 502
-    detail = response.json()["detail"]
-    assert detail["failure_stage"] == "generate"
-    assert detail["failure_code"] == "wave_generation_failed"
-    assert stage_calls["count"] == 0
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
+    assert payload["generated_counts"].get("groups", 0) >= 1
+    assert payload["generated_counts"].get("triggers", 0) >= 1
+    assert stage_calls["count"] == 1
 
     batches = get_batch_store().list_batches()
     assert batches
     latest = sorted(batches, key=lambda item: item.get("updated_at", ""), reverse=True)[0]
-    assert latest["status"] == "failed"
+    assert latest["status"] == "preview_ready"
     statuses = [item.get("status") for item in latest.get("status_history", [])]
-    assert "staging" not in statuses
+    assert "staging" in statuses
 
 
 def test_generate_single_item_explicit_prompt_bypasses_planner(monkeypatch, tmp_path):

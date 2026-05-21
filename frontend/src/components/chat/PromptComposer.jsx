@@ -12,6 +12,9 @@ const schema = z.object({
 });
 
 const OBJECT_FOCUS_OPTIONS = [
+  { key: "brands", label: "Brands" },
+  { key: "categories", label: "Categories" },
+  { key: "sections", label: "Sections" },
   { key: "triggers", label: "Triggers" },
   { key: "automations", label: "Automations" },
   { key: "macros", label: "Macros" },
