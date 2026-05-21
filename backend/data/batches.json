@@ -25517,6 +25517,3668 @@
           "next_step": "Retry with narrower scope and explicit Zendesk action fields (status/group_id/set_tags/field_type/custom_field_options). Example: Example answer: Yes, generate one trigger record only with JSON fields object_type/title/conditions/actions/dependency_notes and no prose."
         }
       }
+    },
+    "BATCH-20260521-191429-463AF9": {
+      "batch_id": "BATCH-20260521-191429-463AF9",
+      "status": "preview_ready",
+      "prompt": "Create one support group called Billing Support",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-21T19:14:29.269030+00:00",
+      "updated_at": "2026-05-21T19:15:04.371452+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-21T19:14:29.269030+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-21T19:14:29.357812+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner bypassed for explicit single-item prompt; using deterministic inference.",
+          "at": "2026-05-21T19:14:29.399061+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-21T19:14:29.439339+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-21T19:14:29.484417+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-21T19:14:29.525812+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-21T19:14:31.433092+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-21T19:14:31.480077+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Combined Apps Script pipeline unavailable; using legacy staging/validation/preview actions.",
+          "at": "2026-05-21T19:14:34.613200+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-21T19:14:43.802409+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-21T19:14:44.345528+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-05-21T19:15:04.293888+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-21T19:15:04.332811+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "groups",
+          "title": "Billing Support",
+          "preview_summary": "Groups configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No actions defined for this record."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        }
+      ],
+      "generated_counts": {
+        "groups": 1
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 1,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "groups",
+        "intent": "Create one support group called Billing Support",
+        "confidence": 0.84,
+        "ambiguity_score": 0.18,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [
+          "groups"
+        ],
+        "dependency_notes": "Deterministic planner bypass applied for explicit single-item request.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {},
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 0,
+          "recent_batch_context": 0
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "deterministic_inference",
+          "strict_schema": false,
+          "telemetry": {
+            "bypassed": true,
+            "bypass_reason": "single_item_explicit_prompt",
+            "dependency_mode": "match_existing_or_create_new",
+            "estimated_requested_records": 1
+          }
+        },
+        "orchestration_mode": "explicit_fast_path"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "planning": {
+          "planner_bypassed": true,
+          "mode": "deterministic",
+          "estimated_requested_records": 1,
+          "force_wave_chunk_path": false,
+          "force_wave_chunk_reason": "standard_prompt"
+        },
+        "orchestration": {
+          "mode": "explicit_fast_path",
+          "activation_reason": "explicit_single_item",
+          "waves": [],
+          "reconciliation_summary": {
+            "create": 0,
+            "reuse": 0,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": []
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 6,
+          "max_chunks": 12,
+          "trigger_min_records": 7,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "numeric_intent",
+            "number_word_intent"
+          ],
+          "numeric_matches": [
+            {
+              "value": 1,
+              "object_hint": "groups",
+              "raw": "one support group",
+              "source": "number_word_intent"
+            }
+          ],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ]
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null,
+          "forced_wave_chunk_path": false,
+          "forced_wave_chunk_reason": "standard_prompt",
+          "deterministic_failover_threshold": 3,
+          "forced_deterministic_object_types": [],
+          "object_failure_counts": {}
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 420,
+            "strict_schema": false
+          },
+          "generator_wave3": "qwen/qwen3-32b",
+          "generator_wave4": "qwen/qwen3-32b",
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "bypassed": true,
+            "bypass_reason": "single_item_explicit_prompt",
+            "dependency_mode": "match_existing_or_create_new",
+            "estimated_requested_records": 1
+          },
+          "generator": {
+            "model": "openai/gpt-oss-20b",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 0,
+            "pre_request_wait_ms": 0.0,
+            "wait_reason": null,
+            "error_class": "none",
+            "provider_error_code": null
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 0,
+            "recent_batch_context": 0
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 0,
+            "recent_batch_context": 0
+          },
+          "generator_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          }
+        },
+        "inference_assumptions": [],
+        "base_object_match": null,
+        "inference_confidence": 0.8360000000000001,
+        "context_notes": "",
+        "recent_batch_context": [],
+        "ambiguity_score": 0.18,
+        "ambiguity_threshold": 0.58,
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [
+            "groups"
+          ],
+          "generated_types": [
+            "groups"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.84,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0,
+          "inference_hints_count": 0,
+          "inference_sources": []
+        },
+        "canonicalization": {
+          "trigger_article": {
+            "rules_processed": 0,
+            "articles_processed": 0,
+            "alias_mappings": 0,
+            "defaults_applied": 0,
+            "warnings": 0,
+            "blocked_records": 0
+          }
+        },
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260521-191429-463AF9",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Recommendations": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260521-191429-463AF9",
+            "summary": {
+              "passed": 0,
+              "warnings": 1,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-05-21T19:14:51.550Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null
+      }
+    },
+    "BATCH-20260521-191523-801376": {
+      "batch_id": "BATCH-20260521-191523-801376",
+      "status": "failed",
+      "prompt": "We are setting up Zendesk for a company called PeakCare Medical Supplies. They supply medical devices and prescription support services. Create the following:\n- One support group called Claims & Billing.\n- Four ticket fields: Policy Number (text), Member ID (text), Claim Type (dropdown: reimbursement, pre-authorization, appeal), and Urgency Level (dropdown: low, medium, high).\n- Two ticket forms: Claims Intake Form and Prescription Support Form, each using relevant fields.\n- Four views: New Claims, Pending Authorizations, Escalated Cases, and Finance Queue.\n- Four triggers: route finance-related tickets to Claims & Billing, tag urgent claims, notify manager for high urgency, and auto-acknowledge new prescriptions.\n- Three macros: Request Missing Documents, Escalate to Specialist, and Confirm Claim Received.\nReuse existing items where possible; create missing ones with safe defaults.",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-21T19:15:23.351674+00:00",
+      "updated_at": "2026-05-21T19:19:49.950395+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-21T19:15:23.351674+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-21T19:15:23.402783+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Large multi-item prompt detected; forcing wave/chunk orchestration (create_following_numbered_prompt).",
+          "at": "2026-05-21T19:15:23.442953+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-21T19:15:23.483875+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner returned deterministic JSON failure; switching to heuristic planner fallback.",
+          "at": "2026-05-21T19:15:31.511164+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-21T19:15:33.164754+00:00"
+        },
+        {
+          "status": "business_blueprinting",
+          "message": "Compiling business brief into executable blueprint.",
+          "at": "2026-05-21T19:15:33.205176+00:00"
+        },
+        {
+          "status": "backlog_building",
+          "message": "Building deterministic backlog and dependency order.",
+          "at": "2026-05-21T19:15:34.406844+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-21T19:15:34.449667+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-21T19:15:34.557356+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "Executing deterministic orchestration waves.",
+          "at": "2026-05-21T19:15:34.605053+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 groups chunk 1/1 (target=1).",
+          "at": "2026-05-21T19:15:34.650789+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 1/3 ticket_fields chunk 1/2 (0.49s).",
+          "at": "2026-05-21T19:15:35.927590+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 ticket_fields chunk 1/2 (target=2).",
+          "at": "2026-05-21T19:15:36.474312+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 1/3 ticket_fields chunk 2/2 (0.58s).",
+          "at": "2026-05-21T19:15:37.301261+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 ticket_fields chunk 2/2 (target=2).",
+          "at": "2026-05-21T19:15:37.932973+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 ticket_fields chunk 2/2 used compact context.",
+          "at": "2026-05-21T19:16:07.324238+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 ticket_fields chunk 2/2 topped up 1 record(s) deterministically.",
+          "at": "2026-05-21T19:16:07.366895+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 ticket_forms chunk 1/2 (0.46s).",
+          "at": "2026-05-21T19:16:07.408247+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 ticket_forms chunk 1/2 (target=1).",
+          "at": "2026-05-21T19:16:07.912078+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 ticket_forms chunk 2/2 (0.44s).",
+          "at": "2026-05-21T19:16:21.919411+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 ticket_forms chunk 2/2 (target=1).",
+          "at": "2026-05-21T19:16:22.406673+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 views chunk 1/4 (0.37s).",
+          "at": "2026-05-21T19:16:34.580189+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 1/4 (target=1).",
+          "at": "2026-05-21T19:16:34.999755+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Object-level failover activated for views: 1 generation failures in this run. Remaining chunks will use deterministic synthesis.",
+          "at": "2026-05-21T19:18:27.714835+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 1/4 used deterministic fallback record synthesis.",
+          "at": "2026-05-21T19:18:27.761720+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 views chunk 2/4 (0.38s).",
+          "at": "2026-05-21T19:18:27.801617+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 2/4 (target=1).",
+          "at": "2026-05-21T19:18:28.240187+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 views chunk 3/4 (0.37s).",
+          "at": "2026-05-21T19:18:28.279412+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 3/4 (target=1).",
+          "at": "2026-05-21T19:18:28.706383+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 views chunk 4/4 (0.42s).",
+          "at": "2026-05-21T19:18:28.745952+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 4/4 (target=1).",
+          "at": "2026-05-21T19:18:29.204837+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 3/3 macros chunk 1/1 (0.35s).",
+          "at": "2026-05-21T19:18:29.244851+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 macros chunk 1/1 (target=3, model=qwen/qwen3-32b).",
+          "at": "2026-05-21T19:18:29.640205+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 macros chunk 1/1 topped up 2 record(s) deterministically.",
+          "at": "2026-05-21T19:18:32.383155+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 3/3 triggers chunk 1/2 (0.49s).",
+          "at": "2026-05-21T19:18:32.433147+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 triggers chunk 1/2 (target=3, model=qwen/qwen3-32b).",
+          "at": "2026-05-21T19:18:32.978667+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 triggers chunk 1/2 topped up 2 record(s) deterministically.",
+          "at": "2026-05-21T19:18:35.649101+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 3/3 triggers chunk 2/2 (0.59s).",
+          "at": "2026-05-21T19:18:35.693589+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 triggers chunk 2/2 (target=1, model=qwen/qwen3-32b).",
+          "at": "2026-05-21T19:18:36.325591+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-21T19:19:03.100527+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-21T19:19:03.144393+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Combined Apps Script pipeline unavailable; using legacy staging/validation/preview actions.",
+          "at": "2026-05-21T19:19:09.309478+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-21T19:19:22.138842+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-21T19:19:22.179758+00:00"
+        },
+        {
+          "status": "failed",
+          "message": "Validation failed: Apps Script validation failed and no backend fallback is configured.",
+          "at": "2026-05-21T19:19:49.910014+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "We are setting up Zendesk for a company called PeakCare Medical Supplies. They supply medical devices and prescription support services. Create the following:\n- One support group called Claims & Billing.\n- Four ticket fields: Policy Number (text), Member ID (text), Claim Type (dropdown: reimbursement, pre-authorization, appeal), and Urgency Level (dropdown: low, medium, high).\n- Two ticket forms: Claims Intake Form and Prescription Support Form, each using relevant fields.\n- Four views: New Claims, Pending Authorizations, Escalated Cases, and Finance Queue.\n- Four triggers: route finance-related tickets to Claims & Billing, tag urgent claims, notify manager for high urgency, and auto-acknowledge new prescriptions.\n- Three macros: Request Missing Documents, Escalate to Specialist, and Confirm Claim Received.\nReuse existing items where possible; create missing ones with safe defaults.",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {},
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 0,
+          "recent_batch_context": 0
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        },
+        "orchestration_mode": "business_blueprint"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "planning": {
+          "planner_bypassed": false,
+          "mode": "llm",
+          "estimated_requested_records": 18,
+          "force_wave_chunk_path": true,
+          "force_wave_chunk_reason": "create_following_numbered_prompt"
+        },
+        "orchestration": {
+          "mode": "business_blueprint",
+          "activation_reason": "create_following_numbered_prompt",
+          "blueprint": {
+            "mode": "deterministic_fallback",
+            "capabilities": [
+              "inference_first",
+              "match_existing_or_create"
+            ],
+            "assumptions": [
+              "No clarification loop is used; missing details are inferred from prompt and catalog context."
+            ],
+            "priorities": [
+              "deterministic_wave_order",
+              "reuse_before_create",
+              "fail_whole_run"
+            ],
+            "dependency_hints": [],
+            "target_objects": [
+              {
+                "object_type": "groups",
+                "target_count": 1,
+                "priority": 1,
+                "wave": 1
+              },
+              {
+                "object_type": "ticket_fields",
+                "target_count": 4,
+                "priority": 1,
+                "wave": 1
+              },
+              {
+                "object_type": "ticket_forms",
+                "target_count": 2,
+                "priority": 2,
+                "wave": 2
+              },
+              {
+                "object_type": "views",
+                "target_count": 4,
+                "priority": 2,
+                "wave": 2
+              },
+              {
+                "object_type": "triggers",
+                "target_count": 4,
+                "priority": 3,
+                "wave": 3
+              },
+              {
+                "object_type": "macros",
+                "target_count": 3,
+                "priority": 3,
+                "wave": 3
+              }
+            ]
+          },
+          "backlog_size": 6,
+          "waves": [
+            {
+              "wave": 1,
+              "position": 1,
+              "total_waves": 3,
+              "generator_model": "openai/gpt-oss-20b",
+              "status": "completed",
+              "items": [
+                {
+                  "backlog_id": "BL-001",
+                  "object_type": "groups",
+                  "target_count": 1,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 1,
+                  "generated_records": 1,
+                  "deduped_records_added": 1
+                },
+                {
+                  "backlog_id": "BL-002",
+                  "object_type": "ticket_fields",
+                  "target_count": 4,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 2,
+                  "generated_records": 4,
+                  "deduped_records_added": 4
+                }
+              ],
+              "created": 2,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "chunks": 3,
+              "generated_records": 5,
+              "deduped_records_added": 5
+            },
+            {
+              "wave": 2,
+              "position": 2,
+              "total_waves": 3,
+              "generator_model": "openai/gpt-oss-20b",
+              "status": "completed",
+              "items": [
+                {
+                  "backlog_id": "BL-003",
+                  "object_type": "ticket_forms",
+                  "target_count": 2,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 2,
+                  "generated_records": 2,
+                  "deduped_records_added": 2
+                },
+                {
+                  "backlog_id": "BL-004",
+                  "object_type": "views",
+                  "target_count": 4,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 4,
+                  "generated_records": 4,
+                  "deduped_records_added": 4
+                }
+              ],
+              "created": 2,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "chunks": 6,
+              "generated_records": 6,
+              "deduped_records_added": 6
+            },
+            {
+              "wave": 3,
+              "position": 3,
+              "total_waves": 3,
+              "generator_model": "qwen/qwen3-32b",
+              "status": "completed",
+              "items": [
+                {
+                  "backlog_id": "BL-005",
+                  "object_type": "macros",
+                  "target_count": 3,
+                  "generator_model": "qwen/qwen3-32b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 1,
+                  "generated_records": 3,
+                  "deduped_records_added": 3
+                },
+                {
+                  "backlog_id": "BL-006",
+                  "object_type": "triggers",
+                  "target_count": 4,
+                  "generator_model": "qwen/qwen3-32b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 2,
+                  "generated_records": 4,
+                  "deduped_records_added": 4
+                }
+              ],
+              "created": 2,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "chunks": 3,
+              "generated_records": 7,
+              "deduped_records_added": 7
+            }
+          ],
+          "reconciliation_summary": {
+            "create": 6,
+            "reuse": 0,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": [
+            "No clarification loop is used; missing details are inferred from prompt and catalog context."
+          ],
+          "final_status": "ok",
+          "generated_records": 18
+        },
+        "chunking": {
+          "activated": true,
+          "estimated_requested_records": 18,
+          "chunk_size": 3,
+          "max_chunks": 12,
+          "trigger_min_records": 3,
+          "total_chunks": 12,
+          "chunk_targets": [
+            1,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            3,
+            3,
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "numeric_intent",
+            "number_word_intent",
+            "enumerated_items"
+          ],
+          "numeric_matches": [
+            {
+              "value": 1,
+              "object_hint": "groups",
+              "raw": "One support group",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 4,
+              "object_hint": "ticket_fields",
+              "raw": "Four ticket fields",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 2,
+              "object_hint": "ticket_forms",
+              "raw": "Two ticket forms",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 4,
+              "object_hint": "views",
+              "raw": "Four views",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 4,
+              "object_hint": "triggers",
+              "raw": "Four triggers",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 3,
+              "object_hint": "macros",
+              "raw": "Three macros",
+              "source": "number_word_intent"
+            }
+          ],
+          "enumerated_items": 6,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 1,
+              "object_type": "groups",
+              "backlog_id": "BL-001",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 2,
+              "chunk_total": 12,
+              "target_records": 2,
+              "generated_records": 2,
+              "deduped_records_added": 2,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 1,
+              "object_type": "ticket_fields",
+              "backlog_id": "BL-002",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 3,
+              "chunk_total": 12,
+              "target_records": 2,
+              "generated_records": 2,
+              "deduped_records_added": 2,
+              "duplicates_dropped": 0,
+              "context_profile": "aggressive",
+              "pre_request_wait_ms": 12000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 1,
+              "object_type": "ticket_fields",
+              "backlog_id": "BL-002",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": "Model returned fewer rows than chunk target; deterministic top-up applied.",
+              "deterministic_topup_records": 1,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 4,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 12000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "ticket_forms",
+              "backlog_id": "BL-003",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 5,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "ticket_forms",
+              "backlog_id": "BL-003",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 6,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "deterministic_fallback",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "fallback",
+              "http_status": null,
+              "model": "deterministic_fallback",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "views",
+              "backlog_id": "BL-004",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 1,
+              "forced_reason": null,
+              "fallback_reason": "Generator JSON validation failed after retry ladder.",
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 7,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "forced_deterministic",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "forced_deterministic",
+              "http_status": null,
+              "model": "deterministic_fallback",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "views",
+              "backlog_id": "BL-004",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": true,
+              "object_failure_count_in_run": 1,
+              "forced_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "fallback_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 8,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "forced_deterministic",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "forced_deterministic",
+              "http_status": null,
+              "model": "deterministic_fallback",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "views",
+              "backlog_id": "BL-004",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": true,
+              "object_failure_count_in_run": 1,
+              "forced_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "fallback_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 9,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "forced_deterministic",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "forced_deterministic",
+              "http_status": null,
+              "model": "deterministic_fallback",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "views",
+              "backlog_id": "BL-004",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": true,
+              "object_failure_count_in_run": 1,
+              "forced_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "fallback_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 10,
+              "chunk_total": 12,
+              "target_records": 3,
+              "generated_records": 3,
+              "deduped_records_added": 3,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "qwen/qwen3-32b",
+              "model_requested": "qwen/qwen3-32b",
+              "model_fallback_from": null,
+              "api_key_profile": "secondary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 3,
+              "object_type": "macros",
+              "backlog_id": "BL-005",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": "Model returned fewer rows than chunk target; deterministic top-up applied.",
+              "deterministic_topup_records": 2,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 11,
+              "chunk_total": 12,
+              "target_records": 3,
+              "generated_records": 3,
+              "deduped_records_added": 3,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "qwen/qwen3-32b",
+              "model_requested": "qwen/qwen3-32b",
+              "model_fallback_from": null,
+              "api_key_profile": "secondary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 3,
+              "object_type": "triggers",
+              "backlog_id": "BL-006",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": "Model returned fewer rows than chunk target; deterministic top-up applied.",
+              "deterministic_topup_records": 2,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 12,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 12000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "qwen/qwen3-32b",
+              "model_requested": "qwen/qwen3-32b",
+              "model_fallback_from": null,
+              "api_key_profile": "secondary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 3,
+              "object_type": "triggers",
+              "backlog_id": "BL-006",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            }
+          ],
+          "total_generated_before_dedupe": 18,
+          "total_generated_after_dedupe": 18,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 4948.67,
+          "final_status": "ok",
+          "abort_reason": null,
+          "forced_wave_chunk_path": true,
+          "forced_wave_chunk_reason": "create_following_numbered_prompt",
+          "deterministic_failover_threshold": 1,
+          "forced_deterministic_object_types": [
+            "views"
+          ],
+          "object_failure_counts": {
+            "groups": 0,
+            "ticket_fields": 0,
+            "ticket_forms": 0,
+            "views": 1,
+            "macros": 0,
+            "triggers": 0
+          }
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 420,
+            "strict_schema": false
+          },
+          "generator_wave3": "qwen/qwen3-32b",
+          "generator_wave4": "qwen/qwen3-32b",
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 584,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400,
+            "wait_reason": null,
+            "error_class": "schema_validation_failure",
+            "breaker_state": "open:schema_validation_failure",
+            "provider_error_code": "json_validate_failed",
+            "provider_failed_generation_excerpt": null
+          },
+          "generator": {
+            "model": "qwen/qwen3-32b",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 0,
+            "pre_request_wait_ms": 12000.0,
+            "wait_reason": "header_budget",
+            "error_class": "none",
+            "provider_error_code": null
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 0,
+            "recent_batch_context": 0
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 0,
+            "recent_batch_context": 0
+          },
+          "generator_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          }
+        },
+        "inference_assumptions": [
+          {
+            "kind": "business_blueprint_mode",
+            "message": "Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          }
+        ],
+        "base_object_match": null,
+        "inference_confidence": 0.6599999999999999,
+        "context_notes": "",
+        "recent_batch_context": [],
+        "ambiguity_score": 0.5,
+        "ambiguity_threshold": 0.58,
+        "validation_phase_status": "failed",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [],
+          "generated_types": [
+            "groups",
+            "macros",
+            "ticket_fields",
+            "ticket_forms",
+            "triggers",
+            "views"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.7,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [
+            {
+              "title": "Policy Number",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            },
+            {
+              "title": "Member ID",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            },
+            {
+              "title": "Claim Type",
+              "object_type": "ticket_fields",
+              "alias_mappings": [
+                "inferred field_type from prompt"
+              ],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Missing custom_field_options for dropdown/multi-select field.",
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            },
+            {
+              "title": "Generated Field",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            },
+            {
+              "title": "Urgency Level",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+                "Companion field was auto-created from ticket form references."
+              ]
+            }
+          ],
+          "total_records": 5
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 1,
+          "unresolved": [],
+          "forms_processed": 2,
+          "inference_hints_count": 0,
+          "inference_sources": []
+        },
+        "canonicalization": {
+          "trigger_article": {
+            "rules_processed": 8,
+            "articles_processed": 0,
+            "alias_mappings": 0,
+            "defaults_applied": 0,
+            "warnings": 0,
+            "blocked_records": 0
+          }
+        },
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260521-191523-801376",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Recommendations": 1,
+              "Ticket Fields": 5,
+              "Ticket Forms": 2,
+              "Views": 4,
+              "Macros": 3,
+              "Triggers": 4
+            },
+            "total_records": 19
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "error",
+          "detail": "",
+          "http_status": null,
+          "result": {}
+        },
+        "preview_roundtrip": {},
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "generate_validation_failed",
+          "failure_reason": "Validation failed: Apps Script validation failed and no backend fallback is configured.",
+          "next_step": "Retry after resolving Apps Script/Sheets validation issues."
+        }
+      }
+    },
+    "BATCH-20260521-192143-893813": {
+      "batch_id": "BATCH-20260521-192143-893813",
+      "status": "preview_ready",
+      "prompt": "We are setting up Zendesk for a company called PeakCare Medical Supplies. They supply medical devices and prescription support services. Create the following:\n- One support group called Claims & Billing.\n- Four ticket fields: Policy Number (text), Member ID (text), Claim Type (dropdown: reimbursement, pre-authorization, appeal), and Urgency Level (dropdown: low, medium, high).\n- Two ticket forms: Claims Intake Form and Prescription Support Form, each using relevant fields.\n- Four views: New Claims, Pending Authorizations, Escalated Cases, and Finance Queue.\n- Four triggers: route finance-related tickets to Claims & Billing, tag urgent claims, notify manager for high urgency, and auto-acknowledge new prescriptions.\n- Three macros: Request Missing Documents, Escalate to Specialist, and Confirm Claim Received.\nReuse existing items where possible; create missing ones with safe defaults.",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-21T19:21:43.814045+00:00",
+      "updated_at": "2026-05-21T19:26:31.087480+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-21T19:21:43.814045+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-21T19:21:43.865746+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Large multi-item prompt detected; forcing wave/chunk orchestration (create_following_numbered_prompt).",
+          "at": "2026-05-21T19:21:43.908409+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-21T19:21:43.948926+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner returned deterministic JSON failure; switching to heuristic planner fallback.",
+          "at": "2026-05-21T19:21:51.887414+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-21T19:21:53.842277+00:00"
+        },
+        {
+          "status": "business_blueprinting",
+          "message": "Compiling business brief into executable blueprint.",
+          "at": "2026-05-21T19:21:53.883721+00:00"
+        },
+        {
+          "status": "backlog_building",
+          "message": "Building deterministic backlog and dependency order.",
+          "at": "2026-05-21T19:21:55.072915+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-21T19:21:55.117748+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-21T19:21:55.162192+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "Executing deterministic orchestration waves.",
+          "at": "2026-05-21T19:21:55.204244+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 groups chunk 1/1 (target=1).",
+          "at": "2026-05-21T19:21:55.244437+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 1/3 ticket_fields chunk 1/2 (0.58s).",
+          "at": "2026-05-21T19:21:56.662081+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 ticket_fields chunk 1/2 (target=2).",
+          "at": "2026-05-21T19:21:57.295172+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 1/3 ticket_fields chunk 2/2 (0.46s).",
+          "at": "2026-05-21T19:21:58.221055+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 ticket_fields chunk 2/2 (target=2).",
+          "at": "2026-05-21T19:21:58.725844+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Object-level failover activated for ticket_fields: 1 generation failures in this run. Remaining chunks will use deterministic synthesis.",
+          "at": "2026-05-21T19:22:16.223841+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 ticket_fields chunk 2/2 used deterministic fallback record synthesis.",
+          "at": "2026-05-21T19:22:16.268038+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 ticket_forms chunk 1/2 (0.52s).",
+          "at": "2026-05-21T19:22:16.313977+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 ticket_forms chunk 1/2 (target=1).",
+          "at": "2026-05-21T19:22:16.880242+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 ticket_forms chunk 2/2 (0.44s).",
+          "at": "2026-05-21T19:22:42.842129+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 ticket_forms chunk 2/2 (target=1).",
+          "at": "2026-05-21T19:22:43.326483+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 ticket_forms chunk 2/2 used compact context.",
+          "at": "2026-05-21T19:23:36.392279+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 views chunk 1/4 (0.46s).",
+          "at": "2026-05-21T19:23:36.435553+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 1/4 (target=1).",
+          "at": "2026-05-21T19:23:36.955577+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Object-level failover activated for views: 1 generation failures in this run. Remaining chunks will use deterministic synthesis.",
+          "at": "2026-05-21T19:25:24.553194+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 1/4 used deterministic fallback record synthesis.",
+          "at": "2026-05-21T19:25:24.594471+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 views chunk 2/4 (0.60s).",
+          "at": "2026-05-21T19:25:24.634747+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 2/4 (target=1).",
+          "at": "2026-05-21T19:25:25.282810+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 views chunk 3/4 (0.45s).",
+          "at": "2026-05-21T19:25:25.326250+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 3/4 (target=1).",
+          "at": "2026-05-21T19:25:25.826876+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 2/3 views chunk 4/4 (0.56s).",
+          "at": "2026-05-21T19:25:25.868432+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/3 views chunk 4/4 (target=1).",
+          "at": "2026-05-21T19:25:26.483625+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 3/3 macros chunk 1/1 (0.55s).",
+          "at": "2026-05-21T19:25:26.527496+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 macros chunk 1/1 (target=3, model=qwen/qwen3-32b).",
+          "at": "2026-05-21T19:25:27.137047+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 macros chunk 1/1 topped up 2 record(s) deterministically.",
+          "at": "2026-05-21T19:25:30.005786+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 3/3 triggers chunk 1/2 (0.59s).",
+          "at": "2026-05-21T19:25:30.063816+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 triggers chunk 1/2 (target=3, model=qwen/qwen3-32b).",
+          "at": "2026-05-21T19:25:30.708724+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 triggers chunk 1/2 topped up 2 record(s) deterministically.",
+          "at": "2026-05-21T19:25:33.321563+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 3/3 triggers chunk 2/2 (0.50s).",
+          "at": "2026-05-21T19:25:33.367095+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/3 triggers chunk 2/2 (target=1, model=qwen/qwen3-32b).",
+          "at": "2026-05-21T19:25:33.919831+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-05-21T19:26:00.476873+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-05-21T19:26:00.522320+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Combined Apps Script pipeline unavailable; using legacy staging/validation/preview actions.",
+          "at": "2026-05-21T19:26:03.610769+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-05-21T19:26:13.890456+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-05-21T19:26:13.932403+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-05-21T19:26:30.999070+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-05-21T19:26:31.043621+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "groups",
+          "title": "Claims & Billing",
+          "preview_summary": "Groups configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "No actions defined for this record.",
+            "Created new group for Claims & Billing as per business brief. No existing match found.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0002",
+          "object_type": "ticket_fields",
+          "title": "Policy Number",
+          "preview_summary": "Ticket Fields configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "field_type",
+              "value": "text"
+            },
+            {
+              "field": "agent_can_edit",
+              "value": true
+            },
+            {
+              "field": "visible_in_portal",
+              "value": true
+            },
+            {
+              "field": "editable_in_portal",
+              "value": false
+            },
+            {
+              "field": "required",
+              "value": false
+            },
+            {
+              "field": "required_in_portal",
+              "value": false
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0003",
+          "object_type": "ticket_fields",
+          "title": "Member ID",
+          "preview_summary": "Ticket Fields configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "field_type",
+              "value": "text"
+            },
+            {
+              "field": "agent_can_edit",
+              "value": true
+            },
+            {
+              "field": "visible_in_portal",
+              "value": true
+            },
+            {
+              "field": "editable_in_portal",
+              "value": false
+            },
+            {
+              "field": "required",
+              "value": false
+            },
+            {
+              "field": "required_in_portal",
+              "value": false
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0004",
+          "object_type": "ticket_fields",
+          "title": "Generated Field 1",
+          "preview_summary": "Ticket Fields configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic ticket_fields fallback used because model output could not be parsed. Source error: Generator JSON validation failed after retry ladder.",
+            "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "field_type",
+              "value": "tagger"
+            },
+            {
+              "field": "custom_field_options",
+              "value": [
+                {
+                  "name": "Option A",
+                  "value": "option_a"
+                },
+                {
+                  "name": "Option B",
+                  "value": "option_b"
+                }
+              ]
+            },
+            {
+              "field": "agent_can_edit",
+              "value": true
+            },
+            {
+              "field": "visible_in_portal",
+              "value": true
+            },
+            {
+              "field": "editable_in_portal",
+              "value": false
+            },
+            {
+              "field": "required",
+              "value": false
+            },
+            {
+              "field": "required_in_portal",
+              "value": false
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0005",
+          "object_type": "ticket_fields",
+          "title": "Generated Field 2",
+          "preview_summary": "Ticket Fields configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic ticket_fields fallback used because model output could not be parsed. Source error: Generator JSON validation failed after retry ladder.",
+            "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "field_type",
+              "value": "tagger"
+            },
+            {
+              "field": "custom_field_options",
+              "value": [
+                {
+                  "name": "Option A",
+                  "value": "option_a"
+                },
+                {
+                  "name": "Option B",
+                  "value": "option_b"
+                }
+              ]
+            },
+            {
+              "field": "agent_can_edit",
+              "value": true
+            },
+            {
+              "field": "visible_in_portal",
+              "value": true
+            },
+            {
+              "field": "editable_in_portal",
+              "value": false
+            },
+            {
+              "field": "required",
+              "value": false
+            },
+            {
+              "field": "required_in_portal",
+              "value": false
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0006",
+          "object_type": "ticket_forms",
+          "title": "Claims Intake Form",
+          "preview_summary": "Ticket Forms configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "ticket_field_names will be resolved to IDs at deployment time.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "ticket_field_names",
+              "value": [
+                "Policy Number",
+                "Member ID",
+                "Claim Type",
+                "Urgency Level"
+              ]
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0007",
+          "object_type": "ticket_forms",
+          "title": "Prescription Support Form",
+          "preview_summary": "Ticket Forms configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "ticket_field_names will be resolved to IDs at deployment time.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "ticket_field_names",
+              "value": [
+                "Policy Number",
+                "Member ID",
+                "Claim Type",
+                "Urgency Level"
+              ]
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0008",
+          "object_type": "views",
+          "title": "Generated Work Queue",
+          "preview_summary": "Views configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic views fallback used because model output could not be parsed. Source error: Generator JSON validation failed after retry ladder.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "solved",
+              "operator": "less_than"
+            }
+          ],
+          "actions": [
+            {
+              "field": "output_columns",
+              "value": [
+                "status",
+                "updated",
+                "subject"
+              ]
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0009",
+          "object_type": "views",
+          "title": "Generated Work Queue 2",
+          "preview_summary": "Views configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic views fallback used because model output could not be parsed. Source error: Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "solved",
+              "operator": "less_than"
+            }
+          ],
+          "actions": [
+            {
+              "field": "output_columns",
+              "value": [
+                "status",
+                "updated",
+                "subject"
+              ]
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0010",
+          "object_type": "views",
+          "title": "Generated Work Queue 3",
+          "preview_summary": "Views configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic views fallback used because model output could not be parsed. Source error: Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "solved",
+              "operator": "less_than"
+            }
+          ],
+          "actions": [
+            {
+              "field": "output_columns",
+              "value": [
+                "status",
+                "updated",
+                "subject"
+              ]
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0011",
+          "object_type": "views",
+          "title": "Generated Work Queue 4",
+          "preview_summary": "Views configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic views fallback used because model output could not be parsed. Source error: Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "solved",
+              "operator": "less_than"
+            }
+          ],
+          "actions": [
+            {
+              "field": "output_columns",
+              "value": [
+                "status",
+                "updated",
+                "subject"
+              ]
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0012",
+          "object_type": "macros",
+          "title": "Confirm Claim Received",
+          "preview_summary": "Macros configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Business-blueprint wave execution. backlog_id=BL-005; wave=3; reconcile_mode=create.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "operator": "is",
+              "value": "open"
+            }
+          ],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "confirmed"
+            },
+            {
+              "field": "add_note",
+              "value": "Your claim has been received and is being processed."
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0013",
+          "object_type": "macros",
+          "title": "PeakCare Medical Supplies 1",
+          "preview_summary": "Macros configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic macros fallback used because model output could not be parsed. Source error: Model returned fewer rows than chunk target; deterministic top-up applied.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "urgent"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0014",
+          "object_type": "macros",
+          "title": "PeakCare Medical Supplies 2",
+          "preview_summary": "Macros configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic macros fallback used because model output could not be parsed. Source error: Model returned fewer rows than chunk target; deterministic top-up applied.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "urgent"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0015",
+          "object_type": "triggers",
+          "title": "Notify Manager for High Urgency Tickets",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Ensure the 'Urgency Level' field exists and the manager's email is correctly configured.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "custom_fields/urgency_level",
+              "value": "high",
+              "operator": "is"
+            }
+          ],
+          "actions": [
+            {
+              "field": "notify",
+              "value": "manager@example.com"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0016",
+          "object_type": "triggers",
+          "title": "PeakCare Medical Supplies 1 2",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic triggers fallback used because model output could not be parsed. Source error: Model returned fewer rows than chunk target; deterministic top-up applied.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "solved",
+              "operator": "less_than"
+            }
+          ],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "urgent"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0017",
+          "object_type": "triggers",
+          "title": "PeakCare Medical Supplies 2 2",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic triggers fallback used because model output could not be parsed. Source error: Model returned fewer rows than chunk target; deterministic top-up applied.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "solved",
+              "operator": "less_than"
+            }
+          ],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "urgent"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0018",
+          "object_type": "triggers",
+          "title": "Tag Urgent Claims",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Depends on the existence of the 'Urgency Level' ticket field.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "ticket_field_123456",
+              "value": "high",
+              "operator": "is"
+            }
+          ],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "urgent_claim"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0019",
+          "object_type": "ticket_fields",
+          "title": "Claim Type",
+          "preview_summary": "Ticket Fields configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Auto-created from ticket form reference because field did not exist in Zendesk context.",
+            "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "field_type",
+              "value": "text"
+            },
+            {
+              "field": "agent_can_edit",
+              "value": true
+            },
+            {
+              "field": "visible_in_portal",
+              "value": true
+            },
+            {
+              "field": "editable_in_portal",
+              "value": false
+            },
+            {
+              "field": "required",
+              "value": false
+            },
+            {
+              "field": "required_in_portal",
+              "value": false
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0020",
+          "object_type": "ticket_fields",
+          "title": "Urgency Level",
+          "preview_summary": "Ticket Fields configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Auto-created from ticket form reference because field did not exist in Zendesk context.",
+            "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [],
+          "actions": [
+            {
+              "field": "field_type",
+              "value": "text"
+            },
+            {
+              "field": "agent_can_edit",
+              "value": true
+            },
+            {
+              "field": "visible_in_portal",
+              "value": true
+            },
+            {
+              "field": "editable_in_portal",
+              "value": false
+            },
+            {
+              "field": "required",
+              "value": false
+            },
+            {
+              "field": "required_in_portal",
+              "value": false
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        }
+      ],
+      "generated_counts": {
+        "groups": 1,
+        "ticket_fields": 6,
+        "ticket_forms": 2,
+        "views": 4,
+        "macros": 3,
+        "triggers": 4
+      },
+      "validation_summary": {
+        "passed": 13,
+        "warnings": 7,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "We are setting up Zendesk for a company called PeakCare Medical Supplies. They supply medical devices and prescription support services. Create the following:\n- One support group called Claims & Billing.\n- Four ticket fields: Policy Number (text), Member ID (text), Claim Type (dropdown: reimbursement, pre-authorization, appeal), and Urgency Level (dropdown: low, medium, high).\n- Two ticket forms: Claims Intake Form and Prescription Support Form, each using relevant fields.\n- Four views: New Claims, Pending Authorizations, Escalated Cases, and Finance Queue.\n- Four triggers: route finance-related tickets to Claims & Billing, tag urgent claims, notify manager for high urgency, and auto-acknowledge new prescriptions.\n- Three macros: Request Missing Documents, Escalate to Specialist, and Confirm Claim Received.\nReuse existing items where possible; create missing ones with safe defaults.",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {},
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 0,
+          "recent_batch_context": 0
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        },
+        "orchestration_mode": "business_blueprint"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "planning": {
+          "planner_bypassed": false,
+          "mode": "llm",
+          "estimated_requested_records": 18,
+          "force_wave_chunk_path": true,
+          "force_wave_chunk_reason": "create_following_numbered_prompt"
+        },
+        "orchestration": {
+          "mode": "business_blueprint",
+          "activation_reason": "create_following_numbered_prompt",
+          "blueprint": {
+            "mode": "deterministic_fallback",
+            "capabilities": [
+              "inference_first",
+              "match_existing_or_create"
+            ],
+            "assumptions": [
+              "No clarification loop is used; missing details are inferred from prompt and catalog context."
+            ],
+            "priorities": [
+              "deterministic_wave_order",
+              "reuse_before_create",
+              "fail_whole_run"
+            ],
+            "dependency_hints": [],
+            "target_objects": [
+              {
+                "object_type": "groups",
+                "target_count": 1,
+                "priority": 1,
+                "wave": 1
+              },
+              {
+                "object_type": "ticket_fields",
+                "target_count": 4,
+                "priority": 1,
+                "wave": 1
+              },
+              {
+                "object_type": "ticket_forms",
+                "target_count": 2,
+                "priority": 2,
+                "wave": 2
+              },
+              {
+                "object_type": "views",
+                "target_count": 4,
+                "priority": 2,
+                "wave": 2
+              },
+              {
+                "object_type": "triggers",
+                "target_count": 4,
+                "priority": 3,
+                "wave": 3
+              },
+              {
+                "object_type": "macros",
+                "target_count": 3,
+                "priority": 3,
+                "wave": 3
+              }
+            ]
+          },
+          "backlog_size": 6,
+          "waves": [
+            {
+              "wave": 1,
+              "position": 1,
+              "total_waves": 3,
+              "generator_model": "openai/gpt-oss-20b",
+              "status": "completed",
+              "items": [
+                {
+                  "backlog_id": "BL-001",
+                  "object_type": "groups",
+                  "target_count": 1,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 1,
+                  "generated_records": 1,
+                  "deduped_records_added": 1
+                },
+                {
+                  "backlog_id": "BL-002",
+                  "object_type": "ticket_fields",
+                  "target_count": 4,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 2,
+                  "generated_records": 4,
+                  "deduped_records_added": 4
+                }
+              ],
+              "created": 2,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "chunks": 3,
+              "generated_records": 5,
+              "deduped_records_added": 5
+            },
+            {
+              "wave": 2,
+              "position": 2,
+              "total_waves": 3,
+              "generator_model": "openai/gpt-oss-20b",
+              "status": "completed",
+              "items": [
+                {
+                  "backlog_id": "BL-003",
+                  "object_type": "ticket_forms",
+                  "target_count": 2,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 2,
+                  "generated_records": 2,
+                  "deduped_records_added": 2
+                },
+                {
+                  "backlog_id": "BL-004",
+                  "object_type": "views",
+                  "target_count": 4,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 4,
+                  "generated_records": 4,
+                  "deduped_records_added": 4
+                }
+              ],
+              "created": 2,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "chunks": 6,
+              "generated_records": 6,
+              "deduped_records_added": 6
+            },
+            {
+              "wave": 3,
+              "position": 3,
+              "total_waves": 3,
+              "generator_model": "qwen/qwen3-32b",
+              "status": "completed",
+              "items": [
+                {
+                  "backlog_id": "BL-005",
+                  "object_type": "macros",
+                  "target_count": 3,
+                  "generator_model": "qwen/qwen3-32b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 1,
+                  "generated_records": 3,
+                  "deduped_records_added": 3
+                },
+                {
+                  "backlog_id": "BL-006",
+                  "object_type": "triggers",
+                  "target_count": 4,
+                  "generator_model": "qwen/qwen3-32b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 2,
+                  "generated_records": 4,
+                  "deduped_records_added": 4
+                }
+              ],
+              "created": 2,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "chunks": 3,
+              "generated_records": 7,
+              "deduped_records_added": 7
+            }
+          ],
+          "reconciliation_summary": {
+            "create": 6,
+            "reuse": 0,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": [
+            "No clarification loop is used; missing details are inferred from prompt and catalog context."
+          ],
+          "final_status": "ok",
+          "generated_records": 18
+        },
+        "chunking": {
+          "activated": true,
+          "estimated_requested_records": 18,
+          "chunk_size": 3,
+          "max_chunks": 12,
+          "trigger_min_records": 3,
+          "total_chunks": 12,
+          "chunk_targets": [
+            1,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            3,
+            3,
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "numeric_intent",
+            "number_word_intent",
+            "enumerated_items"
+          ],
+          "numeric_matches": [
+            {
+              "value": 1,
+              "object_hint": "groups",
+              "raw": "One support group",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 4,
+              "object_hint": "ticket_fields",
+              "raw": "Four ticket fields",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 2,
+              "object_hint": "ticket_forms",
+              "raw": "Two ticket forms",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 4,
+              "object_hint": "views",
+              "raw": "Four views",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 4,
+              "object_hint": "triggers",
+              "raw": "Four triggers",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 3,
+              "object_hint": "macros",
+              "raw": "Three macros",
+              "source": "number_word_intent"
+            }
+          ],
+          "enumerated_items": 6,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 1,
+              "object_type": "groups",
+              "backlog_id": "BL-001",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 2,
+              "chunk_total": 12,
+              "target_records": 2,
+              "generated_records": 2,
+              "deduped_records_added": 2,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 1,
+              "object_type": "ticket_fields",
+              "backlog_id": "BL-002",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 3,
+              "chunk_total": 12,
+              "target_records": 2,
+              "generated_records": 2,
+              "deduped_records_added": 2,
+              "duplicates_dropped": 0,
+              "context_profile": "deterministic_fallback",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "fallback",
+              "http_status": null,
+              "model": "deterministic_fallback",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 1,
+              "object_type": "ticket_fields",
+              "backlog_id": "BL-002",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 1,
+              "forced_reason": null,
+              "fallback_reason": "Generator JSON validation failed after retry ladder.",
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 4,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 12000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "ticket_forms",
+              "backlog_id": "BL-003",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 5,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "aggressive",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "openai/gpt-oss-20b",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "ticket_forms",
+              "backlog_id": "BL-003",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 6,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "deterministic_fallback",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "fallback",
+              "http_status": null,
+              "model": "deterministic_fallback",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "views",
+              "backlog_id": "BL-004",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 1,
+              "forced_reason": null,
+              "fallback_reason": "Generator JSON validation failed after retry ladder.",
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 7,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "forced_deterministic",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "forced_deterministic",
+              "http_status": null,
+              "model": "deterministic_fallback",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "views",
+              "backlog_id": "BL-004",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": true,
+              "object_failure_count_in_run": 1,
+              "forced_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "fallback_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 8,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "forced_deterministic",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "forced_deterministic",
+              "http_status": null,
+              "model": "deterministic_fallback",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "views",
+              "backlog_id": "BL-004",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": true,
+              "object_failure_count_in_run": 1,
+              "forced_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "fallback_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 9,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "forced_deterministic",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "forced_deterministic",
+              "http_status": null,
+              "model": "deterministic_fallback",
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "primary",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ],
+              "wave": 2,
+              "object_type": "views",
+              "backlog_id": "BL-004",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": true,
+              "object_failure_count_in_run": 1,
+              "forced_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "fallback_reason": "Object type 'views' forced to deterministic mode after 1 generation failures in this run.",
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 10,
+              "chunk_total": 12,
+              "target_records": 3,
+              "generated_records": 3,
+              "deduped_records_added": 3,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "qwen/qwen3-32b",
+              "model_requested": "qwen/qwen3-32b",
+              "model_fallback_from": null,
+              "api_key_profile": "secondary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 3,
+              "object_type": "macros",
+              "backlog_id": "BL-005",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": "Model returned fewer rows than chunk target; deterministic top-up applied.",
+              "deterministic_topup_records": 2,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 11,
+              "chunk_total": 12,
+              "target_records": 3,
+              "generated_records": 3,
+              "deduped_records_added": 3,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "qwen/qwen3-32b",
+              "model_requested": "qwen/qwen3-32b",
+              "model_fallback_from": null,
+              "api_key_profile": "secondary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 3,
+              "object_type": "triggers",
+              "backlog_id": "BL-006",
+              "reconcile_mode": "create",
+              "deterministic_fallback": true,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": "Model returned fewer rows than chunk target; deterministic top-up applied.",
+              "deterministic_topup_records": 2,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 12,
+              "chunk_total": 12,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 12000.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "qwen/qwen3-32b",
+              "model_requested": "qwen/qwen3-32b",
+              "model_fallback_from": null,
+              "api_key_profile": "secondary",
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 3,
+              "object_type": "triggers",
+              "backlog_id": "BL-006",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "mismatched_object_rows_dropped": 0
+            }
+          ],
+          "total_generated_before_dedupe": 18,
+          "total_generated_after_dedupe": 18,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 5735.87,
+          "final_status": "ok",
+          "abort_reason": null,
+          "forced_wave_chunk_path": true,
+          "forced_wave_chunk_reason": "create_following_numbered_prompt",
+          "deterministic_failover_threshold": 1,
+          "forced_deterministic_object_types": [
+            "ticket_fields",
+            "views"
+          ],
+          "object_failure_counts": {
+            "groups": 0,
+            "ticket_fields": 1,
+            "ticket_forms": 0,
+            "views": 1,
+            "macros": 0,
+            "triggers": 0
+          }
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 420,
+            "strict_schema": false
+          },
+          "generator_wave3": "qwen/qwen3-32b",
+          "generator_wave4": "qwen/qwen3-32b",
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 584,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400,
+            "wait_reason": null,
+            "error_class": "schema_validation_failure",
+            "breaker_state": "open:schema_validation_failure",
+            "provider_error_code": "json_validate_failed",
+            "provider_failed_generation_excerpt": null
+          },
+          "generator": {
+            "model": "qwen/qwen3-32b",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 0,
+            "pre_request_wait_ms": 12000.0,
+            "wait_reason": "header_budget",
+            "error_class": "none",
+            "provider_error_code": null
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 0,
+            "recent_batch_context": 0
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 0,
+            "recent_batch_context": 0
+          },
+          "generator_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          }
+        },
+        "inference_assumptions": [
+          {
+            "kind": "business_blueprint_mode",
+            "message": "Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          }
+        ],
+        "base_object_match": null,
+        "inference_confidence": 0.6599999999999999,
+        "context_notes": "",
+        "recent_batch_context": [],
+        "ambiguity_score": 0.5,
+        "ambiguity_threshold": 0.58,
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [],
+          "generated_types": [
+            "groups",
+            "macros",
+            "ticket_fields",
+            "ticket_forms",
+            "triggers",
+            "views"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.7,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [
+            {
+              "title": "Policy Number",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            },
+            {
+              "title": "Member ID",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            },
+            {
+              "title": "Generated Field 1",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            },
+            {
+              "title": "Generated Field 2",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false."
+              ]
+            },
+            {
+              "title": "Claim Type",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+                "Companion field was auto-created from ticket form references."
+              ]
+            },
+            {
+              "title": "Urgency Level",
+              "object_type": "ticket_fields",
+              "alias_mappings": [],
+              "defaults_applied": [
+                "agent_can_edit=true",
+                "visible_in_portal=true",
+                "editable_in_portal=false",
+                "required=false",
+                "required_in_portal=false"
+              ],
+              "warnings": [
+                "Applied infer+warn defaults: agent_can_edit=true, visible_in_portal=true, editable_in_portal=false, required=false, required_in_portal=false.",
+                "Companion field was auto-created from ticket form references."
+              ]
+            }
+          ],
+          "total_records": 6
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 2,
+          "unresolved": [],
+          "forms_processed": 2,
+          "inference_hints_count": 0,
+          "inference_sources": []
+        },
+        "canonicalization": {
+          "trigger_article": {
+            "rules_processed": 8,
+            "articles_processed": 0,
+            "alias_mappings": 0,
+            "defaults_applied": 0,
+            "warnings": 0,
+            "blocked_records": 0
+          }
+        },
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260521-192143-893813",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Recommendations": 1,
+              "Ticket Fields": 6,
+              "Ticket Forms": 2,
+              "Views": 4,
+              "Macros": 3,
+              "Triggers": 4
+            },
+            "total_records": 20
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260521-192143-893813",
+            "summary": {
+              "passed": 13,
+              "warnings": 7,
+              "blocked": 0
+            },
+            "validated_rows": 20,
+            "validated_at": "2026-05-21T19:26:20.441Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null
+      }
     }
   }
 }

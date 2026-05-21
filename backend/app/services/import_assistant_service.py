@@ -5999,9 +5999,21 @@ async def generate_import_assistant_batch(
                         "result": "validation log written from backend fallback",
                     }
                 elif appscript_validation.get("status") != "ok":
-                    raise RuntimeError(
+                    # Keep generate->preview resilient when Apps Script validation endpoint
+                    # is unavailable; compute validation locally from normalized preview rows.
+                    validation_summary = _recompute_validation_summary(preview_records)
+                    validation_metadata["fallback"] = {
+                        "mode": "local_in_memory",
+                        "result": "validation summary recomputed from preview records",
+                    }
+                    validation_metadata["detail"] = (
                         appscript_validation.get("detail")
-                        or "Apps Script validation failed and no backend fallback is configured."
+                        or "Apps Script validation failed; local validation fallback used."
+                    )
+                    store.append_status(
+                        batch_id,
+                        "validating",
+                        "Apps Script validation unavailable; local validation fallback applied.",
                     )
             else:
                 sheets.write_validation_log(batch_id, preview_records)
