@@ -25095,6 +25095,407 @@
         "failure": null
       },
       "approved_by": "local-user"
+    },
+    "BATCH-20260521-175005-E6623A": {
+      "batch_id": "BATCH-20260521-175005-E6623A",
+      "status": "failed",
+      "prompt": "We are setting up Zendesk for a company called PeakCare Medical Supplies. They supply medical equipment and consumables to hospitals, clinics, and  private practitioners across South Africa. They have four support teams:  Order Support, Technical Support, Returns and Repairs, and Accounts.  Please create the following:  1. Four ticket fields:    - A dropdown called \"Request Type\" with options: New Order Inquiry,      Order Status Check, Damaged Item, Equipment Fault, Return Request,      Invoice Query, Account Update    - A dropdown called \"Customer Type\" with options: Hospital, Private Clinic,      General Practitioner, Pharmacy, Government Facility    - A dropdown called \"Product Category\" with options: Diagnostic Equipment,      Surgical Consumables, Patient Monitoring, Mobility Aids, Wound Care    - A text field called \"Order Reference Number\"  2. Four triggers:    - When a ticket is created and Request Type is \"Equipment Fault\",      assign it to Technical Support, add tag \"equipment_fault\",      and set priority to High    - When a ticket is created and Request Type is \"Return Request\",      assign it to Returns and Repairs, add tag \"return_requested\",      and set priority to Normal    - When a ticket is created and Request Type is \"Invoice Query\",      assign it to Accounts, add tag \"invoice_query\"    - When a ticket is created and Customer Type is \"Hospital\" and      Request Type is \"Damaged Item\", assign to Returns and Repairs,      add tag \"hospital_damage_claim\", and set priority to Urgent  3. Four views:    - All open Equipment Fault tickets assigned to Technical Support      sorted by oldest first    - All Urgent tickets assigned to Returns and Repairs    - All open Invoice Query tickets assigned to Accounts    - All unassigned tickets across all teams sorted by creation date  4. Three macros:    - A macro called \"Acknowledge Equipment Fault\" that sends a reply:      \"Thank you for contacting PeakCare Technical Support. We have logged      your equipment fault and a technician will be in touch within 4 hours.\"      and adds tag \"fault_acknowledged\"    - A macro called \"Request Order Reference\" that sends a reply:      \"To locate your order, please provide your PeakCare order reference      number so we can assist you further.\" and adds tag \"awaiting_order_ref\"    - A macro called \"Escalate to Urgent\" that sets priority to Urgent,      assigns to Returns and Repairs, and adds tag \"urgent_escalation\"  5. Two ticket forms:    - A form called \"PeakCare General Support Form\" that includes fields      in order: Subject, Description, Request Type, Customer Type,      Order Reference Number, Priority    - A form called \"PeakCare Equipment Fault Form\" that includes fields      in order: Subject, Description, Request Type, Product Category,      Customer Type, Order Reference Number, Priority",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-05-21T17:50:05.788670+00:00",
+      "updated_at": "2026-05-21T17:52:47.399490+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-05-21T17:50:05.788670+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-05-21T17:50:05.958388+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Large multi-item prompt detected; forcing wave/chunk orchestration (create_following_numbered_prompt).",
+          "at": "2026-05-21T17:50:06.077441+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-05-21T17:50:06.245720+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner returned deterministic JSON failure; switching to heuristic planner fallback.",
+          "at": "2026-05-21T17:50:11.037316+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-05-21T17:50:14.782155+00:00"
+        },
+        {
+          "status": "business_blueprinting",
+          "message": "Compiling business brief into executable blueprint.",
+          "at": "2026-05-21T17:50:15.037559+00:00"
+        },
+        {
+          "status": "backlog_building",
+          "message": "Building deterministic backlog and dependency order.",
+          "at": "2026-05-21T17:50:17.286892+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-05-21T17:50:17.567734+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-05-21T17:50:17.801000+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "Executing deterministic orchestration waves.",
+          "at": "2026-05-21T17:50:17.996973+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/3 groups chunk 1/1 (target=1).",
+          "at": "2026-05-21T17:50:18.516512+00:00"
+        },
+        {
+          "status": "failed",
+          "message": "Generator JSON validation failed: Generator JSON validation failed after retry ladder.",
+          "at": "2026-05-21T17:52:47.217586+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "We are setting up Zendesk for a company called PeakCare Medical Supplies. They supply medical equipment and consumables to hospitals, clinics, and  private practitioners across South Africa. They have four support teams:  Order Support, Technical Support, Returns and Repairs, and Accounts.  Please create the following:  1. Four ticket fields:    - A dropdown called \"Request Type\" with options: New Order Inquiry,      Order Status Check, Damaged Item, Equipment Fault, Return Request,      Invoice Query, Account Update    - A dropdown called \"Customer Type\" with options: Hospital, Private Clinic,      General Practitioner, Pharmacy, Government Facility    - A dropdown called \"Product Category\" with options: Diagnostic Equipment,      Surgical Consumables, Patient Monitoring, Mobility Aids, Wound Care    - A text field called \"Order Reference Number\"  2. Four triggers:    - When a ticket is created and Request Type is \"Equipment Fault\",      assign it to Technical Support, add tag \"equipment_fault\",      and set priority to High    - When a ticket is created and Request Type is \"Return Request\",      assign it to Returns and Repairs, add tag \"return_requested\",      and set priority to Normal    - When a ticket is created and Request Type is \"Invoice Query\",      assign it to Accounts, add tag \"invoice_query\"    - When a ticket is created and Customer Type is \"Hospital\" and      Request Type is \"Damaged Item\", assign to Returns and Repairs,      add tag \"hospital_damage_claim\", and set priority to Urgent  3. Four views:    - All open Equipment Fault tickets assigned to Technical Support      sorted by oldest first    - All Urgent tickets assigned to Returns and Repairs    - All open Invoice Query tickets assigned to Accounts    - All unassigned tickets across all teams sorted by creation date  4. Three macros:    - A macro called \"Acknowledge Equipment Fault\" that sends a reply:      \"Thank you for contacting PeakCare Technical Support. We have logged      your equipment fault and a technician will be in touch within 4 hours.\"      and adds tag \"fault_acknowledged\"    - A macro called \"Request Order Reference\" that sends a reply:      \"To locate your order, please provide your PeakCare order reference      number so we can assist you further.\" and adds tag \"awaiting_order_ref\"    - A macro called \"Escalate to Urgent\" that sets priority to Urgent,      assigns to Returns and Repairs, and adds tag \"urgent_escalation\"  5. Two ticket forms:    - A form called \"PeakCare General Support Form\" that includes fields      in order: Subject, Description, Request Type, Customer Type,      Order Reference Number, Priority    - A form called \"PeakCare Equipment Fault Form\" that includes fields      in order: Subject, Description, Request Type, Product Category,      Customer Type, Order Reference Number, Priority",
+        "confidence": 0.7,
+        "ambiguity_score": 0.5,
+        "prompt_explicit": true,
+        "ambiguity_reasons": [
+          "Planner fallback used due to model output parse failure."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 12,
+          "ticket_forms": 9,
+          "triggers": 24,
+          "automations": 17,
+          "macros": 6,
+          "views": 35,
+          "ticket_fields": 61,
+          "articles": 16,
+          "help_centers": 0,
+          "categories": 5,
+          "sections": 6
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 10,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "qwen/qwen3-32b",
+          "strict_schema": false,
+          "telemetry": {}
+        },
+        "orchestration_mode": "business_blueprint"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "planning": {
+          "planner_bypassed": false,
+          "mode": "llm",
+          "estimated_requested_records": 18,
+          "force_wave_chunk_path": true,
+          "force_wave_chunk_reason": "create_following_numbered_prompt"
+        },
+        "inference_assumptions": [
+          {
+            "kind": "business_blueprint_mode",
+            "message": "Smart Auto activated business blueprint orchestration (create_following_numbered_prompt); 6 backlog items scheduled across waves."
+          }
+        ],
+        "base_object_match": null,
+        "inference_confidence": 0.6599999999999999,
+        "orchestration": {
+          "mode": "business_blueprint",
+          "activation_reason": "create_following_numbered_prompt",
+          "blueprint": {
+            "mode": "deterministic_fallback",
+            "capabilities": [
+              "inference_first",
+              "match_existing_or_create"
+            ],
+            "assumptions": [
+              "No clarification loop is used; missing details are inferred from prompt and catalog context."
+            ],
+            "priorities": [
+              "deterministic_wave_order",
+              "reuse_before_create",
+              "fail_whole_run"
+            ],
+            "dependency_hints": [],
+            "target_objects": [
+              {
+                "object_type": "ticket_fields",
+                "target_count": 4,
+                "priority": 1,
+                "wave": 1
+              },
+              {
+                "object_type": "triggers",
+                "target_count": 4,
+                "priority": 3,
+                "wave": 3
+              },
+              {
+                "object_type": "views",
+                "target_count": 4,
+                "priority": 2,
+                "wave": 2
+              },
+              {
+                "object_type": "macros",
+                "target_count": 3,
+                "priority": 3,
+                "wave": 3
+              },
+              {
+                "object_type": "ticket_forms",
+                "target_count": 2,
+                "priority": 2,
+                "wave": 2
+              },
+              {
+                "object_type": "groups",
+                "target_count": 1,
+                "priority": 1,
+                "wave": 1
+              }
+            ]
+          },
+          "backlog_size": 6,
+          "waves": [
+            {
+              "wave": 1,
+              "position": 1,
+              "total_waves": 3,
+              "generator_model": "openai/gpt-oss-20b",
+              "status": "running",
+              "items": [
+                {
+                  "backlog_id": "BL-001",
+                  "object_type": "groups",
+                  "target_count": 1,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "update",
+                  "match_score": 1.0,
+                  "match_source": "exact_title",
+                  "base_object": {
+                    "object_type": "groups",
+                    "match_type": "exact_title",
+                    "id": "27621131675292",
+                    "name": "Request Type",
+                    "description": "None"
+                  },
+                  "status": "running",
+                  "chunks": 0,
+                  "generated_records": 0,
+                  "deduped_records_added": 0
+                }
+              ],
+              "created": 0,
+              "reused": 0,
+              "updated": 1,
+              "blocked": 0,
+              "chunks": 0,
+              "generated_records": 0,
+              "deduped_records_added": 0
+            }
+          ],
+          "reconciliation_summary": {
+            "create": 0,
+            "reuse": 0,
+            "update": 1,
+            "blocked": 0
+          },
+          "assumptions_applied": [
+            "No clarification loop is used; missing details are inferred from prompt and catalog context."
+          ],
+          "final_status": "failed",
+          "abort_reason": "Generator JSON validation failed after retry ladder."
+        },
+        "chunking": {
+          "activated": true,
+          "estimated_requested_records": 18,
+          "chunk_size": 3,
+          "max_chunks": 12,
+          "trigger_min_records": 3,
+          "total_chunks": 6,
+          "chunk_targets": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "numeric_intent",
+            "number_word_intent",
+            "enumerated_items"
+          ],
+          "numeric_matches": [
+            {
+              "value": 4,
+              "object_hint": "ticket_fields",
+              "raw": "Four ticket fields",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 4,
+              "object_hint": "triggers",
+              "raw": "Four triggers",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 4,
+              "object_hint": "views",
+              "raw": "Four views",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 3,
+              "object_hint": "macros",
+              "raw": "Three macros",
+              "source": "number_word_intent"
+            },
+            {
+              "value": 2,
+              "object_hint": "ticket_forms",
+              "raw": "Two ticket forms",
+              "source": "number_word_intent"
+            }
+          ],
+          "enumerated_items": 5,
+          "chunks": [],
+          "total_generated_before_dedupe": 0,
+          "total_generated_after_dedupe": 0,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "failed",
+          "abort_reason": "Generator JSON validation failed after retry ladder.",
+          "forced_wave_chunk_path": true,
+          "forced_wave_chunk_reason": "create_following_numbered_prompt",
+          "deterministic_failover_threshold": 3,
+          "forced_deterministic_object_types": [],
+          "object_failure_counts": {
+            "groups": 1
+          }
+        },
+        "llm_routes": {
+          "planner": {
+            "task": "planner",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "qwen/qwen3-32b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 420,
+            "strict_schema": false
+          },
+          "generator_wave3": "qwen/qwen3-32b",
+          "generator_wave4": "qwen/qwen3-32b",
+          "generator_secondary": "qwen/qwen3-32b",
+          "generator_tertiary": "openai/gpt-oss-20b",
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true,
+          "generator_secondary_api_key_configured": true,
+          "generator_tertiary_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "estimated_tokens": 1517,
+            "pre_request_wait_ms": 0.0,
+            "retry_count": 0,
+            "final_status": "http_error",
+            "http_status": 400,
+            "wait_reason": null,
+            "error_class": "schema_validation_failure",
+            "breaker_state": "open:schema_validation_failure",
+            "api_key_profile": "key_845b322cd6",
+            "provider_error_code": "json_validate_failed",
+            "provider_failed_generation_excerpt": null
+          },
+          "generator": {
+            "model": "openai/gpt-oss-20b",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 0,
+            "pre_request_wait_ms": 12000.0,
+            "wait_reason": "header_budget",
+            "error_class": "none",
+            "provider_error_code": null
+          },
+          "terminal_error_class": "none",
+          "generator_error": {
+            "error_class": "none",
+            "provider_error_code": "json_validate_failed",
+            "validator_reason": "Model output was not parseable JSON."
+          }
+        },
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: We are setting up Zendesk for a company called PeakCare Medical Supplies. They supply medical equipment and consumables to hospitals, clinics, and  private practitioners across South Africa. They have four support teams:  Order Support, Technical Support, Returns and Repairs, and Accounts.  Please create the following:  1. Four ticket fields:    - A dropdown called \"Request Type\" with options: New Order Inquiry,      Order Status Check, Damaged Item, Equipment Fault, Return Request,      Invoice Query, Account Update    - A dropdown called \"Customer Type\" with options: Hospital, Private Clinic,      General Practitioner, Pharmacy, Government Facility    - A dropdown called \"Product Category\" with options: Diagnostic Equipment,      Surgical Consumables, Patient Monitoring, Mobility Aids, Wound Care    - A text field called \"Order Reference Number\"  2. Four triggers:    - When a ticket is created and Request Type is \"Equipment Fault\",      assign it to Technical Support, add tag \"equipment_fault\",      and set priority to High    - When a ticket is created and Request Type is \"Return Request\",      assign it to Returns and Repairs, add tag \"return_requested\",      and set priority to Normal    - When a ticket is created and Request Type is \"Invoice Query\",      assign it to Accounts, add tag \"invoice_query\"    - When a ticket is created and Customer Type is \"Hospital\" and      Request Type is \"Damaged Item\", assign to Returns and Repairs,      add tag \"hospital_damage_claim\", and set priority to Urgent  3. Four views:    - All open Equipment Fault tickets assigned to Technical Support      sorted by oldest first    - All Urgent tickets assigned to Returns and Repairs    - All open Invoice Query tickets assigned to Accounts    - All unassigned tickets across all teams sorted by creation date  4. Three macros:    - A macro called \"Acknowledge Equipment Fault\" that sends a reply:      \"Thank you for contacting PeakCare Technical Support. We have logged      your equipment fault and a technician will be in touch within 4 hours.\"      and adds tag \"fault_acknowledged\"    - A macro called \"Request Order Reference\" that sends a reply:      \"To locate your order, please provide your PeakCare order reference      number so we can assist you further.\" and adds tag \"awaiting_order_ref\"    - A macro called \"Escalate to Urgent\" that sets priority to Urgent,      assigns to Returns and Repairs, and adds tag \"urgent_escalation\"  5. Two ticket forms:    - A form called \"PeakCare General Support Form\" that includes fields      in order: Subject, Description, Request Type, Customer Type,      Order Reference Number, Priority    - A form called \"PeakCare Equipment Fault Form\" that includes fields      in order: Subject, Description, Request Type, Product Category,      Customer Type, Order Reference Number, Priority"
+        ],
+        "failure": {
+          "failure_stage": "generate",
+          "failure_code": "generator_json_validation_failed",
+          "failure_reason": "Generator could not produce schema-valid JSON after recovery attempts.",
+          "next_step": "Retry with narrower scope and explicit Zendesk action fields (status/group_id/set_tags/field_type/custom_field_options). Example: Example answer: Yes, generate one trigger record only with JSON fields object_type/title/conditions/actions/dependency_notes and no prose."
+        }
+      }
     }
   }
 }
