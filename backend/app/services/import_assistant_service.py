@@ -1335,6 +1335,7 @@ def _build_chunk_instruction(
 
 def _can_use_deterministic_chunk_fallback(object_type: str) -> bool:
     return _normalize_object_type(object_type) in {
+        "groups",
         "ticket_fields",
         "ticket_forms",
         "views",
@@ -6117,12 +6118,91 @@ def get_job_status(batch_id: str) -> JobStatusResponse:
     batch = store.get_batch(batch_id)
     if not batch:
         raise KeyError(batch_id)
+    batch = _recover_stale_deploying_batch_if_needed(
+        batch_id=batch_id,
+        batch=batch,
+        store=store,
+    )
     return JobStatusResponse(**batch)
+
+
+def _parse_batch_timestamp(value: object) -> float:
+    text = str(value or "").strip()
+    if not text:
+        return 0.0
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _recover_stale_deploying_batch_if_needed(
+    *,
+    batch_id: str,
+    batch: dict,
+    store,
+) -> dict:
+    status = str(batch.get("status", "")).strip().lower()
+    if status != "deploying":
+        return batch
+    settings = get_settings()
+    stale_seconds = max(float(getattr(settings, "deploy_stale_recovery_seconds", 300.0)), 30.0)
+    last_ts = _parse_batch_timestamp(batch.get("updated_at"))
+    age_seconds = time.time() - last_ts if last_ts > 0 else stale_seconds + 1.0
+    if age_seconds < stale_seconds:
+        return batch
+
+    reason = f"Recovered stale deploying batch after {int(age_seconds)}s without progress."
+    metadata = (
+        batch.get("metadata", {})
+        if isinstance(batch.get("metadata", {}), dict)
+        else {}
+    )
+    existing_zendesk_deploy = (
+        metadata.get("zendesk_deploy", {})
+        if isinstance(metadata.get("zendesk_deploy", {}), dict)
+        else {}
+    )
+    failure_payload = {
+        "failure_stage": "deploy",
+        "failure_code": "deploy_watchdog_timeout",
+        "failure_reason": reason,
+        "next_step": "Run deploy again explicitly after verifying credentials/connectivity.",
+    }
+    store.update_batch(
+        batch_id,
+        {
+            "status": "deploy_failed",
+            "metadata": {
+                **metadata,
+                "zendesk_deploy": {
+                    **existing_zendesk_deploy,
+                    "terminal_error_class": "stale_recovery",
+                    "failed_at": _utc_now(),
+                    "watchdog_seconds": float(settings.deploy_watchdog_seconds),
+                    "failure": failure_payload,
+                },
+                "failure": failure_payload,
+            },
+        },
+    )
+    store.append_status(batch_id, "deploy_failed", reason)
+    return store.get_batch(batch_id) or batch
 
 
 def list_recent_batches(limit: int = 20) -> JobListResponse:
     store = get_batch_store()
     batches = list(store.list_batches())
+    for index, batch in enumerate(batches):
+        if str(batch.get("status", "")).strip().lower() != "deploying":
+            continue
+        batches[index] = _recover_stale_deploying_batch_if_needed(
+            batch_id=str(batch.get("batch_id", "")),
+            batch=batch,
+            store=store,
+        )
     batches.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
 
     items: list[JobListItem] = []
@@ -6146,6 +6226,11 @@ def get_preview(batch_id: str) -> PreviewResponse:
     batch = store.get_batch(batch_id)
     if not batch:
         raise KeyError(batch_id)
+    batch = _recover_stale_deploying_batch_if_needed(
+        batch_id=batch_id,
+        batch=batch,
+        store=store,
+    )
     return PreviewResponse(
         batch_id=batch_id,
         status=batch["status"],
