@@ -118,6 +118,8 @@ RULE_FIELD_ALIASES = {
     "assign": "group_id",
     "group": "group_id",
     "group_name": "group_id",
+    "team": "group_id",
+    "team_id": "group_id",
     "form": "ticket_form_id",
     "form_id": "ticket_form_id",
     "ticket_form": "ticket_form_id",
@@ -128,6 +130,10 @@ RULE_FIELD_ALIASES = {
     "tags": "set_tags",
     "add_tag": "set_tags",
     "set_tag": "set_tags",
+    "add_note": "comment_value",
+    "comment": "comment_value",
+    "comment_body": "comment_value",
+    "comment_text": "comment_value",
 }
 ARTICLE_FIELD_ALIASES = {
     "section_id": {"section_id", "section", "section_name"},
@@ -1268,13 +1274,11 @@ def _build_deterministic_chunk_rows(
 
     def _next_unique_title(base: str, position: int) -> str:
         candidate = str(base or "").strip() or f"Generated {normalized_object_type.rstrip('s').title()}"
-        if requested_count > 1:
-            candidate = f"{candidate} {position}"
         key = _normalize_title_for_dedupe(candidate)
         if key and key not in existing_title_keys:
             existing_title_keys.add(key)
             return candidate
-        suffix = 2
+        suffix = max(2, int(position or 2))
         while True:
             deduped = f"{candidate} {suffix}"
             dedupe_key = _normalize_title_for_dedupe(deduped)
@@ -1290,28 +1294,52 @@ def _build_deterministic_chunk_rows(
     )
 
     if normalized_object_type == "ticket_fields":
-        requested_type = _infer_requested_ticket_field_type(prompt_text) or "text"
-        option_hints = _extract_ticket_field_option_hints(prompt_text)
-        if requested_type in {"tagger", "multiselect"} and len(option_hints) < 2:
-            option_hints = ["Option A", "Option B"]
-        option_values = [
-            {"name": opt[:80], "value": _slugify_option_value(opt)}
-            for opt in option_hints[:20]
+        field_specs = _extract_ticket_field_specs_from_prompt(prompt_text)
+        used_titles = {
+            _normalize_title_for_dedupe(str(row.get("title", "")).strip())
+            for row in (generated_rows or [])
+            if isinstance(row, dict) and str(row.get("title", "")).strip()
+        }
+        available_specs = [
+            spec
+            for spec in field_specs
+            if _normalize_title_for_dedupe(str(spec.get("title", "")).strip()) not in used_titles
         ]
-        name_hint_match = re.search(
-            r"\b(?:field|ticket field|custom field)\s+(?:called|named)\s+[\"']?([^\"'\n,.]{2,80})",
-            prompt_text,
-            flags=re.IGNORECASE,
-        )
-        base_title = str(name_hint_match.group(1)).strip() if name_hint_match else "Generated Field"
+        if not available_specs:
+            requested_type = _infer_requested_ticket_field_type(prompt_text) or "text"
+            option_hints = _extract_ticket_field_option_hints(prompt_text)
+            if requested_type in {"tagger", "multiselect"} and len(option_hints) < 2:
+                option_hints = ["Option A", "Option B"]
+            available_specs = [
+                {
+                    "title": "Generated Field",
+                    "field_type": requested_type,
+                    "options": option_hints,
+                }
+            ]
+
         for index in range(1, requested_count + 1):
+            spec = available_specs[(index - 1) % len(available_specs)]
+            spec_title = str(spec.get("title", "")).strip() or "Generated Field"
+            requested_type = _normalize_ticket_field_type(spec.get("field_type") or "text")
+            option_hints = [
+                str(item).strip()
+                for item in list(spec.get("options", []) or [])
+                if str(item).strip()
+            ]
+            if requested_type in {"tagger", "multiselect"} and len(option_hints) < 2:
+                option_hints = ["Option A", "Option B"]
+            option_values = [
+                {"name": opt[:80], "value": _slugify_option_value(opt)}
+                for opt in option_hints[:20]
+            ]
             actions = [{"field": "field_type", "value": requested_type}]
             if option_values and requested_type in {"tagger", "multiselect"}:
                 actions.append({"field": "custom_field_options", "value": option_values})
             rows.append(
                 {
                     "object_type": "ticket_fields",
-                    "title": _next_unique_title(base_title, index),
+                    "title": _next_unique_title(spec_title, index),
                     "conditions": [],
                     "actions": actions,
                     "dependency_notes": [fallback_note],
@@ -2115,6 +2143,8 @@ def _canonicalize_rule_record(
     row: dict,
     *,
     object_type: str,
+    related_lookup: dict[str, dict[str, str]] | None = None,
+    catalog_lookup: dict[str, dict[str, str]] | None = None,
 ) -> dict:
     info = {
         "title": str(row.get("title", "Untitled Rule")).strip() or "Untitled Rule",
@@ -2142,6 +2172,43 @@ def _canonicalize_rule_record(
             alias_counter=alias_counter,
         )
     )
+
+    if object_type in {"triggers", "automations"}:
+        actions = list(row.get("actions", []) or [])
+        known_group_ids = {
+            str(value).strip()
+            for lookup in ((related_lookup or {}).get("group", {}), (catalog_lookup or {}).get("group", {}))
+            for value in lookup.values()
+            if str(value).strip()
+        }
+        for entry in actions:
+            if not isinstance(entry, dict):
+                continue
+            field = str(entry.get("field", "")).strip().lower()
+            value_text = str(entry.get("value", "")).strip()
+            if field == "assignee_id":
+                if re.search(r"\bassign\b", info["title"], flags=re.IGNORECASE) and not re.search(
+                    r"\b(agent|assignee|user)\b",
+                    info["title"],
+                    flags=re.IGNORECASE,
+                ):
+                    entry["field"] = "group_id"
+                    alias_counter["assignee_id->group_id"] = alias_counter.get("assignee_id->group_id", 0) + 1
+                    warnings.append(
+                        "Converted assignee_id to group_id based on title intent (team/group assignment heuristic)."
+                    )
+                    field = "group_id"
+            if field == "group_id" and value_text.isdigit() and known_group_ids and value_text not in known_group_ids:
+                row.setdefault("validation_overrides", {})
+                row["validation_overrides"]["blocked_reason"] = (
+                    "group_id does not match any known Zendesk group in current context. "
+                    "Use a valid group name/id or resync context."
+                )
+                info["blocked"] = True
+                warnings.append(
+                    f"Blocked: group_id '{value_text}' is not present in synced group catalog."
+                )
+                break
 
     if object_type in {"triggers", "automations"} and not list(row.get("actions", []) or []):
         row.setdefault("validation_overrides", {})
@@ -2291,11 +2358,31 @@ def _parse_custom_field_options(raw: object) -> tuple[list[dict[str, str]], list
     warnings: list[str] = []
     options: list[dict[str, str]] = []
 
+    def _clean_option_name(name: str) -> str:
+        cleaned = str(name or "").strip().strip("\"'")
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = re.sub(
+            r"\s*-\s*(?:a\s+)?(?:drop[\s-]?down|single[\s-]?select|multi[\s-]?select|multiselect|text|textarea|number|integer|decimal|date|checkbox)\b.*$",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+        cleaned = re.sub(
+            r"\s*\b(?:with|having)\s+(?:options?|values?)\s*:.*$",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+        return cleaned
+
     def _add_option(name: str, value: str | None = None) -> None:
-        cleaned_name = str(name).strip()
+        cleaned_name = _clean_option_name(name)
         if not cleaned_name:
             return
-        normalized_value = _slugify_option_value(value or cleaned_name)
+        raw_value = str(value or "").strip()
+        if re.search(r"(dropdown|drop_down|drop-down|called|with_options|with-values)", raw_value, flags=re.IGNORECASE):
+            raw_value = ""
+        normalized_value = _slugify_option_value(raw_value or cleaned_name)
         if any(existing["value"] == normalized_value for existing in options):
             return
         options.append({"name": cleaned_name[:255], "value": normalized_value})
@@ -2333,10 +2420,76 @@ def _infer_requested_ticket_field_type(prompt: str) -> str | None:
     return None
 
 
-def _extract_ticket_field_option_hints(prompt: str) -> list[str]:
+def _extract_ticket_field_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
+    text = str(prompt or "").strip()
+    if not text:
+        return []
+    normalized = re.sub(r"\s{2,}", " ", text)
+    normalized = re.sub(r"\s+-\s+", "\n- ", normalized)
+    normalized = re.sub(r"\s+(\d+)\.\s+", "\n\\1. ", normalized)
+    specs: list[dict[str, object]] = []
+    seen_titles: set[str] = set()
+    field_pattern = re.compile(
+        r"(?:^[-*]\s*|^\d+\.\s*|^)\s*(?:a\s+)?"
+        r"(?P<kind>drop[\s-]?down|single[\s-]?select|multi[\s-]?select|multiselect|text|textarea|number|integer|decimal|date|checkbox|regexp)"
+        r"(?:\s+field)?\s+(?:called|named)\s+[\"']?(?P<title>[^\"'\n:]{2,120})[\"']?"
+        r"(?P<rest>.*)$",
+        flags=re.IGNORECASE,
+    )
+    options_pattern = re.compile(
+        r"(?:with\s+)?(?:options?|values?)\s*:?\s*(?P<values>.+)$",
+        flags=re.IGNORECASE,
+    )
+
+    for line in normalized.splitlines():
+        candidate = line.strip()
+        if not candidate:
+            continue
+        match = field_pattern.search(candidate)
+        if not match:
+            continue
+        raw_title = str(match.group("title") or "").strip().strip(" .,:;")
+        if not raw_title:
+            continue
+        title_key = _normalize_title_for_dedupe(raw_title)
+        if not title_key or title_key in seen_titles:
+            continue
+        seen_titles.add(title_key)
+        field_type = _normalize_ticket_field_type(str(match.group("kind") or "").strip())
+        rest = str(match.group("rest") or "").strip()
+        options: list[str] = []
+        opt_match = options_pattern.search(rest)
+        if opt_match:
+            raw_values = str(opt_match.group("values") or "").strip()
+            options = [part.strip() for part in re.split(r"[,|;/]", raw_values) if part.strip()]
+        specs.append(
+            {
+                "title": raw_title,
+                "field_type": field_type or "text",
+                "options": options[:20],
+            }
+        )
+    return specs
+
+
+def _extract_ticket_field_option_hints(prompt: str, *, field_title: str | None = None) -> list[str]:
     text = prompt.strip()
     if not text:
         return []
+    if field_title:
+        title_key = _normalize_title_for_dedupe(field_title)
+        for spec in _extract_ticket_field_specs_from_prompt(text):
+            spec_title_key = _normalize_title_for_dedupe(str(spec.get("title", "")).strip())
+            if not spec_title_key or not title_key:
+                continue
+            if spec_title_key == title_key or spec_title_key in title_key or title_key in spec_title_key:
+                options = [
+                    str(item).strip()
+                    for item in list(spec.get("options", []) or [])
+                    if str(item).strip()
+                ]
+                if options:
+                    return options
     matches = re.findall(r"(?:values?|options?)\s*(?:are|is|:)?\s*([a-z0-9 ,|;/_-]{4,})", text, flags=re.IGNORECASE)
     for match in matches:
         chunks = [part.strip() for part in re.split(r"[,|;/]", match) if part.strip()]
@@ -2996,7 +3149,10 @@ def _canonicalize_ticket_field_record(
     raw_option_values = _extract_values_by_field_aliases(row, TICKET_FIELD_OPTIONS_FIELDS)
     raw_options = raw_option_values[0] if raw_option_values else None
     if raw_options in (None, "", []):
-        prompt_option_hints = _extract_ticket_field_option_hints(prompt)
+        prompt_option_hints = _extract_ticket_field_option_hints(
+            prompt,
+            field_title=info["title"],
+        )
         if prompt_option_hints:
             raw_options = prompt_option_hints
             info["alias_mappings"].append("inferred custom_field_options from prompt")
@@ -3189,10 +3345,12 @@ def _canonicalize_generated_rows(
             )
             generated_field_titles.add(str(row.get("title", "")).strip().lower())
             field_inference_records.append(info)
-        elif row["object_type"] in {"triggers", "automations", "views"}:
+        elif row["object_type"] in {"triggers", "automations", "views", "macros"}:
             info = _canonicalize_rule_record(
                 row,
                 object_type=row["object_type"],
+                related_lookup=related_lookup,
+                catalog_lookup=catalog_lookup,
             )
             trigger_article_summary["rules_processed"] += 1
             trigger_article_summary["alias_mappings"] += len(info.get("alias_mappings", []))

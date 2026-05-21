@@ -1,6 +1,7 @@
 import httpx
 import asyncio
 import time
+import re
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
@@ -126,6 +127,11 @@ def _normalize_action(action: dict) -> dict:
         "group": "group_id",
         "group_name": "group_id",
         "assignee": "assignee_id",
+        "team": "group_id",
+        "add_note": "comment_value",
+        "comment": "comment_value",
+        "comment_body": "comment_value",
+        "comment_text": "comment_value",
     }
     normalized_field = field_aliases.get(raw_field, raw_field)
     return {
@@ -523,11 +529,33 @@ def _find_all_values_by_aliases(record: dict, aliases: set[str]) -> list:
 def _parse_custom_field_options(raw: object) -> list[dict]:
     options: list[dict[str, str]] = []
 
+    def _clean_option_name(name: str) -> str:
+        import re
+
+        cleaned = str(name or "").strip().strip("\"'")
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = re.sub(
+            r"\s*-\s*(?:a\s+)?(?:drop[\s-]?down|single[\s-]?select|multi[\s-]?select|multiselect|text|textarea|number|integer|decimal|date|checkbox)\b.*$",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+        cleaned = re.sub(
+            r"\s*\b(?:with|having)\s+(?:options?|values?)\s*:.*$",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+        return cleaned
+
     def _append(name: str, value: str | None = None) -> None:
-        cleaned = str(name).strip()
+        cleaned = _clean_option_name(name)
         if not cleaned:
             return
-        normalized_value = _slugify_option_value(value or cleaned)
+        raw_value = str(value or "").strip()
+        if re.search(r"(dropdown|drop_down|drop-down|called|with_options|with-values)", raw_value, flags=re.IGNORECASE):
+            raw_value = ""
+        normalized_value = _slugify_option_value(raw_value or cleaned)
         if any(item["value"] == normalized_value for item in options):
             return
         options.append({"name": cleaned[:255], "value": normalized_value})
@@ -1415,11 +1443,14 @@ async def deploy_records_to_zendesk(
             if isinstance(response_payload, dict):
                 error = response_payload.get("error")
                 description = response_payload.get("description")
+                details = response_payload.get("details")
                 detail = f"Zendesk deployment failed ({response.status_code})"
                 if error:
                     detail += f": {error}"
                 if description:
                     detail += f" - {description}"
+                if isinstance(details, dict) and details:
+                    detail += f" | details={details}"
             results.append(
                 {
                     "record_id": record_id,
