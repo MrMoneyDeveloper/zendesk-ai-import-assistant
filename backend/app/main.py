@@ -33,14 +33,51 @@ app.add_middleware(
 app.add_middleware(RequestContextMiddleware)
 
 
+def _format_validation_errors(exc: RequestValidationError) -> tuple[list[dict[str, object]], str]:
+    raw_errors = exc.errors()
+    formatted: list[dict[str, object]] = []
+    snippets: list[str] = []
+
+    for item in raw_errors:
+        loc = item.get("loc") if isinstance(item, dict) else ()
+        message = str(item.get("msg") or "Invalid value.") if isinstance(item, dict) else "Invalid value."
+        error_type = str(item.get("type") or "") if isinstance(item, dict) else ""
+        input_value = item.get("input") if isinstance(item, dict) else None
+
+        path_parts = [str(part) for part in loc if str(part) != "body"]
+        path = ".".join(path_parts) if path_parts else "request"
+
+        formatted.append(
+            {
+                "path": path,
+                "message": message,
+                "type": error_type,
+                "input": input_value,
+            }
+        )
+
+        if len(snippets) < 3:
+            snippets.append(f"{path}: {message}")
+
+    summary = "; ".join(snippets) if snippets else "Invalid request payload."
+    return formatted, summary
+
+
 @app.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(request, exc: RequestValidationError):
-    logger.warning("Request validation failed: %s", exc.errors())
+    validation_errors, summary = _format_validation_errors(exc)
+    logger.warning("Request validation failed: %s", validation_errors)
     return JSONResponse(
         status_code=422,
         content={
-            "detail": "Request validation failed.",
-            "errors": exc.errors(),
+            "detail": {
+                "failure_stage": "request",
+                "failure_code": "request_validation_failed",
+                "failure_reason": f"Request validation failed. {summary}",
+                "next_step": "Adjust the invalid fields shown in validation_errors and retry.",
+                "validation_errors": validation_errors,
+            },
+            "errors": validation_errors,
         },
     )
 

@@ -78,7 +78,7 @@ FOCUS_OBJECT_TYPES = {
 
 
 class GenerateRequest(BaseModel):
-    prompt: str = Field(..., min_length=5, max_length=4000)
+    prompt: str = Field(..., min_length=5, max_length=12000)
 
     @field_validator("prompt")
     @classmethod
@@ -163,7 +163,7 @@ class ContextReference(BaseModel):
 
 
 class ImportAssistantGenerateRequest(BaseModel):
-    prompt: str = Field(..., min_length=5, max_length=4000)
+    prompt: str = Field(..., min_length=5, max_length=12000)
     target_environment: Literal["sandbox"] = "sandbox"
     mode: str = "generate_validate_preview"
     requester: str = "local-user"

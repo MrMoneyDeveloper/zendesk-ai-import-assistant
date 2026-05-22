@@ -169,6 +169,31 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     assert Path(store_file).exists()
 
 
+def test_generate_returns_structured_request_validation_failure(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create trigger",
+            "focus_object_types": ["invalid_focus"],
+        },
+    )
+    assert response.status_code == 422
+    payload = response.json()
+    detail = payload["detail"]
+    assert detail["failure_stage"] == "request"
+    assert detail["failure_code"] == "request_validation_failed"
+    assert isinstance(detail["validation_errors"], list)
+    assert detail["validation_errors"][0]["path"] == "focus_object_types"
+
+
 def test_generate_recovers_from_planner_failed_generation(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))

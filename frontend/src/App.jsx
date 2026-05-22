@@ -31,11 +31,15 @@ const ZENDESK_SESSION_STORAGE_KEY = "zendesk_session_credentials_v1";
 function extractFailurePayload(error) {
   const detail = error?.response?.data?.detail;
   if (detail && typeof detail === "object") {
+    const validationErrors = Array.isArray(detail.validation_errors)
+      ? detail.validation_errors
+      : [];
     return {
       stage: detail.failure_stage || null,
       code: detail.failure_code || null,
       reason: detail.failure_reason || "Request failed.",
       nextStep: detail.next_step || null,
+      validationErrors,
     };
   }
   return null;
@@ -44,6 +48,17 @@ function extractFailurePayload(error) {
 function parseFailureDetail(error) {
   const structured = extractFailurePayload(error);
   if (structured) {
+    if (
+      structured.code === "request_validation_failed"
+      && Array.isArray(structured.validationErrors)
+      && structured.validationErrors.length > 0
+    ) {
+      const first = structured.validationErrors[0];
+      const path = String(first?.path || "request");
+      const message = String(first?.message || "Invalid value.");
+      const next = structured.nextStep ? ` Next: ${structured.nextStep}` : "";
+      return `[request] ${path}: ${message}.${next}`;
+    }
     if (structured.code === "rate_limited") {
       const reason = structured.reason || "Request was rate-limited by the provider.";
       const next = structured.nextStep
@@ -1453,6 +1468,16 @@ function App() {
                 {lastFailureDetail.stage ? `[${lastFailureDetail.stage}] ` : ""}
                 {lastFailureDetail.reason}
               </p>
+              {Array.isArray(lastFailureDetail.validationErrors)
+                && lastFailureDetail.validationErrors.length > 0 ? (
+                  <div className="space-y-1 text-xs text-rose-300">
+                    {lastFailureDetail.validationErrors.slice(0, 4).map((item, idx) => (
+                      <p key={`validation-${idx}`}>
+                        {String(item?.path || "request")}: {String(item?.message || "Invalid value.")}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
               {lastFailureDetail.nextStep ? (
                 <p className="text-xs text-rose-300">Next step: {lastFailureDetail.nextStep}</p>
               ) : null}
