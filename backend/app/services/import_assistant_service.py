@@ -617,6 +617,94 @@ def _new_batch_id() -> str:
     return f"BATCH-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:6].upper()}"
 
 
+def _summarize_validation_errors(
+    validation_errors: list[dict[str, object]] | None,
+    *,
+    limit: int = 3,
+) -> str:
+    rows = validation_errors if isinstance(validation_errors, list) else []
+    snippets: list[str] = []
+    for item in rows[: max(limit, 1)]:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "request").strip() or "request"
+        message = str(item.get("message") or "Invalid value.").strip() or "Invalid value."
+        snippets.append(f"{path}: {message}")
+    if not snippets:
+        return "Request validation failed."
+    return "Request validation failed. " + "; ".join(snippets)
+
+
+def create_request_validation_failed_batch(
+    *,
+    request_payload: dict | None,
+    validation_errors: list[dict[str, object]] | None,
+    compaction: dict | None = None,
+) -> str:
+    store = get_batch_store()
+    payload = request_payload if isinstance(request_payload, dict) else {}
+    now = _utc_now()
+    batch_id = _new_batch_id()
+    prompt = str(payload.get("prompt") or "").strip()
+    if not prompt:
+        prompt = "Request validation failed before generation."
+    if len(prompt) > 12000:
+        prompt = prompt[:12000]
+
+    requester = str(payload.get("requester") or "local-user").strip() or "local-user"
+    target_environment = str(payload.get("target_environment") or "sandbox").strip() or "sandbox"
+    mode = str(payload.get("mode") or "generate_validate_preview").strip() or "generate_validate_preview"
+    failure_reason = _summarize_validation_errors(validation_errors)
+    next_step = "Adjust the invalid fields shown in validation_errors and retry."
+    request_validation_metadata = {
+        "validation_errors": validation_errors if isinstance(validation_errors, list) else [],
+        "compaction_applied": bool((compaction or {}).get("applied", False)),
+    }
+    if isinstance(compaction, dict):
+        request_validation_metadata["compaction"] = compaction
+
+    batch = {
+        "batch_id": batch_id,
+        "status": "failed",
+        "prompt": prompt,
+        "requester": requester,
+        "target_environment": target_environment,
+        "mode": mode,
+        "created_at": now,
+        "updated_at": now,
+        "status_history": [
+            {
+                "status": "received",
+                "message": "Batch accepted for request validation logging.",
+                "at": now,
+            },
+            {
+                "status": "failed",
+                "message": failure_reason,
+                "at": now,
+            },
+        ],
+        "records": [],
+        "generated_counts": {},
+        "validation_summary": {"passed": 0, "warnings": 0, "blocked": 0},
+        "planning_summary": {},
+        "metadata": {
+            "run_control": _normalize_run_control({}),
+            "checkpoints": [],
+            "rollback": {},
+            "failure": {
+                "failure_stage": "request",
+                "failure_code": "request_validation_failed",
+                "failure_reason": failure_reason,
+                "next_step": next_step,
+            },
+            "request_validation": request_validation_metadata,
+        },
+    }
+    store.save_batch(batch)
+    return batch_id
+
+
 TERMINAL_RUN_STATUSES = {
     "preview_ready",
     "failed",

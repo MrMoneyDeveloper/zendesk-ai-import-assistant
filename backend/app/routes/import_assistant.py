@@ -1,8 +1,11 @@
 import asyncio
+import json
 import time
+from collections import Counter
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from pydantic import ValidationError
 
 import app.models.schemas as schema_models
 from app.core.settings import get_settings
@@ -33,15 +36,17 @@ from app.models.schemas import (
 from app.services.import_assistant_service import (
     GenerateFailureError,
     apply_approval,
+    create_request_validation_failed_batch,
+    decide_job_checkpoint,
     deploy_batch_to_zendesk,
     generate_import_assistant_batch,
     get_job_checkpoints,
     list_recent_batches,
-    decide_job_checkpoint,
     get_job_status,
     get_preview,
     set_batch_run_control,
 )
+from app.services.perf_capture import emit_perf_event
 from app.services.appscript_bridge import AppScriptBridgeService
 from app.services.attachment_extractor import (
     AttachmentExtractionError,
@@ -121,6 +126,268 @@ def _build_failure_detail(
     }
 
 
+def _safe_json_size(payload: object) -> int:
+    try:
+        return len(json.dumps(payload, ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        return len(str(payload))
+
+
+def _trim_text(
+    value: object,
+    *,
+    max_len: int | None = None,
+) -> tuple[str, bool]:
+    text = str(value or "").strip()
+    if max_len is None or max_len <= 0:
+        return text, False
+    if len(text) <= max_len:
+        return text, False
+    return text[:max_len], True
+
+
+def _normalize_context_object_type(value: object) -> str:
+    text = str(value or "").strip().lower()
+    mapping = {
+        "brand": "brand",
+        "brands": "brand",
+        "group": "group",
+        "groups": "group",
+        "ticket_form": "ticket_form",
+        "ticket_forms": "ticket_form",
+        "help_center": "help_center",
+        "help_centers": "help_center",
+        "category": "category",
+        "categories": "category",
+        "section": "section",
+        "sections": "section",
+        "trigger": "trigger",
+        "triggers": "trigger",
+        "automation": "automation",
+        "automations": "automation",
+        "macro": "macro",
+        "macros": "macro",
+        "view": "view",
+        "views": "view",
+        "ticket_field": "ticket_field",
+        "ticket_fields": "ticket_field",
+        "article": "article",
+        "articles": "article",
+    }
+    return mapping.get(text, text)
+
+
+def _format_model_validation_errors(exc: ValidationError) -> tuple[list[dict[str, object]], str]:
+    raw_errors = exc.errors()
+    formatted: list[dict[str, object]] = []
+    snippets: list[str] = []
+    for item in raw_errors:
+        loc = item.get("loc") if isinstance(item, dict) else ()
+        path_parts = [str(part) for part in loc if str(part) not in {"body"}]
+        path = ".".join(path_parts) if path_parts else "request"
+        message = str(item.get("msg") or "Invalid value.") if isinstance(item, dict) else "Invalid value."
+        formatted.append(
+            {
+                "path": path,
+                "message": message,
+                "type": str(item.get("type") or "") if isinstance(item, dict) else "",
+                "input": item.get("input") if isinstance(item, dict) else None,
+            }
+        )
+        if len(snippets) < 3:
+            snippets.append(f"{path}: {message}")
+    summary = "; ".join(snippets) if snippets else "Invalid request payload."
+    return formatted, summary
+
+
+def _sanitize_generate_payload(
+    raw_payload: object,
+    *,
+    settings,
+) -> tuple[dict, dict]:
+    source = raw_payload if isinstance(raw_payload, dict) else {}
+    sanitized = dict(source)
+    related_limit = max(int(settings.llm_context_max_related_objects), 1)
+    per_catalog_limit = max(int(settings.llm_context_max_entries_per_catalog), 1)
+    total_catalog_limit = max(int(settings.llm_context_max_catalog_entries), 1)
+    recent_items_limit = max(int(settings.llm_context_max_recent_items), 1)
+    recent_chars_limit = max(int(settings.llm_context_max_recent_chars), 20)
+    notes_chars_limit = max(int(settings.llm_context_max_notes_chars), 100)
+
+    compaction = {
+        "applied": False,
+        "raw_payload_bytes": _safe_json_size(raw_payload),
+        "compacted_payload_bytes": 0,
+        "limits": {
+            "prompt_max_chars": 12000,
+            "context_notes_max_chars": notes_chars_limit,
+            "related_objects_max_items": related_limit,
+            "catalog_max_entries_per_key": per_catalog_limit,
+            "catalog_max_total_entries": total_catalog_limit,
+            "recent_context_max_items": recent_items_limit,
+            "recent_context_max_chars_per_item": recent_chars_limit,
+            "reference_id_max_chars": 120,
+            "reference_name_max_chars": 300,
+            "reference_description_max_chars": 1200,
+        },
+        "trimmed_fields": [],
+        "dropped_counts": {
+            "related_objects": 0,
+            "reference_catalog": 0,
+            "recent_batch_context": 0,
+            "invalid_related_objects": 0,
+            "invalid_catalog_entries": 0,
+        },
+    }
+
+    trimmed_fields: set[str] = set()
+
+    def _mark_trim(path: str) -> None:
+        compaction["applied"] = True
+        trimmed_fields.add(path)
+
+    prompt_value, prompt_trimmed = _trim_text(sanitized.get("prompt"), max_len=12000)
+    if "prompt" in sanitized:
+        sanitized["prompt"] = prompt_value
+        if prompt_trimmed:
+            _mark_trim("prompt")
+
+    if "context_notes" in sanitized:
+        notes_value, notes_trimmed = _trim_text(sanitized.get("context_notes"), max_len=notes_chars_limit)
+        sanitized["context_notes"] = notes_value or None
+        if notes_trimmed:
+            _mark_trim("context_notes")
+
+    if "requester" in sanitized:
+        sanitized["requester"] = str(sanitized.get("requester") or "").strip() or "local-user"
+    if "mode" in sanitized:
+        sanitized["mode"] = str(sanitized.get("mode") or "").strip() or "generate_validate_preview"
+    if "target_environment" in sanitized:
+        sanitized["target_environment"] = str(sanitized.get("target_environment") or "").strip() or "sandbox"
+
+    recent_context = sanitized.get("recent_batch_context")
+    if isinstance(recent_context, list):
+        compact_recent: list[str] = []
+        for index, value in enumerate(recent_context):
+            if len(compact_recent) >= recent_items_limit:
+                compaction["dropped_counts"]["recent_batch_context"] += 1
+                compaction["applied"] = True
+                continue
+            text, was_trimmed = _trim_text(value, max_len=recent_chars_limit)
+            if not text:
+                compaction["dropped_counts"]["recent_batch_context"] += 1
+                compaction["applied"] = True
+                continue
+            compact_recent.append(text)
+            if was_trimmed:
+                _mark_trim(f"recent_batch_context[{index}]")
+        sanitized["recent_batch_context"] = compact_recent
+
+    source_related = sanitized.get("related_objects")
+    if isinstance(source_related, list):
+        compact_related: list[dict] = []
+        for index, item in enumerate(source_related):
+            if len(compact_related) >= related_limit:
+                compaction["dropped_counts"]["related_objects"] += 1
+                compaction["applied"] = True
+                continue
+            if not isinstance(item, dict):
+                compaction["dropped_counts"]["invalid_related_objects"] += 1
+                compaction["applied"] = True
+                continue
+            entry = dict(item)
+            entry["object_type"] = _normalize_context_object_type(entry.get("object_type"))
+            entry_id, id_trimmed = _trim_text(entry.get("id"), max_len=120)
+            entry_name, name_trimmed = _trim_text(entry.get("name"), max_len=300)
+            description_value = entry.get("description")
+            if description_value is None:
+                entry_description = None
+                desc_trimmed = False
+            else:
+                entry_description, desc_trimmed = _trim_text(description_value, max_len=1200)
+                entry_description = entry_description or None
+            entry["id"] = entry_id
+            entry["name"] = entry_name
+            entry["description"] = entry_description
+            if not entry_id or not entry_name:
+                compaction["dropped_counts"]["invalid_related_objects"] += 1
+                compaction["applied"] = True
+                continue
+            compact_related.append(entry)
+            if id_trimmed:
+                _mark_trim(f"related_objects[{index}].id")
+            if name_trimmed:
+                _mark_trim(f"related_objects[{index}].name")
+            if desc_trimmed:
+                _mark_trim(f"related_objects[{index}].description")
+        sanitized["related_objects"] = compact_related
+
+    source_catalog = sanitized.get("reference_catalog")
+    if isinstance(source_catalog, dict):
+        compact_catalog: dict[str, list[dict]] = {}
+        total_kept = 0
+        for key, value in source_catalog.items():
+            if total_kept >= total_catalog_limit:
+                if isinstance(value, list):
+                    compaction["dropped_counts"]["reference_catalog"] += len(value)
+                else:
+                    compaction["dropped_counts"]["reference_catalog"] += 1
+                compaction["applied"] = True
+                continue
+            if not isinstance(value, list):
+                compaction["dropped_counts"]["invalid_catalog_entries"] += 1
+                compaction["applied"] = True
+                continue
+            compact_entries: list[dict] = []
+            for index, item in enumerate(value):
+                if len(compact_entries) >= per_catalog_limit or total_kept >= total_catalog_limit:
+                    compaction["dropped_counts"]["reference_catalog"] += 1
+                    compaction["applied"] = True
+                    continue
+                if not isinstance(item, dict):
+                    compaction["dropped_counts"]["invalid_catalog_entries"] += 1
+                    compaction["applied"] = True
+                    continue
+                entry = dict(item)
+                entry["object_type"] = _normalize_context_object_type(entry.get("object_type"))
+                entry_id, id_trimmed = _trim_text(entry.get("id"), max_len=120)
+                entry_name, name_trimmed = _trim_text(entry.get("name"), max_len=300)
+                description_value = entry.get("description")
+                if description_value is None:
+                    entry_description = None
+                    desc_trimmed = False
+                else:
+                    entry_description, desc_trimmed = _trim_text(description_value, max_len=1200)
+                    entry_description = entry_description or None
+                entry["id"] = entry_id
+                entry["name"] = entry_name
+                entry["description"] = entry_description
+                if not entry_id or not entry_name:
+                    compaction["dropped_counts"]["invalid_catalog_entries"] += 1
+                    compaction["applied"] = True
+                    continue
+                compact_entries.append(entry)
+                total_kept += 1
+                if id_trimmed:
+                    _mark_trim(f"reference_catalog.{key}[{index}].id")
+                if name_trimmed:
+                    _mark_trim(f"reference_catalog.{key}[{index}].name")
+                if desc_trimmed:
+                    _mark_trim(f"reference_catalog.{key}[{index}].description")
+            compact_catalog[str(key)] = compact_entries
+        sanitized["reference_catalog"] = compact_catalog
+
+    compaction["trimmed_fields"] = sorted(trimmed_fields)
+    compaction["compacted_payload_bytes"] = _safe_json_size(sanitized)
+    if (
+        compaction["compacted_payload_bytes"] != compaction["raw_payload_bytes"]
+        or compaction["trimmed_fields"]
+        or any(int(value) > 0 for value in compaction["dropped_counts"].values())
+    ):
+        compaction["applied"] = True
+    return sanitized, compaction
+
+
 async def _sync_schema_preflight_if_enabled() -> dict:
     service = AppScriptBridgeService()
     if not service.enabled:
@@ -178,7 +445,46 @@ async def _get_appscript_health_with_cache(
 
 
 @router.post("/generate", response_model=ImportAssistantGenerateResponse)
-async def generate(request: ImportAssistantGenerateRequest) -> ImportAssistantGenerateResponse:
+async def generate(request_payload: object = Body(...)) -> ImportAssistantGenerateResponse:
+    settings = get_settings()
+    sanitized_payload, compaction = _sanitize_generate_payload(request_payload, settings=settings)
+    try:
+        request = ImportAssistantGenerateRequest.model_validate(sanitized_payload)
+    except ValidationError as exc:
+        validation_errors, summary = _format_model_validation_errors(exc)
+        batch_id = create_request_validation_failed_batch(
+            request_payload=sanitized_payload,
+            validation_errors=validation_errors,
+            compaction=compaction,
+        )
+        top_paths = Counter(
+            str(item.get("path") or "request").strip() or "request"
+            for item in validation_errors
+            if isinstance(item, dict)
+        ).most_common(5)
+        emit_perf_event(
+            "import_assistant.request_validation_failed",
+            {
+                "batch_id": batch_id,
+                "raw_payload_bytes": int(compaction.get("raw_payload_bytes") or 0),
+                "compacted_payload_bytes": int(compaction.get("compacted_payload_bytes") or 0),
+                "compaction_applied": bool(compaction.get("applied", False)),
+                "dominant_validation_paths": [
+                    {"path": path, "count": count} for path, count in top_paths
+                ],
+            },
+        )
+        detail = _build_failure_detail(
+            stage="request",
+            code="request_validation_failed",
+            reason=f"Request validation failed. {summary}",
+            next_step="Adjust the invalid fields shown in validation_errors and retry.",
+        )
+        detail["validation_errors"] = validation_errors
+        detail["batch_id"] = batch_id
+        detail["compaction"] = compaction
+        raise HTTPException(status_code=422, detail=detail) from exc
+
     try:
         preflight = await _sync_schema_preflight_if_enabled()
         if preflight.get("status") == "error":

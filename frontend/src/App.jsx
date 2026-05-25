@@ -37,12 +37,17 @@ function extractFailurePayload(error) {
     const validationErrors = Array.isArray(detail.validation_errors)
       ? detail.validation_errors
       : [];
+    const compaction = detail.compaction && typeof detail.compaction === "object"
+      ? detail.compaction
+      : null;
     return {
       stage: detail.failure_stage || null,
       code: detail.failure_code || null,
       reason: detail.failure_reason || "Request failed.",
       nextStep: detail.next_step || null,
       validationErrors,
+      batchId: detail.batch_id || null,
+      compaction,
     };
   }
   return null;
@@ -410,7 +415,13 @@ function App() {
     },
     onError: (error) => {
       const detail = parseFailureDetail(error);
-      setLastFailureDetail(extractFailurePayload(error));
+      const failurePayload = extractFailurePayload(error);
+      setLastFailureDetail(failurePayload);
+      if (failurePayload?.batchId) {
+        setBatchId(failurePayload.batchId);
+        queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
+        queryClient.invalidateQueries({ queryKey: ["job", failurePayload.batchId] });
+      }
       appendActivity("error", detail);
       appendTimeline("assistant", `Generation failed: ${detail}`);
     },
@@ -1782,6 +1793,32 @@ function App() {
                     ))}
                   </div>
                 ) : null}
+              {lastFailureDetail.compaction ? (
+                <div className="space-y-1 text-xs text-rose-300">
+                  <p>
+                    Compaction: {lastFailureDetail.compaction.applied ? "applied" : "not needed"} | raw{" "}
+                    {Number(lastFailureDetail.compaction.raw_payload_bytes || 0)}B {"->"} compacted{" "}
+                    {Number(lastFailureDetail.compaction.compacted_payload_bytes || 0)}B
+                  </p>
+                  {Array.isArray(lastFailureDetail.compaction.trimmed_fields)
+                    && lastFailureDetail.compaction.trimmed_fields.length > 0 ? (
+                      <p>
+                        Trimmed fields:{" "}
+                        {lastFailureDetail.compaction.trimmed_fields.slice(0, 4).join(", ")}
+                      </p>
+                    ) : null}
+                  {lastFailureDetail.compaction.dropped_counts ? (
+                    <p>
+                      Dropped items: related={Number(lastFailureDetail.compaction.dropped_counts.related_objects || 0)},{" "}
+                      catalog={Number(lastFailureDetail.compaction.dropped_counts.reference_catalog || 0)},{" "}
+                      recent={Number(lastFailureDetail.compaction.dropped_counts.recent_batch_context || 0)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {lastFailureDetail.batchId ? (
+                <p className="text-xs text-rose-300">Logged batch: {lastFailureDetail.batchId}</p>
+              ) : null}
               {lastFailureDetail.nextStep ? (
                 <p className="text-xs text-rose-300">Next step: {lastFailureDetail.nextStep}</p>
               ) : null}

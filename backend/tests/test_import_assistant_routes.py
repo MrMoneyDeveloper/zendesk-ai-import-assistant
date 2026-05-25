@@ -191,7 +191,74 @@ def test_generate_returns_structured_request_validation_failure(monkeypatch, tmp
     assert detail["failure_stage"] == "request"
     assert detail["failure_code"] == "request_validation_failed"
     assert isinstance(detail["validation_errors"], list)
-    assert detail["validation_errors"][0]["path"] == "focus_object_types"
+    assert detail["validation_errors"][0]["path"].startswith("focus_object_types")
+    assert isinstance(detail.get("batch_id"), str)
+    assert isinstance(detail.get("compaction"), dict)
+
+    store = get_batch_store()
+    failed_batch = store.get_batch(detail["batch_id"])
+    assert failed_batch is not None
+    assert failed_batch["status"] == "failed"
+    request_validation_meta = failed_batch.get("metadata", {}).get("request_validation", {})
+    assert isinstance(request_validation_meta.get("validation_errors"), list)
+
+
+def test_generate_auto_compacts_oversized_reference_payload(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.9}
+
+    async def fake_generator(plan: dict, **kwargs):
+        return [
+            {
+                "title": "Compaction Trigger",
+                "conditions": [{"field": "status", "operator": "is", "value": "new"}],
+                "actions": [{"field": "set_tags", "value": "compaction_test"}],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    oversized_name = "A" * 700
+    oversized_description = "B" * 2500
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": "Create one trigger",
+            "related_objects": [
+                {
+                    "object_type": "group",
+                    "id": "g1",
+                    "name": oversized_name,
+                    "description": oversized_description,
+                }
+            ],
+            "reference_catalog": {
+                "groups": [
+                    {
+                        "object_type": "group",
+                        "id": "group-1",
+                        "name": oversized_name,
+                        "description": oversized_description,
+                    }
+                ]
+            },
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview_ready"
 
 
 def test_job_control_updates_run_control(monkeypatch, tmp_path):
