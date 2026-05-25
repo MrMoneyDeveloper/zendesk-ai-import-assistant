@@ -15,6 +15,9 @@ from app.helpers.json_parser import extract_json_payload
 from app.models.schemas import (
     ApprovalResponse,
     ApprovalSummary,
+    CheckpointDecisionResponse,
+    CheckpointItem,
+    CheckpointListResponse,
     ImportAssistantGenerateRequest,
     ImportAssistantGenerateResponse,
     JobListItem,
@@ -612,6 +615,435 @@ def _utc_now() -> str:
 
 def _new_batch_id() -> str:
     return f"BATCH-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:6].upper()}"
+
+
+TERMINAL_RUN_STATUSES = {
+    "preview_ready",
+    "failed",
+    "approved",
+    "partially_approved",
+    "deployed",
+    "deployed_partial",
+    "deploy_failed",
+}
+
+
+def _normalize_run_control(raw: dict | None) -> dict:
+    source = raw if isinstance(raw, dict) else {}
+    return {
+        "pause_requested": bool(source.get("pause_requested", False)),
+        "pause_after_wave": bool(source.get("pause_after_wave", False)),
+        "cancel_requested": bool(source.get("cancel_requested", False)),
+        "cancel_reason": str(source.get("cancel_reason") or ""),
+        "updated_at": str(source.get("updated_at") or ""),
+        "updated_by": str(source.get("updated_by") or ""),
+    }
+
+
+def set_batch_run_control(
+    *,
+    batch_id: str,
+    action: str,
+    requested_by: str = "local-user",
+) -> dict:
+    store = get_batch_store()
+    batch = store.get_batch(batch_id)
+    if not batch:
+        raise KeyError(batch_id)
+
+    metadata = batch.get("metadata", {}) if isinstance(batch.get("metadata", {}), dict) else {}
+    control = _normalize_run_control(metadata.get("run_control", {}))
+    action_key = str(action or "").strip().lower()
+
+    if action_key == "pause":
+        control["pause_requested"] = True
+    elif action_key == "resume":
+        control["pause_requested"] = False
+        control["pause_after_wave"] = False
+    elif action_key == "cancel":
+        control["cancel_requested"] = True
+        control["pause_requested"] = False
+        if not control.get("cancel_reason"):
+            control["cancel_reason"] = "manual_cancel"
+    elif action_key == "pause_at_next_wave":
+        control["pause_after_wave"] = True
+    elif action_key == "clear_pause_after_wave":
+        control["pause_after_wave"] = False
+    else:
+        raise ValueError(f"Unsupported run control action: {action_key}")
+
+    control["updated_at"] = _utc_now()
+    control["updated_by"] = str(requested_by or "local-user")
+
+    store.update_batch(
+        batch_id,
+        {
+            "metadata": {
+                **metadata,
+                "run_control": control,
+            }
+        },
+    )
+    updated = store.get_batch(batch_id) or batch
+    return {
+        "batch_id": updated.get("batch_id"),
+        "status": updated.get("status"),
+        "run_control": control,
+    }
+
+
+def _normalize_checkpoint_item(raw: dict | None) -> dict:
+    source = raw if isinstance(raw, dict) else {}
+    return {
+        "checkpoint_id": str(source.get("checkpoint_id") or ""),
+        "wave": max(int(source.get("wave", 0) or 0), 0),
+        "created_at": str(source.get("created_at") or _utc_now()),
+        "status": str(source.get("status") or "pending"),
+        "summary": source.get("summary", {}) if isinstance(source.get("summary", {}), dict) else {},
+        "preview_snapshot_ref": str(source.get("preview_snapshot_ref") or ""),
+        "decision_at": str(source.get("decision_at") or "") or None,
+        "decision_by": str(source.get("decision_by") or "") or None,
+        "decision_note": str(source.get("decision_note") or "") or None,
+    }
+
+
+def _metadata_dict(batch: dict | None) -> dict:
+    if not isinstance(batch, dict):
+        return {}
+    metadata = batch.get("metadata", {})
+    if not isinstance(metadata, dict):
+        return {}
+    return metadata
+
+
+def _checkpoint_list_from_metadata(metadata: dict | None) -> list[dict]:
+    if not isinstance(metadata, dict):
+        return []
+    source = metadata.get("checkpoints", [])
+    if not isinstance(source, list):
+        return []
+    checkpoints: list[dict] = []
+    for item in source:
+        normalized = _normalize_checkpoint_item(item if isinstance(item, dict) else {})
+        if normalized["checkpoint_id"]:
+            checkpoints.append(normalized)
+    return checkpoints
+
+
+def _build_checkpoint_summary(
+    *,
+    wave: int,
+    wave_position: int,
+    total_waves: int,
+    wave_meta: dict | None,
+    generated_counts: dict | None,
+) -> dict:
+    meta = wave_meta if isinstance(wave_meta, dict) else {}
+    counts = generated_counts if isinstance(generated_counts, dict) else {}
+    return {
+        "wave": wave,
+        "wave_position": wave_position,
+        "total_waves": total_waves,
+        "chunk_count": int(meta.get("chunks", 0) or 0),
+        "created": int(meta.get("created", 0) or 0),
+        "reused": int(meta.get("reused", 0) or 0),
+        "updated": int(meta.get("updated", 0) or 0),
+        "blocked": int(meta.get("blocked", 0) or 0),
+        "generated_records": int(meta.get("generated_records", 0) or 0),
+        "generated_counts": counts,
+    }
+
+
+def _append_wave_checkpoint(
+    *,
+    batch_id: str,
+    wave: int,
+    wave_position: int,
+    total_waves: int,
+    wave_meta: dict | None,
+    generated_counts: dict | None,
+) -> dict:
+    store = get_batch_store()
+    batch = store.get_batch(batch_id)
+    if not batch:
+        raise KeyError(batch_id)
+    metadata = _metadata_dict(batch)
+    checkpoints = _checkpoint_list_from_metadata(metadata)
+    checkpoint_id = f"CHK-{wave:02d}-{uuid4().hex[:8].upper()}"
+    summary = _build_checkpoint_summary(
+        wave=wave,
+        wave_position=wave_position,
+        total_waves=total_waves,
+        wave_meta=wave_meta,
+        generated_counts=generated_counts,
+    )
+    checkpoint = {
+        "checkpoint_id": checkpoint_id,
+        "wave": int(wave),
+        "created_at": _utc_now(),
+        "status": "pending",
+        "summary": summary,
+        "preview_snapshot_ref": f"/api/import-assistant/preview/{batch_id}?checkpoint={checkpoint_id}",
+        "decision_at": None,
+        "decision_by": None,
+        "decision_note": None,
+    }
+    checkpoints.append(checkpoint)
+    store.update_batch(
+        batch_id,
+        {
+            "metadata": {
+                **metadata,
+                "checkpoints": checkpoints,
+            }
+        },
+    )
+    store.append_status(
+        batch_id,
+        str(batch.get("status") or "generating"),
+        (
+            f"Checkpoint {checkpoint_id} created for wave {wave_position}/{total_waves}. "
+            "Generation continues while confirmation is pending."
+        ),
+    )
+    return checkpoint
+
+
+def get_job_checkpoints(batch_id: str) -> CheckpointListResponse:
+    store = get_batch_store()
+    batch = store.get_batch(batch_id)
+    if not batch:
+        raise KeyError(batch_id)
+    metadata = _metadata_dict(batch)
+    checkpoints = _checkpoint_list_from_metadata(metadata)
+    return CheckpointListResponse(
+        batch_id=batch_id,
+        status=str(batch.get("status", "received")),
+        checkpoints=[CheckpointItem(**item) for item in checkpoints],
+    )
+
+
+async def _execute_checkpoint_rollback(
+    *,
+    batch_id: str,
+    checkpoint_id: str,
+    note: str,
+    requested_by: str,
+) -> dict:
+    store = get_batch_store()
+    appscript = AppScriptBridgeService()
+    batch = store.get_batch(batch_id)
+    if not batch:
+        raise KeyError(batch_id)
+
+    metadata = _metadata_dict(batch)
+    records = list(batch.get("records", []) or [])
+    rollback_payload = {
+        "status": "rollback_started",
+        "checkpoint_id": checkpoint_id,
+        "requested_by": requested_by,
+        "note": note,
+        "started_at": _utc_now(),
+        "local": {"status": "pending"},
+        "sheet": {"status": "pending"},
+        "deploy_undo": {"status": "not_applicable"},
+    }
+    store.update_batch(
+        batch_id,
+        {
+            "metadata": {
+                **metadata,
+                "rollback": rollback_payload,
+            }
+        },
+    )
+    store.append_status(batch_id, str(batch.get("status") or "generating"), "Rollback started.")
+
+    rollback_payload["local"] = {
+        "status": "ok",
+        "cleared_records": len(records),
+    }
+    store.update_batch(
+        batch_id,
+        {
+            "records": [],
+            "generated_counts": {},
+            "validation_summary": {"passed": 0, "warnings": 0, "blocked": 0},
+            "metadata": {
+                **_metadata_dict(store.get_batch(batch_id)),
+                "rollback": rollback_payload,
+            },
+        },
+    )
+
+    if appscript.enabled:
+        rollback_result_raw = await appscript.invoke(
+            action="rollback_batch",
+            payload={
+                "batch_id": batch_id,
+                "checkpoint_id": checkpoint_id,
+                "note": note,
+            },
+        )
+        rollback_result = _normalize_appscript_action_result(
+            rollback_result_raw,
+            action="rollback_batch",
+        )
+        if rollback_result.get("status") == "ok":
+            rollback_payload["sheet"] = {
+                "status": "ok",
+                "detail": rollback_result.get("detail"),
+                "http_status": rollback_result.get("http_status"),
+                "result": rollback_result.get("data", {}),
+            }
+        else:
+            rollback_payload["sheet"] = {
+                "status": "fallback_mark_aborted",
+                "detail": rollback_result.get("detail")
+                or "rollback_batch unavailable; sheet rows should be marked aborted manually.",
+                "http_status": rollback_result.get("http_status"),
+            }
+    else:
+        rollback_payload["sheet"] = {
+            "status": "skipped",
+            "detail": "Apps Script bridge not configured.",
+            "http_status": None,
+        }
+
+    sheet_status = str(rollback_payload.get("sheet", {}).get("status", ""))
+    if sheet_status == "ok":
+        rollback_payload["status"] = "rollback_completed"
+        failure_code = "checkpoint_rejected"
+    else:
+        rollback_payload["status"] = "rollback_partial"
+        failure_code = "rollback_partial"
+    rollback_payload["completed_at"] = _utc_now()
+
+    current = store.get_batch(batch_id) or batch
+    current_meta = _metadata_dict(current)
+    store.update_batch(
+        batch_id,
+        {
+            "status": "failed",
+            "metadata": {
+                **current_meta,
+                "rollback": rollback_payload,
+                "failure": {
+                    "failure_stage": "generate",
+                    "failure_code": failure_code,
+                    "failure_reason": (
+                        "Checkpoint rejected; rollback completed."
+                        if failure_code == "checkpoint_rejected"
+                        else "Checkpoint rejected; rollback partially completed."
+                    ),
+                    "next_step": (
+                        "Review rollback metadata and rerun generate."
+                        if failure_code == "checkpoint_rejected"
+                        else "Review rollback metadata and complete manual cleanup before rerunning."
+                    ),
+                },
+            },
+        },
+    )
+    store.append_status(
+        batch_id,
+        "failed",
+        (
+            "Rollback completed."
+            if failure_code == "checkpoint_rejected"
+            else "Rollback finished with partial cleanup."
+        ),
+    )
+    return rollback_payload
+
+
+async def decide_job_checkpoint(
+    *,
+    batch_id: str,
+    checkpoint_id: str,
+    decision: str,
+    requested_by: str = "local-user",
+    note: str = "",
+) -> CheckpointDecisionResponse:
+    store = get_batch_store()
+    batch = store.get_batch(batch_id)
+    if not batch:
+        raise KeyError(batch_id)
+
+    decision_key = str(decision or "").strip().lower()
+    if decision_key not in {"accept", "reject"}:
+        raise ValueError("Unsupported checkpoint decision.")
+
+    metadata = _metadata_dict(batch)
+    checkpoints = _checkpoint_list_from_metadata(metadata)
+    target_index = -1
+    for index, checkpoint in enumerate(checkpoints):
+        if str(checkpoint.get("checkpoint_id")) == checkpoint_id:
+            target_index = index
+            break
+    if target_index < 0:
+        raise KeyError(checkpoint_id)
+
+    checkpoint = checkpoints[target_index]
+    checkpoint["status"] = "accepted" if decision_key == "accept" else "rejected"
+    checkpoint["decision_at"] = _utc_now()
+    checkpoint["decision_by"] = str(requested_by or "local-user")
+    checkpoint["decision_note"] = str(note or "").strip() or None
+    checkpoints[target_index] = checkpoint
+
+    run_control = _normalize_run_control(metadata.get("run_control", {}))
+    rollback_metadata: dict = {}
+    if decision_key == "reject":
+        run_control["cancel_requested"] = True
+        run_control["pause_requested"] = False
+        run_control["pause_after_wave"] = False
+        run_control["cancel_reason"] = f"checkpoint_rejected:{checkpoint_id}"
+        run_control["updated_at"] = _utc_now()
+        run_control["updated_by"] = str(requested_by or "local-user")
+    store.update_batch(
+        batch_id,
+        {
+            "metadata": {
+                **metadata,
+                "checkpoints": checkpoints,
+                "run_control": run_control,
+            }
+        },
+    )
+    store.append_status(
+        batch_id,
+        str((store.get_batch(batch_id) or batch).get("status") or "generating"),
+        (
+            f"Checkpoint {checkpoint_id} accepted by {requested_by}."
+            if decision_key == "accept"
+            else f"Checkpoint {checkpoint_id} rejected by {requested_by}. Cancelling run and starting rollback."
+        ),
+    )
+
+    if decision_key == "reject":
+        rollback_metadata = await _execute_checkpoint_rollback(
+            batch_id=batch_id,
+            checkpoint_id=checkpoint_id,
+            note=note,
+            requested_by=requested_by,
+        )
+        latest = store.get_batch(batch_id) or batch
+    else:
+        latest = store.get_batch(batch_id) or batch
+        rollback_metadata = _metadata_dict(latest).get("rollback", {})
+
+    refreshed_checkpoints = _checkpoint_list_from_metadata(_metadata_dict(latest))
+    target = next(
+        (item for item in refreshed_checkpoints if item.get("checkpoint_id") == checkpoint_id),
+        checkpoint,
+    )
+    return CheckpointDecisionResponse(
+        batch_id=batch_id,
+        status=str(latest.get("status", "received")),
+        checkpoint=CheckpointItem(**target),
+        rollback=rollback_metadata if isinstance(rollback_metadata, dict) else {},
+        run_control=_normalize_run_control(_metadata_dict(latest).get("run_control", {})),
+    )
 
 
 def _is_deterministic_llm_error(exc: Exception) -> bool:
@@ -4424,11 +4856,16 @@ async def generate_import_assistant_batch(
         "generated_counts": {},
         "validation_summary": {"passed": 0, "warnings": 0, "blocked": 0},
         "planning_summary": {},
-        "metadata": {},
+        "metadata": {
+            "run_control": _normalize_run_control({}),
+            "checkpoints": [],
+            "rollback": {},
+        },
     }
     store.save_batch(batch)
     planner_telemetry: dict = {}
     generator_telemetry: dict = {}
+    pause_notified = False
     chunk_estimate: dict = {"estimated_count": 1, "sources": ["default"], "numeric_matches": [], "enumerated_items": 0}
     estimated_requested_records = 1
     pre_planner_object_targets: dict[str, int] = {}
@@ -4447,6 +4884,75 @@ async def generate_import_assistant_batch(
         },
         "assumptions_applied": [],
     }
+
+    def _append_control_status(message: str) -> None:
+        current = store.get_batch(batch_id) or {}
+        current_status = str(current.get("status") or "generating").strip() or "generating"
+        store.append_status(batch_id, current_status, message)
+
+    def _merge_control_metadata(payload: dict) -> dict:
+        current_metadata = _metadata_dict(store.get_batch(batch_id))
+        return {
+            **payload,
+            "run_control": _normalize_run_control(current_metadata.get("run_control", {})),
+            "checkpoints": _checkpoint_list_from_metadata(current_metadata),
+            "rollback": (
+                current_metadata.get("rollback", {})
+                if isinstance(current_metadata.get("rollback", {}), dict)
+                else {}
+            ),
+        }
+
+    async def _honor_run_control(*, checkpoint: str, wave_checkpoint: bool = False) -> None:
+        nonlocal pause_notified
+        current = store.get_batch(batch_id) or {}
+        metadata = _metadata_dict(current)
+        control = _normalize_run_control(metadata.get("run_control", {}))
+        if wave_checkpoint and control.get("pause_after_wave") and not control.get("pause_requested"):
+            control["pause_requested"] = True
+            control["pause_after_wave"] = False
+            control["updated_at"] = _utc_now()
+            control["updated_by"] = control.get("updated_by") or "local-user"
+            store.update_batch(
+                batch_id,
+                {
+                    "metadata": {
+                        **metadata,
+                        "run_control": control,
+                    }
+                },
+            )
+            _append_control_status(
+                f"Visual pause flag reached at {checkpoint}. Generation continues in background."
+            )
+            pause_notified = True
+
+        if control.get("cancel_requested"):
+            cancel_reason = str(control.get("cancel_reason") or "").strip().lower()
+            if cancel_reason.startswith("checkpoint_rejected:"):
+                rejected_checkpoint = cancel_reason.split(":", 1)[-1] or "checkpoint"
+                raise GenerateFailureError(
+                    code="checkpoint_rejected",
+                    reason=(
+                        f"Checkpoint {rejected_checkpoint} was rejected during {checkpoint}. "
+                        "Run cancelled and rollback requested."
+                    ),
+                    next_step="Review rollback outcome and run a new generate pass when ready.",
+                )
+            raise GenerateFailureError(
+                code="run_cancelled",
+                reason=f"Run cancelled by user during {checkpoint}.",
+                next_step="Submit a new prompt when you are ready to run again.",
+            )
+
+        if control.get("pause_requested") and not pause_notified:
+            _append_control_status(
+                f"Visual pause enabled at {checkpoint}. Generation is still running in the background."
+            )
+            pause_notified = True
+        if not control.get("pause_requested") and pause_notified:
+            _append_control_status(f"Visual pause cleared at {checkpoint}.")
+            pause_notified = False
 
     try:
         llm_context_standard = _build_llm_context_bundle(
@@ -4497,10 +5003,11 @@ async def generate_import_assistant_batch(
             and not force_wave_chunk_path
         )
         store.append_status(batch_id, "request_validated", "Incoming request validated.")
+        await _honor_run_control(checkpoint="planning start")
     except Exception as exc:  # noqa: BLE001
         failure_reason = f"Request initialization failed: {exc}"
         next_step = "Retry generation after resolving request initialization/runtime issues."
-        failure_metadata = {
+        failure_metadata = _merge_control_metadata({
             "benchmark": {"enabled": benchmark_mode},
             "llm_routes": llm_routes_metadata,
             "failure": {
@@ -4509,7 +5016,7 @@ async def generate_import_assistant_batch(
                 "failure_reason": failure_reason,
                 "next_step": next_step,
             },
-        }
+        })
         status_written = False
         try:
             store.append_status(batch_id, "failed", failure_reason)
@@ -4768,7 +5275,7 @@ async def generate_import_assistant_batch(
             batch_id,
             {
                 "status": "failed",
-                "metadata": {
+                "metadata": _merge_control_metadata({
                     "benchmark": {"enabled": benchmark_mode},
                     "planning": {
                         "planner_bypassed": planner_bypassed,
@@ -4788,7 +5295,7 @@ async def generate_import_assistant_batch(
                         "failure_reason": exc.reason,
                         "next_step": exc.next_step,
                     },
-                },
+                }),
             },
         )
         raise
@@ -4866,7 +5373,7 @@ async def generate_import_assistant_batch(
             {
                 "status": "failed",
                 "planning_summary": planning_summary,
-                "metadata": {
+                "metadata": _merge_control_metadata({
                     "benchmark": {"enabled": benchmark_mode},
                     "planning": {
                         "planner_bypassed": planner_bypassed,
@@ -4897,7 +5404,7 @@ async def generate_import_assistant_batch(
                         "failure_reason": failure_reason,
                         "next_step": "Split this request into smaller batches and submit again.",
                     },
-                },
+                }),
             },
         )
         raise GenerateFailureError(
@@ -4960,6 +5467,9 @@ async def generate_import_assistant_batch(
             chunk_targets_manifest: list[int] = []
 
             for wave_position, wave in enumerate(ordered_waves, start=1):
+                await _honor_run_control(
+                    checkpoint=f"wave {wave_position}/{total_wave_count} start"
+                )
                 wave_items = wave_buckets.get(wave, [])
                 wave_meta = {
                     "wave": wave,
@@ -5091,6 +5601,12 @@ async def generate_import_assistant_batch(
                     )
 
                     for local_chunk_index, item_chunk_target in enumerate(item_chunk_targets, start=1):
+                        await _honor_run_control(
+                            checkpoint=(
+                                f"wave {wave_position}/{total_wave_count} "
+                                f"{object_type} chunk {local_chunk_index}/{len(item_chunk_targets)}"
+                            )
+                        )
                         model_hint = (
                             f", model={item_generator_model}"
                             if item_generator_model and item_generator_model != primary_generator_model
@@ -5470,6 +5986,28 @@ async def generate_import_assistant_batch(
                         generator_chunk_telemetry.append(chunk_entry)
                     item_meta["status"] = "completed"
                 wave_meta["status"] = "completed"
+                _append_control_status(
+                    (
+                        f"Wave {wave_position}/{total_wave_count} completed: "
+                        f"chunks={wave_meta['chunks']}, created={wave_meta['created']}, "
+                        f"reused={wave_meta['reused']}, updated={wave_meta['updated']}, "
+                        f"blocked={wave_meta['blocked']}."
+                    )
+                )
+                cumulative_counts = _count_generated(generated_data)
+                checkpoint_item = _append_wave_checkpoint(
+                    batch_id=batch_id,
+                    wave=int(wave),
+                    wave_position=wave_position,
+                    total_waves=total_wave_count,
+                    wave_meta=wave_meta,
+                    generated_counts=cumulative_counts,
+                )
+                wave_meta["checkpoint_id"] = checkpoint_item.get("checkpoint_id")
+                await _honor_run_control(
+                    checkpoint=f"wave {wave_position}/{total_wave_count} checkpoint",
+                    wave_checkpoint=True,
+                )
 
             chunking_metadata["activated"] = bool(len(chunk_targets_manifest) > 1)
             chunking_metadata["chunk_targets"] = chunk_targets_manifest or [max(1, estimated_requested_records)]
@@ -5482,6 +6020,9 @@ async def generate_import_assistant_batch(
         elif chunking_metadata["activated"]:
             chunk_targets = list(chunking_metadata.get("chunk_targets", []) or [])
             for index, target_count in enumerate(chunk_targets, start=1):
+                await _honor_run_control(
+                    checkpoint=f"chunk {index}/{len(chunk_targets)}"
+                )
                 if index > 1:
                     wait_seconds = max(settings.llm_auto_chunk_pacing_seconds, 0.0)
                     if settings.llm_auto_chunk_pacing_jitter_seconds > 0:
@@ -5789,6 +6330,8 @@ async def generate_import_assistant_batch(
             failure_code = exc.code or default_failure_code
             failure_message = exc.reason or str(exc)
             next_step_message = exc.next_step or next_step_message
+            if failure_code == "run_cancelled":
+                status_message_prefix = "Run cancelled"
         if isinstance(exc, GeneratorStructuredOutputError):
             error_meta = exc.as_metadata()
             generator_error_metadata = error_meta
@@ -5842,7 +6385,7 @@ async def generate_import_assistant_batch(
             batch_id,
             {
                 "planning_summary": planning_summary,
-                "metadata": {
+                "metadata": _merge_control_metadata({
                     "benchmark": {
                         "enabled": benchmark_mode,
                     },
@@ -5874,7 +6417,7 @@ async def generate_import_assistant_batch(
                         "failure_reason": failure_message,
                         "next_step": next_step_message,
                     },
-                },
+                }),
             },
         )
         raise GenerateFailureError(
@@ -5928,6 +6471,7 @@ async def generate_import_assistant_batch(
     canonicalization_metadata: dict = {}
 
     def _build_shared_metadata() -> dict:
+        current_metadata = _metadata_dict(store.get_batch(batch_id))
         return {
             "benchmark": {
                 "enabled": benchmark_mode,
@@ -5962,6 +6506,13 @@ async def generate_import_assistant_batch(
             "recent_batch_context": request.recent_batch_context,
             "ambiguity_score": ambiguity_score,
             "ambiguity_threshold": ambiguity_threshold,
+            "run_control": _normalize_run_control(current_metadata.get("run_control", {})),
+            "checkpoints": _checkpoint_list_from_metadata(current_metadata),
+            "rollback": (
+                current_metadata.get("rollback", {})
+                if isinstance(current_metadata.get("rollback", {}), dict)
+                else {}
+            ),
         }
 
     def _raise_post_generation_failure(
@@ -6079,6 +6630,7 @@ async def generate_import_assistant_batch(
         generated_counts = _count_generated(preview_records)
 
         post_generation_stage = "staging"
+        await _honor_run_control(checkpoint="staging handoff")
         store.append_status(batch_id, "staging", "Staging batch to Google Sheets.")
         appscript_payload = {
             "batch_id": batch_id,

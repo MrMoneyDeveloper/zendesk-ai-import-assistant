@@ -25,6 +25,24 @@ export async function listJobs(limit = 20) {
   return res.data;
 }
 
+export async function controlBatchJob(batchId, payload) {
+  const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/jobs/${batchId}/control`, payload);
+  return res.data;
+}
+
+export async function getCheckpoints(batchId) {
+  const res = await axios.get(`${IMPORT_ASSISTANT_ROOT}/jobs/${batchId}/checkpoints`);
+  return res.data;
+}
+
+export async function decideCheckpoint(batchId, checkpointId, payload) {
+  const res = await axios.post(
+    `${IMPORT_ASSISTANT_ROOT}/jobs/${batchId}/checkpoints/${checkpointId}/decision`,
+    payload
+  );
+  return res.data;
+}
+
 export async function getPreview(batchId) {
   const res = await axios.get(`${IMPORT_ASSISTANT_ROOT}/preview/${batchId}`);
   return res.data;

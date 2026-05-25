@@ -194,6 +194,156 @@ def test_generate_returns_structured_request_validation_failure(monkeypatch, tmp
     assert detail["validation_errors"][0]["path"] == "focus_object_types"
 
 
+def test_job_control_updates_run_control(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.9}
+
+    async def fake_generator(plan: dict, **kwargs):
+        return [
+            {
+                "title": "Control Test Trigger",
+                "conditions": [{"field": "status", "operator": "is", "value": "new"}],
+                "actions": [{"field": "set_tags", "value": "control_test"}],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fake_generator)
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    generate_resp = client.post(
+        "/api/import-assistant/generate",
+        json={"prompt": "create one control test trigger"},
+    )
+    assert generate_resp.status_code == 200
+    batch_id = generate_resp.json()["batch_id"]
+
+    pause_resp = client.post(
+        f"/api/import-assistant/jobs/{batch_id}/control",
+        json={"action": "pause", "requested_by": "pytest"},
+    )
+    assert pause_resp.status_code == 200
+    pause_payload = pause_resp.json()
+    assert pause_payload["run_control"]["pause_requested"] is True
+    assert pause_payload["run_control"]["updated_by"] == "pytest"
+
+    resume_resp = client.post(
+        f"/api/import-assistant/jobs/{batch_id}/control",
+        json={"action": "resume", "requested_by": "pytest"},
+    )
+    assert resume_resp.status_code == 200
+    assert resume_resp.json()["run_control"]["pause_requested"] is False
+
+
+def test_checkpoint_endpoints_list_and_reject(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    from app.main import app
+
+    client = TestClient(app)
+    store = get_batch_store()
+    batch_id = "BATCH-CHECKPOINT-001"
+    now = "2026-05-23T10:00:00Z"
+    store.save_batch(
+        {
+            "batch_id": batch_id,
+            "status": "generating",
+            "prompt": "Create a full business setup.",
+            "requester": "pytest-user",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "created_at": now,
+            "updated_at": now,
+            "status_history": [{"status": "generating", "message": "Wave execution in progress.", "at": now}],
+            "records": [
+                {
+                    "record_id": "REC-0001",
+                    "object_type": "groups",
+                    "title": "Billing Team",
+                    "preview_summary": "Group record.",
+                    "validation_status": "passed",
+                    "warnings": [],
+                    "blocked_reason": None,
+                    "import_decision": "pending_review",
+                    "deployable": True,
+                    "conditions": [],
+                    "actions": [],
+                    "deployment_status": "pending",
+                    "zendesk_object_id": None,
+                    "execution_message": "",
+                }
+            ],
+            "generated_counts": {"groups": 1},
+            "validation_summary": {"passed": 1, "warnings": 0, "blocked": 0},
+            "planning_summary": {"object_type": "groups"},
+            "metadata": {
+                "run_control": {
+                    "pause_requested": False,
+                    "pause_after_wave": False,
+                    "cancel_requested": False,
+                    "cancel_reason": "",
+                    "updated_at": now,
+                    "updated_by": "pytest-user",
+                },
+                "checkpoints": [
+                    {
+                        "checkpoint_id": "CHK-01-AAAA1111",
+                        "wave": 1,
+                        "created_at": now,
+                        "status": "pending",
+                        "summary": {"wave": 1, "generated_counts": {"groups": 1}},
+                        "preview_snapshot_ref": f"/api/import-assistant/preview/{batch_id}?checkpoint=CHK-01-AAAA1111",
+                        "decision_at": None,
+                        "decision_by": None,
+                        "decision_note": None,
+                    }
+                ],
+                "rollback": {},
+            },
+        }
+    )
+
+    checkpoints_resp = client.get(f"/api/import-assistant/jobs/{batch_id}/checkpoints")
+    assert checkpoints_resp.status_code == 200
+    checkpoints_payload = checkpoints_resp.json()
+    assert len(checkpoints_payload["checkpoints"]) == 1
+    assert checkpoints_payload["checkpoints"][0]["checkpoint_id"] == "CHK-01-AAAA1111"
+
+    reject_resp = client.post(
+        f"/api/import-assistant/jobs/{batch_id}/checkpoints/CHK-01-AAAA1111/decision",
+        json={"decision": "reject", "requested_by": "pytest-user", "note": "Reject wave 1"},
+    )
+    assert reject_resp.status_code == 200
+    reject_payload = reject_resp.json()
+    assert reject_payload["checkpoint"]["status"] == "rejected"
+    assert reject_payload["rollback"]["status"] in {"rollback_completed", "rollback_partial"}
+
+    job_resp = client.get(f"/api/import-assistant/jobs/{batch_id}")
+    assert job_resp.status_code == 200
+    job_payload = job_resp.json()
+    assert job_payload["status"] == "failed"
+    assert job_payload["metadata"]["run_control"]["cancel_requested"] is True
+    preview_resp = client.get(f"/api/import-assistant/preview/{batch_id}")
+    assert preview_resp.status_code == 200
+    assert preview_resp.json()["records"] == []
+
+
 def test_generate_recovers_from_planner_failed_generation(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))

@@ -326,6 +326,62 @@ class ApprovalResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+RunControlAction = Literal[
+    "pause",
+    "resume",
+    "cancel",
+    "pause_at_next_wave",
+    "clear_pause_after_wave",
+]
+
+
+class RunControlRequest(BaseModel):
+    action: RunControlAction
+    requested_by: str = "local-user"
+
+
+class RunControlResponse(BaseModel):
+    batch_id: str
+    status: BatchStatus
+    run_control: dict[str, Any] = Field(default_factory=dict)
+
+
+CheckpointStatus = Literal["pending", "accepted", "rejected", "superseded"]
+CheckpointDecision = Literal["accept", "reject"]
+
+
+class CheckpointItem(BaseModel):
+    checkpoint_id: str
+    wave: int
+    created_at: str
+    status: CheckpointStatus = "pending"
+    summary: dict[str, Any] = Field(default_factory=dict)
+    preview_snapshot_ref: str = ""
+    decision_at: str | None = None
+    decision_by: str | None = None
+    decision_note: str | None = None
+
+
+class CheckpointListResponse(BaseModel):
+    batch_id: str
+    status: BatchStatus
+    checkpoints: list[CheckpointItem] = Field(default_factory=list)
+
+
+class CheckpointDecisionRequest(BaseModel):
+    decision: CheckpointDecision
+    requested_by: str = "local-user"
+    note: str = ""
+
+
+class CheckpointDecisionResponse(BaseModel):
+    batch_id: str
+    status: BatchStatus
+    checkpoint: CheckpointItem
+    rollback: dict[str, Any] = Field(default_factory=dict)
+    run_control: dict[str, Any] = Field(default_factory=dict)
+
+
 class AppScriptActionRequest(BaseModel):
     action: Literal[
         "setup_once",
@@ -335,6 +391,7 @@ class AppScriptActionRequest(BaseModel):
         "validate_batch",
         "get_batch_preview",
         "stage_validate_preview",
+        "rollback_batch",
         "update_approval_status",
         "write_execution_log",
         "get_execution_summary",

@@ -12,12 +12,17 @@ from app.models.schemas import (
     AttachmentExtractResponse,
     ApprovalRequest,
     ApprovalResponse,
+    CheckpointDecisionRequest,
+    CheckpointDecisionResponse,
+    CheckpointListResponse,
     ImportAssistantGenerateRequest,
     ImportAssistantGenerateResponse,
     IntegrationStatusResponse,
     JobListResponse,
     JobStatusResponse,
     PreviewResponse,
+    RunControlRequest,
+    RunControlResponse,
     ZendeskContextRequest,
     ZendeskContextResponse,
     ZendeskDeployRequest,
@@ -30,9 +35,12 @@ from app.services.import_assistant_service import (
     apply_approval,
     deploy_batch_to_zendesk,
     generate_import_assistant_batch,
+    get_job_checkpoints,
     list_recent_batches,
+    decide_job_checkpoint,
     get_job_status,
     get_preview,
+    set_batch_run_control,
 )
 from app.services.appscript_bridge import AppScriptBridgeService
 from app.services.attachment_extractor import (
@@ -56,6 +64,12 @@ SCHEMA_SYNC_MODELS = [
     "PreviewResponse",
     "JobListResponse",
     "JobListItem",
+    "RunControlRequest",
+    "RunControlResponse",
+    "CheckpointItem",
+    "CheckpointListResponse",
+    "CheckpointDecisionRequest",
+    "CheckpointDecisionResponse",
     "ContextReference",
     "ApprovalRequest",
     "ApprovalResponse",
@@ -177,7 +191,12 @@ async def generate(request: ImportAssistantGenerateRequest) -> ImportAssistantGe
             reason=exc.reason,
             next_step=exc.next_step,
         )
-        status_code = 429 if exc.code == "rate_limited" else 502
+        if exc.code == "rate_limited":
+            status_code = 429
+        elif exc.code in {"run_cancelled", "checkpoint_rejected"}:
+            status_code = 409
+        else:
+            status_code = 502
         raise HTTPException(status_code=status_code, detail=detail) from exc
     except RuntimeError as exc:
         detail = _build_failure_detail(
@@ -209,6 +228,60 @@ async def get_job(batch_id: str) -> JobStatusResponse:
 async def list_jobs(limit: int = 20) -> JobListResponse:
     safe_limit = max(1, min(limit, 100))
     return list_recent_batches(limit=safe_limit)
+
+
+@router.post("/jobs/{batch_id}/control", response_model=RunControlResponse)
+async def control_job(batch_id: str, request: RunControlRequest) -> RunControlResponse:
+    try:
+        result = set_batch_run_control(
+            batch_id=batch_id,
+            action=request.action,
+            requested_by=request.requested_by,
+        )
+        return RunControlResponse(**result)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Batch not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/jobs/{batch_id}/checkpoints", response_model=CheckpointListResponse)
+async def list_job_checkpoints(batch_id: str) -> CheckpointListResponse:
+    try:
+        return get_job_checkpoints(batch_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Batch not found.") from exc
+
+
+@router.post(
+    "/jobs/{batch_id}/checkpoints/{checkpoint_id}/decision",
+    response_model=CheckpointDecisionResponse,
+)
+async def checkpoint_decision(
+    batch_id: str,
+    checkpoint_id: str,
+    request: CheckpointDecisionRequest,
+) -> CheckpointDecisionResponse:
+    try:
+        return await decide_job_checkpoint(
+            batch_id=batch_id,
+            checkpoint_id=checkpoint_id,
+            decision=request.decision,
+            requested_by=request.requested_by,
+            note=request.note,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Batch or checkpoint not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        detail = _build_failure_detail(
+            stage="generate",
+            code="rollback_failed",
+            reason=str(exc),
+            next_step="Retry checkpoint decision or rerun generate if rollback remains incomplete.",
+        )
+        raise HTTPException(status_code=502, detail=detail) from exc
 
 
 @router.get("/preview/{batch_id}", response_model=PreviewResponse)

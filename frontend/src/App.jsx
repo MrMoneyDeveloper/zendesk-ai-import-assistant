@@ -17,6 +17,9 @@ import {
   deployBatch,
   extractAttachment,
   generateBatch,
+  controlBatchJob,
+  decideCheckpoint,
+  getCheckpoints,
   getZendeskContext,
   getIntegrationsStatus,
   getJob,
@@ -48,6 +51,22 @@ function extractFailurePayload(error) {
 function parseFailureDetail(error) {
   const structured = extractFailurePayload(error);
   if (structured) {
+    const friendlyByCode = {
+      request_validation_failed: "Some request inputs are invalid.",
+      run_cancelled: "The run was cancelled.",
+      rate_limited: "The AI provider is temporarily rate-limited.",
+      unsupported_response_format: "The model returned a format we could not use for this step.",
+      generator_json_validation_failed: "The model response could not be validated safely.",
+      generate_staging_failed: "We generated data, but staging to Apps Script/Sheets failed.",
+      generate_validation_failed: "We staged data, but validation failed.",
+      generate_preview_failed: "We generated data, but preview assembly failed.",
+      generate_runtime_error: "Generation hit an unexpected runtime issue.",
+      wave_generation_failed: "A generation wave could not complete.",
+      wave_dependency_resolution_failed: "A wave dependency could not be resolved.",
+      checkpoint_rejected: "A checkpoint was rejected and the run was cancelled.",
+      rollback_partial: "Rollback completed partially.",
+      rollback_failed: "Rollback could not complete cleanly.",
+    };
     if (
       structured.code === "request_validation_failed"
       && Array.isArray(structured.validationErrors)
@@ -59,17 +78,20 @@ function parseFailureDetail(error) {
       const next = structured.nextStep ? ` Next: ${structured.nextStep}` : "";
       return `[request] ${path}: ${message}.${next}`;
     }
+    const friendlyPrefix = friendlyByCode[structured.code] || null;
     if (structured.code === "rate_limited") {
       const reason = structured.reason || "Request was rate-limited by the provider.";
       const next = structured.nextStep
         || "Wait for the rate-limit window to reset, then retry.";
       const stage = structured.stage ? `[${structured.stage}] ` : "";
-      return `${stage}${reason} Next: ${next}`;
+      const prefix = friendlyPrefix ? `${friendlyPrefix} ` : "";
+      return `${stage}${prefix}${reason} Next: ${next}`;
     }
     const stage = structured.stage ? `[${structured.stage}] ` : "";
     const next = structured.nextStep ? ` Next: ${structured.nextStep}` : "";
     const reason = structured.reason || "Request failed.";
-    return `${stage}${reason}${next}`;
+    const prefix = friendlyPrefix ? `${friendlyPrefix} ` : "";
+    return `${stage}${prefix}${reason}${next}`;
   }
   const detail = error?.response?.data?.detail;
   return detail || error?.message || "Request failed.";
@@ -100,6 +122,9 @@ const STATUS_STEP_LABELS = {
   validated_warning: "Validation passed with warnings.",
   validated_failed: "Validation failed.",
   preview_ready: "Preview ready for review.",
+  checkpoint_pending: "Wave checkpoint is pending review.",
+  checkpoint_accepted: "Wave checkpoint accepted.",
+  checkpoint_rejected: "Wave checkpoint rejected.",
   approved: "Approval decisions saved.",
   partially_approved: "Partial approval saved.",
   deploying: "Deploying approved records to Zendesk.",
@@ -380,6 +405,7 @@ function App() {
       }
       queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
       queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
+      queryClient.invalidateQueries({ queryKey: ["checkpoints", data.batch_id] });
       queryClient.invalidateQueries({ queryKey: ["preview", data.batch_id] });
     },
     onError: (error) => {
@@ -471,6 +497,7 @@ function App() {
       if (batchId) {
         queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
         queryClient.invalidateQueries({ queryKey: ["job", batchId] });
+        queryClient.invalidateQueries({ queryKey: ["checkpoints", batchId] });
         queryClient.invalidateQueries({ queryKey: ["preview", batchId] });
       }
     },
@@ -501,6 +528,7 @@ function App() {
       if (batchId) {
         queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
         queryClient.invalidateQueries({ queryKey: ["job", batchId] });
+        queryClient.invalidateQueries({ queryKey: ["checkpoints", batchId] });
         queryClient.invalidateQueries({ queryKey: ["preview", batchId] });
       }
     },
@@ -508,6 +536,93 @@ function App() {
       const detail = parseFailureDetail(error);
       appendActivity("error", detail);
       appendTimeline("assistant", `Deploy failed: ${detail}`);
+    },
+  });
+
+  const runControlMutation = useMutation({
+    mutationFn: ({ targetBatchId, action }) =>
+      controlBatchJob(targetBatchId, {
+        action,
+        requested_by: "local-user",
+      }),
+    onSuccess: (data, variables) => {
+      const action = String(variables?.action || "").trim();
+      const actionLabel = {
+        pause: "Visual pause enabled. Generation continues in background.",
+        resume: "Visual pause cleared.",
+        cancel: "Cancel requested. Run will stop at the next safe checkpoint.",
+        pause_at_next_wave: "Visual pause will enable at the next wave checkpoint.",
+        clear_pause_after_wave: "Next-wave visual pause cleared.",
+      }[action] || "Run control updated.";
+      appendActivity("info", actionLabel);
+      appendTimeline("assistant", actionLabel);
+      if (data?.batch_id) {
+        queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
+        queryClient.invalidateQueries({ queryKey: ["checkpoints", data.batch_id] });
+        queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
+      }
+    },
+    onError: (error) => {
+      const detail = parseFailureDetail(error);
+      appendActivity("error", detail);
+      appendTimeline("assistant", `Run control failed: ${detail}`);
+    },
+  });
+
+  const checkpointsQuery = useQuery({
+    queryKey: ["checkpoints", batchId],
+    queryFn: () => getCheckpoints(batchId),
+    enabled: Boolean(batchId),
+    refetchInterval: () => {
+      if (!batchId) return false;
+      const current = String(jobQuery.data?.status || "");
+      if (current && TERMINAL_BATCH_STATUSES.has(current)) {
+        return false;
+      }
+      return 2500;
+    },
+    refetchOnWindowFocus: false,
+  });
+
+  const checkpointDecisionMutation = useMutation({
+    mutationFn: ({ targetBatchId, checkpointId, decision, note }) =>
+      decideCheckpoint(targetBatchId, checkpointId, {
+        decision,
+        requested_by: "local-user",
+        note: String(note || ""),
+      }),
+    onSuccess: (data, variables) => {
+      const decision = String(variables?.decision || "").trim();
+      const checkpointId = String(variables?.checkpointId || "").trim();
+      const rollbackStatus = String(data?.rollback?.status || "").trim();
+      if (decision === "accept") {
+        appendActivity("success", `Checkpoint ${checkpointId} accepted.`);
+        appendTimeline("assistant", `Checkpoint ${checkpointId} accepted. Generation continues.`);
+      } else {
+        appendActivity(
+          rollbackStatus === "rollback_completed" ? "warning" : "error",
+          rollbackStatus === "rollback_completed"
+            ? `Checkpoint ${checkpointId} rejected. Rollback completed and run stopped.`
+            : `Checkpoint ${checkpointId} rejected. Rollback is partial or failed; review rollback details.`
+        );
+        appendTimeline(
+          "assistant",
+          rollbackStatus === "rollback_completed"
+            ? `Checkpoint ${checkpointId} rejected. Run cancelled and rollback completed.`
+            : `Checkpoint ${checkpointId} rejected. Run cancelled with rollback status: ${rollbackStatus || "unknown"}.`
+        );
+      }
+      if (data?.batch_id) {
+        queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
+        queryClient.invalidateQueries({ queryKey: ["checkpoints", data.batch_id] });
+        queryClient.invalidateQueries({ queryKey: ["preview", data.batch_id] });
+        queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
+      }
+    },
+    onError: (error) => {
+      const detail = parseFailureDetail(error);
+      appendActivity("error", detail);
+      appendTimeline("assistant", `Checkpoint decision failed: ${detail}`);
     },
   });
 
@@ -596,6 +711,27 @@ function App() {
   }, [zendeskContextQuery.error, appendActivity]);
 
   const currentStatus = jobQuery.data?.status || generateMutation.data?.status || null;
+  const runControlState = useMemo(() => {
+    const metadata = jobQuery.data?.metadata;
+    const source = metadata?.run_control || {};
+    return {
+      pause_requested: Boolean(source?.pause_requested),
+      pause_after_wave: Boolean(source?.pause_after_wave),
+      cancel_requested: Boolean(source?.cancel_requested),
+      cancel_reason: source?.cancel_reason || "",
+      updated_at: source?.updated_at || "",
+      updated_by: source?.updated_by || "",
+    };
+  }, [jobQuery.data?.metadata]);
+  const checkpoints = useMemo(() => {
+    const fromEndpoint = checkpointsQuery.data?.checkpoints;
+    if (Array.isArray(fromEndpoint) && fromEndpoint.length > 0) {
+      return fromEndpoint;
+    }
+    const fromMetadata = jobQuery.data?.metadata?.checkpoints;
+    return Array.isArray(fromMetadata) ? fromMetadata : [];
+  }, [checkpointsQuery.data?.checkpoints, jobQuery.data?.metadata?.checkpoints]);
+  const pendingCheckpointCount = checkpoints.filter((item) => item?.status === "pending").length;
   const selectedRelatedObjects = Object.values(selectedContext);
   const previewRecords = previewQuery.data?.records || [];
   const hasActiveBatchRun = Boolean(
@@ -603,6 +739,7 @@ function App() {
     && currentStatus
     && !TERMINAL_BATCH_STATUSES.has(String(currentStatus))
   );
+  const canControlRun = Boolean(batchId && hasActiveBatchRun);
   const shouldTickProcessingClock = Boolean(
     generateMutation.isPending
     || approveMutation.isPending
@@ -618,6 +755,27 @@ function App() {
     }, 1000);
     return () => clearInterval(interval);
   }, [shouldTickProcessingClock]);
+
+  const sendRunControl = (action) => {
+    if (!batchId) {
+      appendActivity("error", "No active batch selected for run control.");
+      return;
+    }
+    runControlMutation.mutate({
+      targetBatchId: batchId,
+      action,
+    });
+  };
+
+  const submitCheckpointDecision = (checkpointId, decision) => {
+    if (!batchId || !checkpointId) return;
+    checkpointDecisionMutation.mutate({
+      targetBatchId: batchId,
+      checkpointId,
+      decision,
+      note: "",
+    });
+  };
 
   const buildDecisionPayload = () => {
     return Object.entries(decisions)
@@ -747,6 +905,7 @@ function App() {
   const errors = [
     generateMutation.error,
     jobQuery.error,
+    checkpointsQuery.error,
     previewQuery.error,
     approveMutation.error,
     deployMutation.error,
@@ -856,6 +1015,7 @@ function App() {
     if (previousBatchId) {
       queryClient.removeQueries({ queryKey: ["job", previousBatchId] });
       queryClient.removeQueries({ queryKey: ["preview", previousBatchId] });
+      queryClient.removeQueries({ queryKey: ["checkpoints", previousBatchId] });
     }
     appendActivity("info", "Started a new chat. Zendesk context remains loaded for this session.");
   };
@@ -1280,6 +1440,60 @@ function App() {
                   <p className="mt-1 text-[11px] text-slate-300">
                     Currently doing: {processingSnapshot.currentDoing}
                   </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => sendRunControl("pause")}
+                      disabled={!canControlRun || runControlMutation.isPending || runControlState.pause_requested}
+                    >
+                      Visual Pause
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => sendRunControl("resume")}
+                      disabled={!canControlRun || runControlMutation.isPending || !runControlState.pause_requested}
+                    >
+                      Clear Visual Pause
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => sendRunControl(
+                        runControlState.pause_after_wave ? "clear_pause_after_wave" : "pause_at_next_wave"
+                      )}
+                      disabled={!canControlRun || runControlMutation.isPending}
+                    >
+                      {runControlState.pause_after_wave ? "Clear Next-Wave Visual Pause" : "Visual Pause At Next Wave"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => sendRunControl("cancel")}
+                      disabled={!canControlRun || runControlMutation.isPending || runControlState.cancel_requested}
+                    >
+                      Cancel Run
+                    </Button>
+                    {runControlState.pause_requested ? (
+                      <span className="text-amber-300">Visual hold active (run continues)</span>
+                    ) : null}
+                    {runControlState.pause_after_wave ? (
+                      <span className="text-cyan-300">Visual hold will activate at next wave checkpoint</span>
+                    ) : null}
+                    {runControlState.cancel_requested ? (
+                      <span className="text-rose-300">Cancel requested (stop at next safe checkpoint)</span>
+                    ) : null}
+                    {pendingCheckpointCount > 0 ? (
+                      <span className="text-violet-300">
+                        Pending checkpoints: {pendingCheckpointCount}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <span className="text-xs text-[#B9A7D9]">
                   {showProcessingDetails ? "Hide" : "Show"}
@@ -1314,6 +1528,96 @@ function App() {
           deployTarget={zendeskValidationResult?.base_url || ""}
           onExistingMode={onExistingMode}
         />
+
+        {checkpoints.length > 0 ? (
+          <Card className="mb-4 border-[#7B1FFF]/30 bg-[#120522]/72">
+            <CardContent className="space-y-3 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-100">Wave Checkpoints</p>
+                  <p className="text-xs text-slate-400">
+                    Non-blocking review checkpoints are created after each completed wave.
+                  </p>
+                </div>
+                <Badge variant={pendingCheckpointCount > 0 ? "warning" : "success"}>
+                  {pendingCheckpointCount > 0
+                    ? `${pendingCheckpointCount} pending`
+                    : "all decided"}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                {checkpoints
+                  .slice()
+                  .sort((a, b) => Number(a?.wave || 0) - Number(b?.wave || 0))
+                  .map((checkpoint) => {
+                    const checkpointId = String(checkpoint?.checkpoint_id || "");
+                    const summary = checkpoint?.summary || {};
+                    const generatedCounts = summary?.generated_counts || {};
+                    const countText = Object.entries(generatedCounts)
+                      .slice(0, 4)
+                      .map(([key, value]) => `${key}: ${value}`)
+                      .join(" | ");
+                    const checkpointStatus = String(checkpoint?.status || "pending");
+                    const isPending = checkpointStatus === "pending";
+                    return (
+                      <div
+                        key={checkpointId}
+                        className="rounded-lg border border-[#7B1FFF]/25 bg-[#07030F]/50 p-3"
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-sm text-slate-200">
+                            Wave {Number(checkpoint?.wave || 0)} checkpoint
+                          </p>
+                          <Badge
+                            variant={
+                              checkpointStatus === "accepted"
+                                ? "success"
+                                : checkpointStatus === "rejected"
+                                  ? "danger"
+                                  : "warning"
+                            }
+                          >
+                            {checkpointStatus}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-400">
+                          {countText || "No generated count summary provided."}
+                        </p>
+                        {checkpoint?.decision_note ? (
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            Note: {checkpoint.decision_note}
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Created: {checkpoint?.created_at ? new Date(checkpoint.created_at).toLocaleString() : "-"}
+                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!isPending || checkpointDecisionMutation.isPending}
+                            onClick={() => submitCheckpointDecision(checkpointId, "accept")}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!isPending || checkpointDecisionMutation.isPending}
+                            onClick={() => submitCheckpointDecision(checkpointId, "reject")}
+                          >
+                            Reject + Rollback
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {showExistingContext ? (
           <div className="mb-6 space-y-4">
