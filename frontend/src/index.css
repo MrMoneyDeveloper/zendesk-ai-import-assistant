@@ -3,41 +3,98 @@
 @tailwind utilities;
 
 :root {
-  --cx-bg: #07030f;
-  --cx-panel: #120522;
-  --cx-purple: #9b35ff;
-  --cx-purple-glow: #c063ff;
-  --cx-violet-blue: #5b35ff;
-  --cx-text: #f4eeff;
-  --cx-muted: #b9a7d9;
-  --cx-line: #7b1fff;
-  font-family: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
-  color: var(--cx-text);
-  background-color: var(--cx-bg);
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-secondary: #f1f5f9;
+
+  --text: #0f172a;
+  --text-secondary: #64748b;
+
+  --border: #e2e8f0;
+
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+
+  font-family: "Segoe UI", "Inter", sans-serif;
+}
+
+[data-theme="dark"] {
+  --bg: #07030f;
+  --surface: #120522;
+  --surface-secondary: #1b1230;
+
+  --text: #f4eeff;
+  --text-secondary: #b9a7d9;
+
+  --border: rgba(155, 53, 255, 0.25);
+
+  --primary: #9b35ff;
+  --primary-hover: #c063ff;
 }
 
 * {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 16% 0%, rgba(155, 53, 255, 0.16) 0%, transparent 36%),
-    radial-gradient(circle at 84% 10%, rgba(91, 53, 255, 0.12) 0%, transparent 34%),
-    linear-gradient(180deg, #07030f 0%, #0d0618 100%);
+  background: var(--bg);
+  color: var(--text);
 }
 
-#root {
-  min-height: 100vh;
+/* Scrollbar */
+
+::-webkit-scrollbar {
+  width: 8px;
 }
+
+::-webkit-scrollbar-track {
+  background: #0d0618;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(155, 53, 255, 0.5);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(192, 99, 255, 0.8);
+}
+
+/* Inputs */
 
 input,
-textarea {
+textarea,
+select {
   color: var(--cx-text);
-  caret-color: var(--cx-purple-glow);
+  background: rgba(18, 5, 34, 0.8);
+  border: 1px solid rgba(155, 53, 255, 0.3);
+  outline: none;
 }
+
+input::placeholder,
+textarea::placeholder {
+  color: rgba(185, 167, 217, 0.7);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--cx-purple);
+  box-shadow: 0 0 0 1px var(--cx-purple);
+}
+
+/* Autofill Fix */
 
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
@@ -46,59 +103,119 @@ textarea:-webkit-autofill,
 textarea:-webkit-autofill:hover,
 textarea:-webkit-autofill:focus {
   -webkit-text-fill-color: var(--cx-text);
-  box-shadow: 0 0 0px 1000px #1b1230 inset;
-  transition: background-color 5000s ease-in-out 0s;
+  -webkit-box-shadow: 0 0 0px 1000px #1b1230 inset;
 }
 
+/* Utility Classes */
+
 .cx-text {
-  color: var(--cx-text);
+  color: var(--text);
 }
 
 .cx-muted {
-  color: var(--cx-muted);
+  color: var(--text-secondary);
 }
 
 .cx-panel {
-  background: color-mix(in srgb, var(--cx-panel) 84%, #000 16%);
+  background: rgba(18, 5, 34, 0.85);
+  backdrop-filter: blur(10px);
 }
 
 .cx-border {
-  border-color: color-mix(in srgb, var(--cx-line) 48%, #ffffff 8%);
+  border: 1px solid var(--border);
 }
 
 .cx-soft-glow {
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--cx-line) 20%, transparent),
-    0 8px 36px color-mix(in srgb, var(--cx-purple-glow) 10%, transparent);
+    0 0 0 1px rgba(155, 53, 255, 0.15),
+    0 0 20px rgba(155, 53, 255, 0.15),
+    0 8px 40px rgba(0, 0, 0, 0.35);
 }
 
 .cx-chip {
-  border: 1px solid color-mix(in srgb, var(--cx-line) 36%, #fff 6%);
-  background: color-mix(in srgb, var(--cx-panel) 88%, #000 12%);
-  color: var(--cx-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 8px 14px;
+
+  border-radius: 999px;
+
+  border: 1px solid rgba(155, 53, 255, 0.3);
+
+  background: rgba(18, 5, 34, 0.9);
+
+  color: var(--text-secondary);
+
+  transition: all 0.2s ease;
+}
+
+.cx-chip:hover {
+  border-color: var(--primary);
+  color: var(--text);
 }
 
 .cx-brand-divider {
   height: 1px;
   width: 100%;
+
   background: linear-gradient(
     90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--cx-violet-blue) 55%, transparent) 50%,
-    transparent 100%
+    transparent,
+    rgba(155, 53, 255, 0.5),
+    transparent
   );
 }
+
+/* Hero Watermark */
 
 .cx-hero-watermark {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.14;
-  mix-blend-mode: screen;
+  opacity: 0.12;
+  overflow: hidden;
 }
 
 .cx-hero-watermark img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* Glass Cards */
+
+.cx-glass {
+  background: rgba(10, 4, 20, 0.65);
+  backdrop-filter: blur(16px);
+
+  border: 1px solid rgba(155, 53, 255, 0.18);
+
+  box-shadow:
+    0 0 20px rgba(155, 53, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Buttons */
+
+.cx-button {
+  background: linear-gradient(
+    135deg,
+    var(--primary),
+    var(--primary-hover)
+  );
+
+
+  color: white;
+
+  border: none;
+
+  transition: all 0.25s ease;
+}
+
+.cx-button:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 0 20px rgba(155, 53, 255, 0.4);
 }

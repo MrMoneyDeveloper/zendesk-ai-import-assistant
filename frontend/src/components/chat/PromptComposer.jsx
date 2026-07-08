@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Mic, Paperclip, Square, X } from "lucide-react";
+import { LayoutTemplate, Mic, Paperclip, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 
 const schema = z.object({
   prompt: z.string().min(5, "Prompt must be at least 5 characters."),
@@ -49,6 +48,10 @@ export default function PromptComposer({
   onRemoveExistingContext,
   articleHelpCenterHint = "",
   embedded = false,
+  compact = false,
+  darkMode = false,
+  externalPrompt = "",
+  onExternalPromptConsumed,
 }) {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -60,6 +63,13 @@ export default function PromptComposer({
     resolver: zodResolver(schema),
     defaultValues: { prompt: "" },
   });
+
+  // When a quick action or example sets an external prompt, load it into the textarea
+  useEffect(() => {
+    if (!externalPrompt) return;
+    form.setValue("prompt", externalPrompt, { shouldValidate: true, shouldDirty: true });
+    onExternalPromptConsumed?.();
+  }, [externalPrompt, form, onExternalPromptConsumed]);
 
   useEffect(
     () => () => {
@@ -73,6 +83,19 @@ export default function PromptComposer({
   const activeFocusSet = useMemo(() => new Set(focusObjectTypes || []), [focusObjectTypes]);
   const hasExplicitFocus = (focusObjectTypes || []).length > 0;
   const activeModeLabel = existingItemBehavior === "create_new" ? "Create New" : "Base";
+  const panelClass = darkMode
+    ? "border-[#7B1FFF]/30 bg-[#120522]/70 text-slate-100"
+    : "border-violet-200 bg-white text-slate-950 shadow-sm";
+  const mutedText = darkMode ? "text-[#B9A7D9]" : "text-slate-500";
+  const subtlePanel = darkMode
+    ? "border-[#7B1FFF]/30 bg-[#120522]/70"
+    : "border-slate-200 bg-white";
+  const chipIdle = darkMode
+    ? "border-[#7B1FFF]/30 text-[#B9A7D9] hover:bg-[#7B1FFF]/12"
+    : "border-violet-200 text-violet-700 hover:bg-violet-50";
+  const chipActive = darkMode
+    ? "border-[#7B1FFF]/70 bg-[#7B1FFF]/20 text-[#F4EEFF]"
+    : "border-violet-300 bg-violet-50 text-violet-700";
 
   const toggleFocus = (key) => {
     const current = new Set(activeFocusSet);
@@ -181,90 +204,20 @@ export default function PromptComposer({
           Where should we begin?
         </h1>
       ) : null}
-      <div className="mb-3 grid gap-2 rounded-xl border border-[#7B1FFF]/30 bg-[#120522]/70 p-3 text-xs text-slate-300 md:grid-cols-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-[#B9A7D9]">Dependency behavior</span>
-          <select
-            value={dependencyMode}
-            onChange={(event) => onDependencyModeChange?.(event.target.value)}
-            className="rounded-md border border-[#7B1FFF]/40 bg-[#07030F]/80 px-2 py-1 text-xs text-slate-200"
-            disabled={isLocked}
-          >
-            <option value="match_existing_or_create_new">Match existing, else create new</option>
-            <option value="force_existing_only">Use existing only (strict)</option>
-            <option value="force_create_new">Always create new</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[#B9A7D9]">If object already exists</span>
-          <select
-            value={onExistingMode}
-            onChange={(event) => onOnExistingModeChange?.(event.target.value)}
-            className="rounded-md border border-[#7B1FFF]/40 bg-[#07030F]/80 px-2 py-1 text-xs text-slate-200"
-            disabled={isLocked}
-          >
-            <option value="create_new">Create new anyway</option>
-            <option value="overwrite_existing">Overwrite existing</option>
-            <option value="skip_existing">Skip existing</option>
-          </select>
-        </label>
-        <div className="rounded-md border border-[#7B1FFF]/30 bg-[#07030F]/70 px-2 py-2">
-          <p className="text-[#B9A7D9]">Selected context</p>
-          <p className="mt-1 font-semibold text-slate-200">{selectedContextCount} objects selected</p>
-        </div>
-      </div>
 
-      <div className="mb-3 rounded-xl border border-[#7B1FFF]/30 bg-[#120522]/70 p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold text-[#B9A7D9]">Object focus</p>
-          <button
-            type="button"
-            className={`rounded-full border px-2 py-1 text-[11px] ${
-              focusObjectTypes.length === 0
-                ? "border-[#7B1FFF]/60 bg-[#7B1FFF]/20 text-[#F4EEFF]"
-                : "border-[#7B1FFF]/30 text-[#B9A7D9]"
-            }`}
-            onClick={() => onFocusObjectTypesChange?.([])}
-            disabled={isLocked}
-          >
-            Auto
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {OBJECT_FOCUS_OPTIONS.map((option) => {
-            const active = activeFocusSet.has(option.key);
-            return (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => toggleFocus(option.key)}
-                disabled={isLocked}
-                className={`rounded-full border px-3 py-1 text-xs ${
-                  active
-                    ? "border-[#7B1FFF]/70 bg-[#7B1FFF]/20 text-[#F4EEFF]"
-                    : "border-[#7B1FFF]/30 text-[#B9A7D9] hover:bg-[#7B1FFF]/12"
-                }`}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {hasExplicitFocus ? (
-        <div className="mb-3 rounded-xl border border-[#7B1FFF]/30 bg-[#120522]/70 p-3">
-          <p className="mb-2 text-xs font-semibold text-[#B9A7D9]">Existing item (optional)</p>
+      {hasExplicitFocus && !compact ? (
+        <div className={`mb-3 rounded-xl border p-3 ${subtlePanel}`}>
+          <p className={`mb-2 text-xs font-semibold ${mutedText}`}>Existing item (optional)</p>
           <div className="mb-2">
-            <p className="mb-1 text-[11px] text-[#B9A7D9]">Behavior</p>
-            <div className="inline-flex rounded-lg border border-[#7B1FFF]/35 bg-[#07030F]/70 p-1">
+            <p className={`mb-1 text-[11px] ${mutedText}`}>Behavior</p>
+            <div className={`inline-flex rounded-lg border p-1 ${darkMode ? "border-[#7B1FFF]/35 bg-[#07030F]/70" : "border-slate-200 bg-slate-50"}`}>
               <button
                 type="button"
                 onClick={() => onExistingItemBehaviorChange?.("relate_or_update")}
                 className={`rounded-md px-2 py-1 text-[11px] ${
                   existingItemBehavior === "relate_or_update"
-                    ? "bg-[#7B1FFF]/28 text-[#F4EEFF]"
-                    : "text-[#B9A7D9]"
+                    ? darkMode ? "bg-[#7B1FFF]/28 text-[#F4EEFF]" : "bg-white text-violet-700 shadow-sm"
+                    : mutedText
                 }`}
                 disabled={isLocked || isLoading}
               >
@@ -275,8 +228,8 @@ export default function PromptComposer({
                 onClick={() => onExistingItemBehaviorChange?.("create_new")}
                 className={`rounded-md px-2 py-1 text-[11px] ${
                   existingItemBehavior === "create_new"
-                    ? "bg-[#7B1FFF]/28 text-[#F4EEFF]"
-                    : "text-[#B9A7D9]"
+                    ? darkMode ? "bg-[#7B1FFF]/28 text-[#F4EEFF]" : "bg-white text-violet-700 shadow-sm"
+                    : mutedText
                 }`}
                 disabled={isLocked || isLoading}
               >
@@ -288,7 +241,7 @@ export default function PromptComposer({
             <select
               value={existingSelectionKey}
               onChange={(event) => setExistingSelectionKey(event.target.value)}
-              className="flex-1 rounded-md border border-[#7B1FFF]/40 bg-[#07030F]/80 px-2 py-2 text-xs text-slate-200"
+              className={`flex-1 rounded-md border px-2 py-2 text-xs ${darkMode ? "border-[#7B1FFF]/40 bg-[#07030F]/80 text-slate-200" : "border-slate-200 bg-white text-slate-700"}`}
               disabled={isLocked || isLoading || existingItemOptions.length === 0}
             >
               <option value="">
@@ -347,11 +300,11 @@ export default function PromptComposer({
       ) : null}
 
       {attachments.length > 0 ? (
-        <div className="mb-3 rounded-xl border border-[#7B1FFF]/30 bg-[#120522]/60 p-3">
-          <p className="mb-2 text-xs font-semibold text-[#B9A7D9]">Attached context (session)</p>
+        <div className={`mb-3 rounded-xl border p-3 ${subtlePanel}`}>
+          <p className={`mb-2 text-xs font-semibold ${mutedText}`}>Attached context (session)</p>
           <div className="space-y-1">
             {attachments.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded border border-[#7B1FFF]/20 bg-[#07030F]/60 px-2 py-1 text-xs text-slate-200">
+              <div key={item.id} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${darkMode ? "border-[#7B1FFF]/20 bg-[#07030F]/60 text-slate-200" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
                 <span>{item.filename} ({item.char_count} chars)</span>
                 <button
                   type="button"
@@ -367,54 +320,93 @@ export default function PromptComposer({
         </div>
       ) : null}
 
-      <form onSubmit={submit} className={`rounded-3xl border border-[#7B1FFF]/45 bg-[#120522]/80 p-3 shadow-lg shadow-[#9B35FF]/15 ${embedded ? "ml-auto w-full max-w-4xl" : ""}`}>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="rounded-md p-2 text-[#B9A7D9] hover:bg-[#7B1FFF]/20 disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label="Add attachment"
-            onClick={onAttachmentClick}
-            disabled={isLocked || isLoading}
-          >
-            <Paperclip size={20} />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={onAttachmentChange}
-            accept=".txt,.json,.csv,.md,.log,.yaml,.yml,.pdf,.docx"
-          />
-          <Input
-            {...form.register("prompt")}
-            placeholder="Describe the Zendesk setup you want generated..."
-            className="h-12 flex-1 border-none bg-transparent text-base text-[#F4EEFF] focus:border-none"
-            disabled={isLocked || isLoading}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={`rounded-full p-2 ${isListening ? "text-emerald-300" : "text-[#B9A7D9]"}`}
-            disabled={isLocked || isLoading}
-            onClick={toggleMic}
-          >
-            {isListening ? <Square size={18} /> : <Mic size={18} />}
-          </Button>
-          <span
-            className="rounded-full border border-[#7B1FFF]/50 bg-[#07030F]/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#B9A7D9]"
-            title="Existing item behavior mode"
-          >
-            {activeModeLabel}
-          </span>
-          <Button
-            type="submit"
-            size="sm"
-            className="h-10 w-10 rounded-full bg-[#9B35FF] text-white hover:bg-[#C063FF]"
-            disabled={isLoading || isLocked}
-          >
-            <ArrowUp size={18} />
-          </Button>
+      <form onSubmit={submit} className={`rounded-2xl border p-5 ${panelClass} ${embedded ? "w-full" : ""}`}>
+        <div className="mb-4 flex items-center gap-3">
+          <Sparkles className="h-5 w-5 text-violet-500" />
+          <h3 className="text-base font-semibold">Describe what you want to build...</h3>
+          {compact && selectedContextCount > 0 ? (
+            <span className={`ml-auto rounded-full px-2 py-1 text-xs ${darkMode ? "bg-[#7B1FFF]/18 text-[#B9A7D9]" : "bg-violet-50 text-violet-700"}`}>
+              {selectedContextCount} context
+            </span>
+          ) : null}
+        </div>
+        <textarea
+          {...form.register("prompt")}
+          placeholder="e.g. Create a trigger that closes tickets after 7 days of inactivity and sends a reminder email to the customer..."
+          className={`min-h-[112px] w-full resize-y rounded-xl border px-4 py-3 text-sm leading-6 outline-none transition ${
+            darkMode
+              ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-[#F4EEFF] placeholder:text-[#B9A7D9]/70 focus:border-[#9B35FF]"
+              : "border-slate-200 bg-white text-slate-800 placeholder:text-slate-500 focus:border-violet-400"
+          }`}
+          disabled={isLocked || isLoading}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={onAttachmentChange}
+          accept=".txt,.json,.csv,.md,.log,.yaml,.yml,.pdf,.docx"
+        />
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 ${
+                darkMode
+                  ? "border-[#7B1FFF]/35 bg-[#07030F]/40 text-[#F4EEFF] hover:bg-[#7B1FFF]/18"
+                  : "border-violet-200 bg-white text-slate-700 hover:bg-violet-50"
+              }`}
+              aria-label="Add attachment"
+              onClick={onAttachmentClick}
+              disabled={isLocked || isLoading}
+            >
+              <Paperclip size={16} />
+              Attach File
+            </button>
+            <button
+              type="button"
+              className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${
+                darkMode
+                  ? "border-[#7B1FFF]/35 bg-[#07030F]/40 text-[#F4EEFF] hover:bg-[#7B1FFF]/18"
+                  : "border-violet-200 bg-white text-slate-700 hover:bg-violet-50"
+              }`}
+            >
+              <LayoutTemplate size={16} />
+              Use Template
+            </button>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            {!compact ? (
+              <span
+                className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                  darkMode ? "border-[#7B1FFF]/50 bg-[#07030F]/70 text-[#B9A7D9]" : "border-violet-200 bg-violet-50 text-violet-700"
+                }`}
+                title="Existing item behavior mode"
+              >
+                {activeModeLabel}
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={`h-10 w-10 rounded-full border p-0 ${isListening ? "text-emerald-400" : darkMode ? "border-[#7B1FFF]/25 text-[#B9A7D9]" : "border-violet-100 text-violet-700"}`}
+              disabled={isLocked || isLoading}
+              onClick={toggleMic}
+              aria-label={isListening ? "Stop dictation" : "Start dictation"}
+            >
+              {isListening ? <Square size={17} /> : <Mic size={17} />}
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              className="h-10 gap-2 rounded-lg bg-[#7B1FFF] px-5 text-white hover:bg-[#9B35FF]"
+              disabled={isLoading || isLocked}
+            >
+              <WandSparkles size={16} />
+              Generate
+            </Button>
+          </div>
         </div>
       </form>
 

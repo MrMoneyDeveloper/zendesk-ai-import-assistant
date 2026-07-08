@@ -1,15 +1,37 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  BookOpen,
+  Boxes,
+  CheckCircle2,
+  ChevronRight,
+  CirclePlus,
+  FileText,
+  Gauge,
+  GitBranch,
+  Grid2X2,
+  Library,
+  LogOut,
+  MessageSquare,
+  Moon,
+  PanelRightOpen,
+  Plus,
+  Settings,
+  Sparkles,
+  Sun,
+  Workflow,
+  Zap,
+} from "lucide-react";
 
 import PromptComposer from "./components/chat/PromptComposer";
 import PreviewWorkspace from "./components/chat/PreviewWorkspace";
 import StatusRibbon from "./components/chat/StatusRibbon";
 import IntegrationPanel from "./components/chat/IntegrationPanel";
 import ZendeskSessionGate from "./components/chat/ZendeskSessionGate";
-import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent } from "./components/ui/card";
 import cxHeroBanner from "./assets/cx-hero-banner.png";
+import cxHeroLight from "./assets/cx-hero-light.png";
 import cxIcon from "./assets/cx-icon.png";
 import cxLogo from "./assets/cx-logo.png";
 import {
@@ -100,13 +122,6 @@ function parseFailureDetail(error) {
   }
   const detail = error?.response?.data?.detail;
   return detail || error?.message || "Request failed.";
-}
-
-function statusBadgeVariant(status) {
-  if (["deployed", "approved", "preview_ready"].includes(status)) return "success";
-  if (["deploy_failed", "failed", "validated_failed"].includes(status)) return "danger";
-  if (["deployed_partial", "validated_warning"].includes(status)) return "warning";
-  return "neutral";
 }
 
 const STATUS_STEP_LABELS = {
@@ -266,6 +281,45 @@ const FOCUS_TO_CATALOG_KEYS = {
   articles: ["articles", "help_centers", "categories", "sections"],
 };
 
+const NAV_ITEMS = [
+  { label: "New Chat", icon: Plus, active: true },
+  { label: "Dashboard", icon: Gauge },
+  { label: "All Chats", icon: MessageSquare },
+  { label: "Templates", icon: Grid2X2 },
+  { label: "Knowledge Base", icon: Boxes },
+  { label: "Integrations", icon: GitBranch },
+  { label: "Settings", icon: Settings },
+];
+
+const QUICK_ACTIONS = [
+  { label: "Trigger", detail: "Create automation triggers", icon: CirclePlus, color: "text-violet-500", prompt: "Create an automation trigger" },
+  { label: "Form", detail: "Build ticket forms", icon: FileText, color: "text-blue-500", prompt: "Build a ticket form" },
+  { label: "Macro", detail: "Create agent macros", icon: Zap, color: "text-amber-500", prompt: "Create an agent macro" },
+  { label: "Workflow", detail: "Build business workflows", icon: Workflow, color: "text-emerald-500", prompt: "Build a business workflow" },
+  { label: "Article", detail: "Create help center articles", icon: BookOpen, color: "text-pink-500", prompt: "Create a help center article" },
+];
+
+const EXAMPLE_PROMPTS = [
+  { label: "Create SLA policy for VIP customers", icon: Sparkles, color: "text-violet-500", prompt: "Create an SLA policy for VIP customers with 1 hour first response time and priority escalation" },
+  { label: "Auto-assign tickets based on priority", icon: Gauge, color: "text-blue-500", prompt: "Create a trigger to auto-assign tickets to the appropriate group based on ticket priority" },
+  { label: "Send follow-up email after resolution", icon: MessageSquare, color: "text-amber-500", prompt: "Create an automation that sends a follow-up email to the customer 24 hours after a ticket is resolved" },
+  { label: "Create help center article for refunds", icon: Library, color: "text-pink-500", prompt: "Create a help center article explaining the refund process, eligibility criteria, and how to submit a refund request" },
+];
+
+const FOCUS_CHIPS = [
+  { key: "brands", label: "Brands" },
+  { key: "categories", label: "Categories" },
+  { key: "sections", label: "Sections" },
+  { key: "triggers", label: "Triggers" },
+  { key: "automations", label: "Automations" },
+  { key: "macros", label: "Macros" },
+  { key: "views", label: "Views" },
+  { key: "groups", label: "Groups" },
+  { key: "ticket_forms", label: "Forms" },
+  { key: "ticket_fields", label: "Fields" },
+  { key: "articles", label: "Articles" },
+];
+
 function readZendeskSessionCredentials() {
   try {
     const raw = sessionStorage.getItem(ZENDESK_SESSION_STORAGE_KEY);
@@ -292,11 +346,25 @@ function clearZendeskSessionCredentials() {
 
 function App() {
   const queryClient = useQueryClient();
+
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem("theme") === "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      "data-theme",
+      darkMode ? "dark" : "light"
+    );
+    localStorage.setItem("theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
+
   const [decisions, setDecisions] = useState({});
   const [activityLogs, setActivityLogs] = useState([]);
   const [timeline, setTimeline] = useState([]);
   const [historySearch, setHistorySearch] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
+  const [externalPrompt, setExternalPrompt] = useState("");
   const [selectedContext, setSelectedContext] = useState({});
   const [dependencyMode, setDependencyMode] = useState("match_existing_or_create_new");
   const [onExistingMode, setOnExistingMode] = useState("create_new");
@@ -309,7 +377,7 @@ function App() {
   const [focusObjectTypes, setFocusObjectTypes] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [activeRunStartedAtMs, setActiveRunStartedAtMs] = useState(null);
-  const [processingClockMs, setProcessingClockMs] = useState(Date.now());
+  const [processingClockMs, setProcessingClockMs] = useState(() => Date.now());
   const lastContextSyncRef = useRef("");
   const lastContextErrorRef = useRef("");
   const conversationEndRef = useRef(null);
@@ -734,6 +802,7 @@ function App() {
       updated_by: source?.updated_by || "",
     };
   }, [jobQuery.data?.metadata]);
+
   const checkpoints = useMemo(() => {
     const fromEndpoint = checkpointsQuery.data?.checkpoints;
     if (Array.isArray(fromEndpoint) && fromEndpoint.length > 0) {
@@ -742,6 +811,7 @@ function App() {
     const fromMetadata = jobQuery.data?.metadata?.checkpoints;
     return Array.isArray(fromMetadata) ? fromMetadata : [];
   }, [checkpointsQuery.data?.checkpoints, jobQuery.data?.metadata?.checkpoints]);
+
   const pendingCheckpointCount = checkpoints.filter((item) => item?.status === "pending").length;
   const selectedRelatedObjects = Object.values(selectedContext);
   const previewRecords = previewQuery.data?.records || [];
@@ -760,7 +830,6 @@ function App() {
 
   useEffect(() => {
     if (!shouldTickProcessingClock) return undefined;
-    setProcessingClockMs(Date.now());
     const interval = setInterval(() => {
       setProcessingClockMs(Date.now());
     }, 1000);
@@ -939,17 +1008,16 @@ function App() {
     () => new Set(selectedExistingItems.map((item) => `${item.object_type}:${item.id}`)),
     [selectedExistingItems]
   );
-  const existingItemOptions = useMemo(() => {
-    if (!contextCatalog || !focusObjectTypes.length) return [];
-    const allowedCatalogKeys = new Set(
-      focusObjectTypes.flatMap((focus) => FOCUS_TO_CATALOG_KEYS[focus] || [])
-    );
-    const options = [];
+  const allowedCatalogKeys = new Set(
+    focusObjectTypes.flatMap((focus) => FOCUS_TO_CATALOG_KEYS[focus] || [])
+  );
+  const existingItemOptions = [];
+  if (contextCatalog && focusObjectTypes.length) {
     for (const [catalogKey, entries] of Object.entries(contextCatalog)) {
       if (!allowedCatalogKeys.has(catalogKey)) continue;
       (entries || []).forEach((entry) => {
         const key = `${entry.object_type}:${entry.id}`;
-        options.push({
+        existingItemOptions.push({
           key,
           label: `${sectionLabel(catalogKey)}: ${entry.name}`,
           catalogKey,
@@ -957,9 +1025,9 @@ function App() {
         });
       });
     }
-    options.sort((a, b) => a.label.localeCompare(b.label));
-    return options;
-  }, [contextCatalog, focusObjectTypes]);
+    existingItemOptions.sort((a, b) => a.label.localeCompare(b.label));
+  }
+
   const articleFocusSelected = focusObjectTypes.includes("articles");
   const helpCentersLoaded = (contextCatalog?.help_centers || []).length > 0;
   const articleHelpCenterHint = articleFocusSelected && !helpCentersLoaded
@@ -1046,10 +1114,19 @@ function App() {
         delete next[key];
         return next;
       }
-      return {
-        ...prev,
-        [key]: entry,
-      };
+      return { ...prev, [key]: entry };
+    });
+  };
+
+  const toggleFocusObjectType = (key) => {
+    setFocusObjectTypes((prev) => {
+      const next = new Set(prev || []);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return Array.from(next);
     });
   };
 
@@ -1057,10 +1134,7 @@ function App() {
     if (!selectionKey) return;
     const option = existingItemOptions.find((item) => item.key === selectionKey);
     if (!option?.entry) return;
-    setSelectedContext((prev) => ({
-      ...prev,
-      [selectionKey]: option.entry,
-    }));
+    setSelectedContext((prev) => ({ ...prev, [selectionKey]: option.entry }));
   };
 
   const removeExistingContextSelection = (selectionKey) => {
@@ -1315,9 +1389,7 @@ function App() {
     activeRunStartedAtMs,
     currentPhaseLabel,
     generatedData?.metadata,
-    jobQuery.data?.created_at,
-    jobQuery.data?.metadata,
-    jobQuery.data?.status_history,
+    jobQuery.data,
     processingClockMs,
     processingLines,
   ]);
@@ -1338,120 +1410,298 @@ function App() {
     );
   }
 
+  const processingPanelBg = darkMode
+    ? "rounded-lg border border-[#7B1FFF]/24 bg-[#120522]/60 p-3"
+    : "rounded-lg border border-slate-200 bg-slate-100 p-3";
+
+  const processingHeading = darkMode ? "text-slate-200" : "text-slate-800";
+  const processingSubtext = darkMode ? "text-slate-400" : "text-slate-500";
+  const processingBody = darkMode ? "text-[#B9A7D9]" : "text-slate-600";
+
+  const badgePill = darkMode
+    ? "rounded-full border border-[#7B1FFF]/40 bg-[#07030F]/70 px-2 py-0.5"
+    : "rounded-full border border-slate-300 bg-white px-2 py-0.5 text-slate-600";
+
+  const processingDetailLines = darkMode
+    ? "mt-3 space-y-1 border-t border-[#7B1FFF]/20 pt-2 text-xs text-slate-300"
+    : "mt-3 space-y-1 border-t border-slate-200 pt-2 text-xs text-slate-600";
+
+  const appSurface = darkMode
+    ? "bg-[#07030F] text-slate-100"
+    : "bg-white text-slate-950";
+  const railSurface = darkMode
+    ? "border-[#7B1FFF]/20 bg-[#07030F]/86"
+    : "border-slate-200 bg-white";
+  const workspaceCard = darkMode
+    ? "border-[#7B1FFF]/24 bg-[#120522]/70 shadow-[0_18px_60px_rgba(0,0,0,0.32)]"
+    : "border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.06)]";
+  const hoverCard = darkMode
+    ? "border-[#7B1FFF]/22 bg-[#151027]/78 hover:border-[#9B35FF]/55 hover:bg-[#1B1230]/88"
+    : "border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/30";
+  const textSoft = darkMode ? "text-[#B9A7D9]" : "text-slate-500";
+  const sectionTitle = darkMode ? "text-slate-100" : "text-slate-950";
+  const activeFocusSet = new Set(focusObjectTypes || []);
+
   return (
-    <div className="relative min-h-screen text-slate-100">
-      <div className="cx-hero-watermark" aria-hidden="true">
-        <img src={cxHeroBanner} alt="" />
-      </div>
-      <main className="relative z-10 mx-auto max-w-6xl px-4 py-5 lg:px-10">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src={cxIcon} alt="CX Icon" className="h-6 w-6 rounded-md border border-[#7B1FFF]/50" />
-            <img src={cxLogo} alt="CX Experts Assistant" className="h-6 w-auto opacity-95" />
+    <div className={`relative min-h-screen overflow-hidden ${appSurface}`}>
+      {darkMode ? (
+        <div className="cx-hero-watermark" aria-hidden="true">
+          <img src={cxHeroBanner} alt="" />
+        </div>
+      ) : null}
+
+      <aside className={`fixed inset-y-0 left-0 z-20 hidden w-[260px] border-r px-5 py-7 xl:block ${railSurface}`}>
+        <div className="flex items-center justify-center py-4">
+  <img
+    src={cxLogo}
+    alt="CX Experts"
+    className="max-h-24 w-auto object-contain"
+  />
+</div>
+        <nav className="mt-9 space-y-2">
+          {NAV_ITEMS.map((item) => {
+  const Icon = item.icon;
+  return (
+    <button
+      key={item.label}
+      type="button"
+      onClick={() => {
+        if (item.label === "New Chat") startNewChat();
+        else if (item.label === "Dashboard") appendTimeline("assistant", "Dashboard view coming soon.");
+        else if (item.label === "All Chats") setShowExistingContext(true);
+        else if (item.label === "Integrations") setShowExistingContext(true);
+        else if (item.label === "Settings") appendTimeline("assistant", "Settings panel coming soon.");
+        // Templates and Knowledge Base are future features
+      }}
+      className={`flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition ${
+        item.active
+          ? darkMode
+            ? "bg-[#7B1FFF]/24 text-white"
+            : "bg-violet-50 text-violet-700"
+          : darkMode
+            ? "text-slate-300 hover:bg-[#7B1FFF]/12"
+            : "text-slate-700 hover:bg-slate-50"
+      }`}
+    >
+      <Icon size={18} />
+      {item.label}
+    </button>
+  );
+})}
+        </nav>
+        <div className={`mt-9 border-t pt-6 ${darkMode ? "border-[#7B1FFF]/18" : "border-slate-200"}`}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#6D28D9] text-sm font-semibold text-white">
+              A
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Admin User</p>
+              <p className={`text-xs ${textSoft}`}>admin@cxexperts.com</p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={signOutZendeskSession}
+            className={`mt-6 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm ${darkMode ? "text-slate-300 hover:bg-[#7B1FFF]/12" : "text-slate-700 hover:bg-slate-50"}`}
+          >
+            <LogOut size={17} />
+            Sign Out
+          </button>
+        </div>
+      
+      </aside>
+
+      <div className="relative z-10 xl:pl-[260px]">
+        <header className="mx-auto flex max-w-[1480px] items-center justify-between gap-3 px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3 xl:hidden">
+            <img src={cxIcon} alt="CX" className="h-10 w-10 rounded-lg" />
+            <div>
+              <p className="font-semibold">CX Experts</p>
+              <p className={`text-xs ${textSoft}`}>AI Assistant</p>
+            </div>
+          </div>
+          <div className="hidden xl:block" />
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              size="sm"
+              className={`${darkMode ? "" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"} gap-2`}
               onClick={() => setShowExistingContext((prev) => !prev)}
             >
-              {showExistingContext ? "Hide Context" : "Existing Context"}
+              <PanelRightOpen size={16} />
+              Context
             </Button>
             <Button
               variant="outline"
-              size="sm"
+              className={`${darkMode ? "" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"} h-10 w-10 p-0`}
+              onClick={() => setDarkMode(!darkMode)}
+              aria-label={darkMode ? "Switch to light theme" : "Switch to purple theme"}
+            >
+              {darkMode ? <Sun size={17} /> : <Moon size={17} />}
+            </Button>
+            <Button
+              variant="primary"
+              className="gap-2 bg-[#7B1FFF] text-white hover:bg-[#9B35FF]"
               onClick={startNewChat}
             >
+              <CirclePlus size={16} />
               New Chat
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={signOutZendeskSession}
-            >
-              Sign Out Session
-            </Button>
           </div>
-        </div>
-        <div className="mb-4 cx-brand-divider" />
+        </header>
 
-        <Card className="mb-4 border-[#7B1FFF]/30 bg-[#120522]/72">
-          <CardContent className="space-y-4 p-4">
-            <div className="max-h-[22rem] overflow-y-auto rounded-xl border border-[#7B1FFF]/20 bg-[#07030F]/45 p-3">
-              {timeline.length > 0 ? (
-                <div className="space-y-2">
-                  {timeline.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className={`max-w-[92%] rounded-xl border px-3 py-2 text-sm ${
-                        entry.role === "user"
-                          ? "ml-auto border-[#7B1FFF]/45 bg-[#7B1FFF]/16 text-[#F4EEFF]"
-                          : "border-[#7B1FFF]/25 bg-[#07030F]/60 text-[#B9A7D9]"
-                      }`}
-                    >
-                      <p>{entry.text}</p>
-                      <p className="mt-1 text-[10px] text-slate-500">{entry.at}</p>
-                    </div>
-                  ))}
-                  <div ref={conversationEndRef} />
-                </div>
-              ) : (
-                <div className="flex min-h-[10rem] items-center justify-center">
-                  <p className="text-center text-4xl font-medium text-slate-200">
-                    Where should we begin?
-                  </p>
-                </div>
-              )}
+        <main className="mx-auto grid max-w-[1480px] gap-6 px-4 pb-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_330px] lg:px-8">
+          <section className="min-w-0">
+            <div className={`relative overflow-hidden rounded-2xl border p-7 ${workspaceCard}`}>
+              <div className="relative z-10 max-w-xl pr-8">
+                <h1 className="text-3xl font-bold tracking-normal text-violet-600">Zendesk AI Import</h1>
+                <p className={`mt-3 text-xl font-semibold ${sectionTitle}`}>What would you like to build today?</p>
+                <p className={`mt-3 max-w-xl text-sm leading-6 ${textSoft}`}>
+                  Generate Zendesk configurations, automate workflows, and create help center content with AI.
+                </p>
+              </div>
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-2/3 opacity-70">
+                <img src={darkMode ? cxHeroBanner : cxHeroLight} alt="" className={`h-full w-full ${
+      darkMode
+        ? "object-cover object-right opacity-80"
+        : "object-cover object-center opacity-100"
+    }`} />
+              </div>
             </div>
 
-            <PromptComposer
-              embedded
-              onSubmitPrompt={submitPrompt}
-              onExtractAttachment={handleExtractAttachment}
-              onRemoveAttachment={removeAttachment}
-              onAddExistingContext={addExistingContextSelection}
-              onRemoveExistingContext={removeExistingContextSelection}
-              attachments={attachments}
-              isLoading={generateMutation.isPending || attachmentExtractMutation.isPending}
-              isLocked={!zendeskValidated}
-              lockReason="Validate Zendesk credentials first in Integration Diagnostics."
-              dependencyMode={dependencyMode}
-              onDependencyModeChange={setDependencyMode}
-              onExistingMode={onExistingMode}
-              onOnExistingModeChange={setOnExistingMode}
-              existingItemBehavior={existingItemBehavior}
-              onExistingItemBehaviorChange={setExistingItemBehavior}
-              selectedContextCount={selectedRelatedObjects.length}
-              focusObjectTypes={focusObjectTypes}
-              onFocusObjectTypesChange={setFocusObjectTypes}
-              existingItemOptions={existingItemOptions}
-              selectedExistingItems={selectedExistingItems}
-              selectedExistingItemKeySet={selectedExistingItemKeySet}
-              articleHelpCenterHint={articleHelpCenterHint}
-            />
+            <div className="mt-6">
+              <h2 className={`mb-3 text-sm font-semibold ${sectionTitle}`}>Quick Actions</h2>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                {QUICK_ACTIONS.map((action) => {
+  const Icon = action.icon;
+  return (
+    <button
+      key={action.label}
+      type="button"
+      onClick={() => setExternalPrompt(action.prompt)}
+      className={`rounded-lg border p-4 text-left transition ${hoverCard}`}
+    >
+      <Icon className={`h-8 w-8 ${action.color}`} />
+      <p className={`mt-3 text-sm font-semibold ${sectionTitle}`}>{action.label}</p>
+      <p className={`mt-1 text-xs leading-5 ${textSoft}`}>{action.detail}</p>
+    </button>
+  );
+})}
+              </div>
+            </div>
 
-            <div className="rounded-lg border border-[#7B1FFF]/24 bg-[#120522]/60 p-3">
+            <div className="mt-4">
+              <PromptComposer
+                embedded
+                compact
+                darkMode={darkMode}
+                onSubmitPrompt={submitPrompt}
+                onExtractAttachment={handleExtractAttachment}
+                onRemoveAttachment={removeAttachment}
+                onAddExistingContext={addExistingContextSelection}
+                onRemoveExistingContext={removeExistingContextSelection}
+                attachments={attachments}
+                isLoading={generateMutation.isPending || attachmentExtractMutation.isPending}
+                isLocked={!zendeskValidated}
+                lockReason="Validate Zendesk credentials first in Integration Status."
+                dependencyMode={dependencyMode}
+                onDependencyModeChange={setDependencyMode}
+                onExistingMode={onExistingMode}
+                onOnExistingModeChange={setOnExistingMode}
+                existingItemBehavior={existingItemBehavior}
+                onExistingItemBehaviorChange={setExistingItemBehavior}
+                selectedContextCount={selectedRelatedObjects.length}
+                focusObjectTypes={focusObjectTypes}
+                onFocusObjectTypesChange={setFocusObjectTypes}
+                existingItemOptions={existingItemOptions}
+                selectedExistingItems={selectedExistingItems}
+                selectedExistingItemKeySet={selectedExistingItemKeySet}
+                articleHelpCenterHint={articleHelpCenterHint}
+                 externalPrompt={externalPrompt}                        // ← new
+                onExternalPromptConsumed={() => setExternalPrompt("")}
+              />
+            </div>
+
+            <div className="mt-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className={`text-sm font-semibold ${sectionTitle}`}>Try these examples</h2>
+                <button type="button" className="text-xs font-medium text-violet-600">View all</button>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {EXAMPLE_PROMPTS.map((item) => {
+  const Icon = item.icon;
+  return (
+    <button
+      key={item.label}
+      type="button"
+      onClick={() => setExternalPrompt(item.prompt)}
+      className={`flex items-center gap-3 rounded-lg border p-3 text-left text-sm transition ${hoverCard}`}
+    >
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${darkMode ? "bg-[#7B1FFF]/18" : "bg-violet-50"}`}>
+        <Icon className={`h-5 w-5 ${item.color}`} />
+      </span>
+      <span className={sectionTitle}>{item.label}</span>
+    </button>
+  );
+})}
+              </div>
+            </div>
+
+            <Card className={`mt-5 ${workspaceCard}`}>
+              <CardContent className="p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className={`text-sm font-semibold ${sectionTitle}`}>Recent Activity</h2>
+                  <span className={`text-xs ${textSoft}`}>{currentPhaseLabel}</span>
+                </div>
+                <div className="space-y-2">
+                  {timeline.length > 0 ? (
+                    timeline.slice(-4).map((entry) => (
+                      <div key={entry.id} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
+                        <div>
+                          <p className={sectionTitle}>{entry.text}</p>
+                          <p className={`mt-1 text-xs ${textSoft}`}>{entry.role} - {new Date(entry.at).toLocaleTimeString()}</p>
+                        </div>
+                        <ChevronRight className={textSoft} size={18} />
+                      </div>
+                    ))
+                  ) : (
+                    <div className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                          <CirclePlus size={18} />
+                        </span>
+                        <div>
+                          <p className={sectionTitle}>Create trigger for inactive tickets</p>
+                          <p className={`text-xs ${textSoft}`}>Trigger - ready to generate</p>
+                        </div>
+                      </div>
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-600">Ready</span>
+                    </div>
+                  )}
+                  <div ref={conversationEndRef} />
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className={`mt-5 ${processingPanelBg}`}>
               <button
                 type="button"
                 onClick={() => setShowProcessingDetails((prev) => !prev)}
                 className="flex w-full items-center justify-between text-left"
               >
                 <div>
-                  <p className="text-sm font-semibold text-slate-200">
+                  <p className={`text-sm font-semibold ${processingHeading}`}>
                     {isWorking ? "Processing..." : "Processing details"}
                   </p>
-                  <p className="text-xs text-slate-400">{currentPhaseLabel}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#B9A7D9]">
-                    <span className="rounded-full border border-[#7B1FFF]/40 bg-[#07030F]/70 px-2 py-0.5">
-                      {processingSnapshot.badge}
-                    </span>
+                  <p className={`text-xs ${processingSubtext}`}>{currentPhaseLabel}</p>
+                  <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${processingBody}`}>
+                    <span className={badgePill}>{processingSnapshot.badge}</span>
                     <span>Elapsed: {processingSnapshot.elapsedLabel}</span>
                     <span>ETA: {processingSnapshot.etaLabel}</span>
+                    {pendingCheckpointCount > 0 ? (
+                      <span>Checkpoints: {pendingCheckpointCount}</span>
+                    ) : null}
                   </div>
-                  <p className="mt-1 text-[11px] text-slate-300">
-                    Currently doing: {processingSnapshot.currentDoing}
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
                       variant="outline"
@@ -1468,18 +1718,7 @@ function App() {
                       onClick={() => sendRunControl("resume")}
                       disabled={!canControlRun || runControlMutation.isPending || !runControlState.pause_requested}
                     >
-                      Clear Visual Pause
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => sendRunControl(
-                        runControlState.pause_after_wave ? "clear_pause_after_wave" : "pause_at_next_wave"
-                      )}
-                      disabled={!canControlRun || runControlMutation.isPending}
-                    >
-                      {runControlState.pause_after_wave ? "Clear Next-Wave Visual Pause" : "Visual Pause At Next Wave"}
+                      Resume
                     </Button>
                     <Button
                       type="button"
@@ -1488,371 +1727,316 @@ function App() {
                       onClick={() => sendRunControl("cancel")}
                       disabled={!canControlRun || runControlMutation.isPending || runControlState.cancel_requested}
                     >
-                      Cancel Run
+                      Cancel
                     </Button>
-                    {runControlState.pause_requested ? (
-                      <span className="text-amber-300">Visual hold active (run continues)</span>
-                    ) : null}
-                    {runControlState.pause_after_wave ? (
-                      <span className="text-cyan-300">Visual hold will activate at next wave checkpoint</span>
-                    ) : null}
-                    {runControlState.cancel_requested ? (
-                      <span className="text-rose-300">Cancel requested (stop at next safe checkpoint)</span>
-                    ) : null}
-                    {pendingCheckpointCount > 0 ? (
-                      <span className="text-violet-300">
-                        Pending checkpoints: {pendingCheckpointCount}
-                      </span>
-                    ) : null}
                   </div>
                 </div>
-                <span className="text-xs text-[#B9A7D9]">
-                  {showProcessingDetails ? "Hide" : "Show"}
-                </span>
+                <span className={`text-xs ${textSoft}`}>{showProcessingDetails ? "Hide" : "Show"}</span>
               </button>
               {showProcessingDetails ? (
-                <div className="mt-3 space-y-1 border-t border-[#7B1FFF]/20 pt-2 text-xs text-slate-300">
+                <div className={processingDetailLines}>
                   {processingSnapshot.lines.map((line, idx) => (
                     <p key={`${idx}-${line.at}-${line.text}`}>
                       [{new Date(line.at).toLocaleTimeString()}] {line.stage}: {line.text}
                     </p>
                   ))}
                   {attachments.length > 0 ? (
-                    <p className="text-[11px] text-slate-400">
-                      Attachment context: {attachmentSummaryText}
-                    </p>
+                    <p className={`text-[11px] ${textSoft}`}>Attachment context: {attachmentSummaryText}</p>
                   ) : null}
                 </div>
               ) : null}
             </div>
-          </CardContent>
-        </Card>
 
-        <StatusRibbon
-          batchId={batchId}
-          status={currentStatus}
-          testResult={null}
-          jobData={jobQuery.data}
-          generateMetadata={effectiveGenerateMetadata}
-          approvalResult={approveMutation.data}
-          deployEnabled={Boolean(integrationsQuery.data?.zendesk?.deploy_endpoint_enabled)}
-          deployTarget={zendeskValidationResult?.base_url || ""}
-          onExistingMode={onExistingMode}
-        />
-
-        {checkpoints.length > 0 ? (
-          <Card className="mb-4 border-[#7B1FFF]/30 bg-[#120522]/72">
-            <CardContent className="space-y-3 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-100">Wave Checkpoints</p>
-                  <p className="text-xs text-slate-400">
-                    Non-blocking review checkpoints are created after each completed wave.
-                  </p>
-                </div>
-                <Badge variant={pendingCheckpointCount > 0 ? "warning" : "success"}>
-                  {pendingCheckpointCount > 0
-                    ? `${pendingCheckpointCount} pending`
-                    : "all decided"}
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                {checkpoints
-                  .slice()
-                  .sort((a, b) => Number(a?.wave || 0) - Number(b?.wave || 0))
-                  .map((checkpoint) => {
+            {checkpoints.length > 0 ? (
+              <Card className={`mt-5 ${workspaceCard}`}>
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className={`text-sm font-semibold ${sectionTitle}`}>Wave Checkpoints</h2>
+                    <span className={`text-xs ${textSoft}`}>{pendingCheckpointCount} pending</span>
+                  </div>
+                  {checkpoints.slice(0, 4).map((checkpoint) => {
                     const checkpointId = String(checkpoint?.checkpoint_id || "");
-                    const summary = checkpoint?.summary || {};
-                    const generatedCounts = summary?.generated_counts || {};
-                    const countText = Object.entries(generatedCounts)
-                      .slice(0, 4)
-                      .map(([key, value]) => `${key}: ${value}`)
-                      .join(" | ");
                     const checkpointStatus = String(checkpoint?.status || "pending");
                     const isPending = checkpointStatus === "pending";
                     return (
-                      <div
-                        key={checkpointId}
-                        className="rounded-lg border border-[#7B1FFF]/25 bg-[#07030F]/50 p-3"
-                      >
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <p className="text-sm text-slate-200">
-                            Wave {Number(checkpoint?.wave || 0)} checkpoint
-                          </p>
-                          <Badge
-                            variant={
-                              checkpointStatus === "accepted"
-                                ? "success"
-                                : checkpointStatus === "rejected"
-                                  ? "danger"
-                                  : "warning"
-                            }
-                          >
+                      <div key={checkpointId} className={`rounded-lg border p-3 ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-slate-50"}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-sm ${sectionTitle}`}>Wave {Number(checkpoint?.wave || 0)} checkpoint</p>
+                          <span className={`rounded-full px-2 py-1 text-xs ${isPending ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
                             {checkpointStatus}
-                          </Badge>
+                          </span>
                         </div>
-                        <p className="text-xs text-slate-400">
-                          {countText || "No generated count summary provided."}
-                        </p>
-                        {checkpoint?.decision_note ? (
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            Note: {checkpoint.decision_note}
-                          </p>
-                        ) : null}
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          Created: {checkpoint?.created_at ? new Date(checkpoint.created_at).toLocaleString() : "-"}
-                        </p>
-                        <div className="mt-2 flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={!isPending || checkpointDecisionMutation.isPending}
-                            onClick={() => submitCheckpointDecision(checkpointId, "accept")}
-                          >
+                        <div className="mt-2 flex gap-2">
+                          <Button size="sm" variant="outline" disabled={!isPending || checkpointDecisionMutation.isPending} onClick={() => submitCheckpointDecision(checkpointId, "accept")}>
                             Accept
                           </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={!isPending || checkpointDecisionMutation.isPending}
-                            onClick={() => submitCheckpointDecision(checkpointId, "reject")}
-                          >
-                            Reject + Rollback
+                          <Button size="sm" variant="outline" disabled={!isPending || checkpointDecisionMutation.isPending} onClick={() => submitCheckpointDecision(checkpointId, "reject")}>
+                            Reject
                           </Button>
                         </div>
                       </div>
                     );
                   })}
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
 
-        {showExistingContext ? (
-          <div className="mb-6 space-y-4">
-            <IntegrationPanel
-              integrationsStatus={integrationsQuery.data}
-              integrationsLoading={integrationsQuery.isLoading}
-              onRefreshIntegrations={() => integrationsQuery.refetch()}
-              generateMetadata={effectiveGenerateMetadata}
-              approvalMetadata={approveMutation.data?.metadata}
-              onValidateZendesk={(payload) => mutateZendeskValidation(payload)}
-              isValidatingZendesk={zendeskValidationPending}
-              zendeskValidationResult={zendeskValidationResult}
-              zendeskValidated={zendeskValidated}
-              contextStatus={zendeskContextQuery.data}
-              contextLoading={zendeskContextQuery.isFetching}
-              selectedContextCount={selectedRelatedObjects.length}
-            />
-
-            <Card className="border-[#7B1FFF]/30 bg-[#120522]/70">
-              <CardContent className="space-y-4 p-4">
-                <div>
-                  <p className="mb-2 text-sm font-semibold text-slate-200">Recent Requests</p>
-                  <input
-                    value={historySearch}
-                    onChange={(event) => setHistorySearch(event.target.value)}
-                    placeholder="Search by prompt or batch id..."
-                    className="mb-2 w-full rounded-md border border-[#7B1FFF]/35 bg-[#07030F]/70 px-2 py-1 text-sm text-[#F4EEFF]"
-                  />
-                  <div className="space-y-1">
-                    {filteredHistory.slice(0, 10).map((item) => (
-                      <button
-                        key={item.batch_id}
-                        type="button"
-                        onClick={() => selectHistoryBatch(item.batch_id)}
-                        className={`w-full rounded border px-2 py-2 text-left text-xs ${
-                          batchId === item.batch_id
-                            ? "border-[#7B1FFF]/60 bg-[#5B35FF]/18"
-                            : "border-[#7B1FFF]/25 bg-[#07030F]/45 hover:bg-[#7B1FFF]/12"
-                        }`}
-                      >
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <span className="font-mono text-slate-300">{item.batch_id}</span>
-                          <Badge variant={statusBadgeVariant(item.status)}>{item.status}</Badge>
-                        </div>
-                        <p className="text-slate-400">{item.prompt_preview || "No prompt preview."}</p>
-                      </button>
-                    ))}
-                    {filteredHistory.length === 0 ? (
-                      <p className="text-xs text-slate-500">No matching requests.</p>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-200">Context Selection</p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => zendeskContextQuery.refetch()}
-                        disabled={zendeskContextQuery.isFetching}
-                      >
-                        {zendeskContextQuery.isFetching ? "Refreshing..." : "Refresh"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowAdvancedCatalog((prev) => !prev)}
-                      >
-                        {showAdvancedCatalog ? "Hide Advanced List" : "Advanced Catalog List"}
-                      </Button>
-                    </div>
-                  </div>
-                  {!contextCatalog ? (
-                    <p className="text-xs text-slate-500">
-                      Context will appear here after Zendesk session validation.
-                    </p>
-                  ) : showAdvancedCatalog ? (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {Object.entries(contextCatalog).map(([catalogKey, entries]) => (
-                        <div key={catalogKey} className="rounded border border-[#7B1FFF]/25 bg-[#07030F]/45 p-2">
-                          <p className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
-                            {sectionLabel(catalogKey)}
-                          </p>
-                          <div className="space-y-1">
-                            {(entries || []).slice(0, 8).map((entry) => {
-                              const selectedKey = `${entry.object_type}:${entry.id}`;
-                              const selected = Boolean(selectedContext[selectedKey]);
-                              return (
-                                <button
-                                  key={selectedKey}
-                                  type="button"
-                                  onClick={() => toggleContextSelection(entry)}
-                                  className={`w-full rounded border px-2 py-1 text-left text-xs ${
-                                    selected
-                                      ? "border-emerald-700 bg-emerald-950/20 text-emerald-200"
-                                      : "border-[#7B1FFF]/25 bg-[#120522]/40 text-slate-300 hover:bg-[#7B1FFF]/12"
-                                  }`}
-                                >
-                                  {entry.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400">
-                      Use the prompt-level <span className="font-semibold text-slate-200">Existing item</span> picker
-                      for quick selection. Open <span className="font-semibold text-slate-200">Advanced Catalog List</span> if you need the full catalog.
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {activityLogs.length > 0 ? (
-              <Card className="border-[#7B1FFF]/30 bg-[#120522]/70">
-                <CardContent className="space-y-2 p-4 text-xs text-slate-300">
-                  <p className="font-semibold text-slate-200">Action Log</p>
-                  {activityLogs.slice(0, 10).map((entry, index) => (
-                    <p key={`${entry.at}-${index}`}>
-                      <span className="font-mono text-slate-400">{entry.at}</span> |{" "}
-                      <span className="uppercase">{entry.level}</span> | {entry.message}
-                    </p>
+            {inferenceAssumptionMessages.length > 0 || lastFailureDetail || errors.length > 0 ? (
+              <Card className="mt-5 border-amber-300 bg-amber-50">
+                <CardContent className="space-y-2 p-4 text-sm text-amber-900">
+                  {inferenceAssumptionMessages.slice(0, 3).map((message, idx) => (
+                    <p key={`${message}-${idx}`}>{message}</p>
+                  ))}
+                  {lastFailureDetail ? <p>{lastFailureDetail.reason}</p> : null}
+                  {errors.map((err, idx) => (
+                    <p key={`${err}-${idx}`}>{err}</p>
                   ))}
                 </CardContent>
               </Card>
             ) : null}
-          </div>
-        ) : null}
 
-        {inferenceAssumptionMessages.length > 0 ? (
-          <Card className="mb-6 border-amber-700/50 bg-amber-950/20">
-            <CardContent className="space-y-2 p-4 text-sm text-amber-100">
-              <p className="font-semibold">Assumptions Applied</p>
-              {inferenceAssumptionMessages.slice(0, 4).map((message, idx) => (
-                <p key={`${message}-${idx}`} className="text-xs text-amber-200">
-                  {message}
-                </p>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
+            <StatusRibbon
+              darkMode={darkMode}
+              batchId={batchId}
+              status={currentStatus}
+              testResult={null}
+              jobData={jobQuery.data}
+              generateMetadata={effectiveGenerateMetadata}
+              approvalResult={approveMutation.data}
+              deployEnabled={Boolean(integrationsQuery.data?.zendesk?.deploy_endpoint_enabled)}
+              deployTarget={zendeskValidationResult?.base_url || ""}
+              onExistingMode={onExistingMode}
+            />
+          </section>
 
-        {lastFailureDetail ? (
-          <Card className="mb-6 border-rose-800 bg-rose-950/30">
-            <CardContent className="space-y-2 p-4 text-sm text-rose-200">
-              <p className="font-semibold">
-                {lastFailureDetail.stage ? `[${lastFailureDetail.stage}] ` : ""}
-                {lastFailureDetail.reason}
-              </p>
-              {Array.isArray(lastFailureDetail.validationErrors)
-                && lastFailureDetail.validationErrors.length > 0 ? (
-                  <div className="space-y-1 text-xs text-rose-300">
-                    {lastFailureDetail.validationErrors.slice(0, 4).map((item, idx) => (
-                      <p key={`validation-${idx}`}>
-                        {String(item?.path || "request")}: {String(item?.message || "Invalid value.")}
-                      </p>
-                    ))}
-                  </div>
-                ) : null}
-              {lastFailureDetail.compaction ? (
-                <div className="space-y-1 text-xs text-rose-300">
-                  <p>
-                    Compaction: {lastFailureDetail.compaction.applied ? "applied" : "not needed"} | raw{" "}
-                    {Number(lastFailureDetail.compaction.raw_payload_bytes || 0)}B {"->"} compacted{" "}
-                    {Number(lastFailureDetail.compaction.compacted_payload_bytes || 0)}B
-                  </p>
-                  {Array.isArray(lastFailureDetail.compaction.trimmed_fields)
-                    && lastFailureDetail.compaction.trimmed_fields.length > 0 ? (
-                      <p>
-                        Trimmed fields:{" "}
-                        {lastFailureDetail.compaction.trimmed_fields.slice(0, 4).join(", ")}
-                      </p>
-                    ) : null}
-                  {lastFailureDetail.compaction.dropped_counts ? (
-                    <p>
-                      Dropped items: related={Number(lastFailureDetail.compaction.dropped_counts.related_objects || 0)},{" "}
-                      catalog={Number(lastFailureDetail.compaction.dropped_counts.reference_catalog || 0)},{" "}
-                      recent={Number(lastFailureDetail.compaction.dropped_counts.recent_batch_context || 0)}
-                    </p>
-                  ) : null}
+          <aside className="space-y-4">
+            <Card className={workspaceCard}>
+              <CardContent className="p-4">
+                <div className="mb-5 flex items-center justify-between">
+                  <h2 className={`text-sm font-semibold ${sectionTitle}`}>Integration Status</h2>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
+                    <CheckCircle2 size={13} />
+                    Connected
+                  </span>
                 </div>
-              ) : null}
-              {lastFailureDetail.batchId ? (
-                <p className="text-xs text-rose-300">Logged batch: {lastFailureDetail.batchId}</p>
-              ) : null}
-              {lastFailureDetail.nextStep ? (
-                <p className="text-xs text-rose-300">Next step: {lastFailureDetail.nextStep}</p>
-              ) : null}
-            </CardContent>
-          </Card>
-        ) : null}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="h-3 w-3 rounded-full bg-emerald-500" />
+                    <div>
+                      <p className="text-sm font-semibold">Zendesk</p>
+                      <p className={`text-xs ${textSoft}`}>{zendeskCredentials.subdomain || "workspace"}.zendesk.com</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={darkMode ? "" : "border-violet-200 bg-white text-violet-700 hover:bg-violet-50"}
+                    onClick={() => mutateZendeskValidation(zendeskCredentials)}
+                    disabled={zendeskValidationPending}
+                  >
+                    Validate
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
-        {errors.length > 0 && (
-          <Card className="mt-6 border-rose-800 bg-rose-950/30">
-            <CardContent className="space-y-2 p-4 text-sm text-rose-200">
-              {errors.map((err, idx) => (
-                <p key={`${err}-${idx}`}>{err}</p>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+            <Card className={workspaceCard}>
+              <CardContent className="p-4">
+                <h2 className={`text-sm font-semibold ${sectionTitle}`}>Selected Context</h2>
+                <div className="mt-5 flex items-center gap-3">
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${darkMode ? "bg-[#7B1FFF]/20 text-violet-200" : "bg-violet-50 text-violet-600"}`}>
+                    <Library size={18} />
+                  </span>
+                  <p className="text-sm font-semibold">{selectedRelatedObjects.length} objects selected</p>
+                </div>
+                <p className={`mt-3 text-sm leading-6 ${textSoft}`}>Add relevant objects to improve AI suggestions</p>
+                <Button
+                  variant="outline"
+                  className={`${darkMode ? "" : "border-violet-200 bg-white text-violet-700 hover:bg-violet-50"} mt-4 w-full gap-2`}
+                  onClick={() => setShowExistingContext((prev) => !prev)}
+                >
+                  Add Context
+                  <CirclePlus size={16} />
+                </Button>
+              </CardContent>
+            </Card>
 
-        <PreviewWorkspace
-          previewData={previewData}
-          generatedData={generatedData}
-          decisions={decisions}
-          onDecisionChange={(recordId, decision) =>
-            setDecisions((prev) => ({ ...prev, [recordId]: decision }))
-          }
-          onApproveDecisions={saveApproval}
-          onApproveAndDeploy={approveAndDeploy}
-          isApproving={approveMutation.isPending}
-          onDeployToZendesk={deployToZendesk}
-          isDeploying={deployMutation.isPending}
-          deployResult={deployMutation.data}
-        />
-      </main>
+            <Card className={workspaceCard}>
+              <CardContent className="space-y-4 p-4">
+                <h2 className={`text-sm font-semibold ${sectionTitle}`}>Advanced Options</h2>
+                <label className="block">
+                  <span className={`text-xs ${textSoft}`}>Dependency Behavior</span>
+                  <select value={dependencyMode} onChange={(event) => setDependencyMode(event.target.value)} className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-slate-100" : "border-slate-200 bg-white text-slate-700"}`}>
+                    <option value="match_existing_or_create_new">Match existing or create new</option>
+                    <option value="force_existing_only">Existing only</option>
+                    <option value="force_create_new">Always create new</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className={`text-xs ${textSoft}`}>Existing Object Behavior</span>
+                  <select value={onExistingMode} onChange={(event) => setOnExistingMode(event.target.value)} className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-slate-100" : "border-slate-200 bg-white text-slate-700"}`}>
+                    <option value="create_new_anyway">Create new anyway</option>
+                    <option value="skip_existing">Skip existing</option>
+                    <option value="update_existing">Update existing</option>
+                  </select>
+                </label>
+                <div>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className={`text-xs ${textSoft}`}>Focus Objects</span>
+                    <button type="button" onClick={() => setFocusObjectTypes([])} className={`rounded-full px-3 py-1 text-xs font-medium ${focusObjectTypes.length === 0 ? "bg-violet-100 text-violet-700" : textSoft}`}>
+                      Auto
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {FOCUS_CHIPS.map((option) => {
+                      const active = activeFocusSet.has(option.key);
+                      return (
+                        <button
+                          key={option.key}
+                          type="button"
+                          onClick={() => toggleFocusObjectType(option.key)}
+                          className={`rounded-lg border px-3 py-1.5 text-xs ${
+                            active
+                              ? "border-violet-300 bg-violet-50 text-violet-700"
+                              : darkMode
+                                ? "border-[#7B1FFF]/22 text-[#B9A7D9] hover:bg-[#7B1FFF]/12"
+                                : "border-violet-200 text-violet-700 hover:bg-violet-50"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </aside>
+
+          <div className="lg:col-span-2">
+            {showExistingContext ? (
+              <div className="mb-6">
+                <IntegrationPanel
+                  darkMode={darkMode}  
+                  integrationsStatus={integrationsQuery.data}
+                  integrationsLoading={integrationsQuery.isLoading}
+                  onRefreshIntegrations={() => integrationsQuery.refetch()}
+                  generateMetadata={effectiveGenerateMetadata}
+                  approvalMetadata={approveMutation.data?.metadata}
+                  onValidateZendesk={(payload) => mutateZendeskValidation(payload)}
+                  isValidatingZendesk={zendeskValidationPending}
+                  zendeskValidationResult={zendeskValidationResult}
+                  zendeskValidated={zendeskValidated}
+                  contextStatus={zendeskContextQuery.data}
+                  contextLoading={zendeskContextQuery.isFetching}
+                  selectedContextCount={selectedRelatedObjects.length}
+                />
+                <Card className={`mt-4 ${workspaceCard}`}>
+                  <CardContent className="grid gap-4 p-4 lg:grid-cols-2">
+                    <div>
+                      <h2 className={`mb-2 text-sm font-semibold ${sectionTitle}`}>Recent Requests</h2>
+                      <input
+                        value={historySearch}
+                        onChange={(event) => setHistorySearch(event.target.value)}
+                        placeholder="Search by prompt or batch id..."
+                        className={`mb-2 w-full rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-slate-100" : "border-slate-200 bg-white text-slate-700"}`}
+                      />
+                      <div className="space-y-2">
+                        {filteredHistory.slice(0, 5).map((item) => (
+                          <button
+                            key={item.batch_id}
+                            type="button"
+                            onClick={() => selectHistoryBatch(item.batch_id)}
+                            className={`w-full rounded-lg border px-3 py-2 text-left text-xs ${hoverCard}`}
+                          >
+                            <span className="font-mono">{item.batch_id}</span>
+                            <p className={`mt-1 ${textSoft}`}>{item.prompt_preview || item.status}</p>
+                          </button>
+                        ))}
+                        {filteredHistory.length === 0 ? (
+                          <p className={`text-xs ${textSoft}`}>No matching requests.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <h2 className={`text-sm font-semibold ${sectionTitle}`}>Context Selection</h2>
+                        <Button size="sm" variant="outline" onClick={() => setShowAdvancedCatalog((prev) => !prev)}>
+                          {showAdvancedCatalog ? "Hide" : "Show"}
+                        </Button>
+                      </div>
+                      {!contextCatalog ? (
+                        <p className={`text-xs ${textSoft}`}>Context will appear after Zendesk session validation.</p>
+                      ) : showAdvancedCatalog ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {Object.entries(contextCatalog).slice(0, 6).map(([catalogKey, entries]) => (
+                            <div key={catalogKey} className={`rounded-lg border p-2 ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-slate-50"}`}>
+                              <p className={`mb-2 text-xs font-semibold ${textSoft}`}>{sectionLabel(catalogKey)}</p>
+                              <div className="space-y-1">
+                                {(entries || []).slice(0, 4).map((entry) => {
+                                  const selectedKey = `${entry.object_type}:${entry.id}`;
+                                  const selected = Boolean(selectedContext[selectedKey]);
+                                  return (
+                                    <button
+                                      key={selectedKey}
+                                      type="button"
+                                      onClick={() => toggleContextSelection(entry)}
+                                      className={`w-full rounded-md border px-2 py-1 text-left text-xs ${
+                                        selected
+                                          ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                                          : darkMode
+                                            ? "border-[#7B1FFF]/18 bg-[#120522]/40 text-slate-300"
+                                            : "border-slate-200 bg-white text-slate-600"
+                                      }`}
+                                    >
+                                      {entry.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className={`text-xs ${textSoft}`}>Open the advanced list to select existing Zendesk objects for context.</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+                {activityLogs.length > 0 ? (
+                  <Card className={`mt-4 ${workspaceCard}`}>
+                    <CardContent className={`space-y-2 p-4 text-xs ${textSoft}`}>
+                      <h2 className={`text-sm font-semibold ${sectionTitle}`}>Action Log</h2>
+                      {activityLogs.slice(0, 8).map((entry, index) => (
+                        <p key={`${entry.at}-${index}`}>
+                          {entry.level}: {entry.message}
+                        </p>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </div>
+            ) : null}
+            <PreviewWorkspace
+              previewData={previewData}
+              generatedData={generatedData}
+              decisions={decisions}
+              onDecisionChange={(recordId, decision) =>
+                setDecisions((prev) => ({ ...prev, [recordId]: decision }))
+              }
+              onApproveDecisions={saveApproval}
+              onApproveAndDeploy={approveAndDeploy}
+              isApproving={approveMutation.isPending}
+              onDeployToZendesk={deployToZendesk}
+              isDeploying={deployMutation.isPending}
+              deployResult={deployMutation.data}
+            />
+          </div>
+        </main>
+      </div>
     </div>
   );
+
 }
 
 export default App;

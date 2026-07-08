@@ -14,6 +14,7 @@ function statusToBadge(status) {
 }
 
 export default function IntegrationPanel({
+  darkMode = false,
   integrationsStatus,
   integrationsLoading,
   onRefreshIntegrations,
@@ -38,6 +39,40 @@ export default function IntegrationPanel({
   const plannerRoute = llmRoutes?.planner || null;
   const generatorRoute = llmRoutes?.generator || null;
 
+  // Theme-aware class sets
+  const panel = darkMode
+    ? "mb-6 rounded-lg border border-[#7B1FFF]/30 bg-[#120522]/70 p-4"
+    : "mb-6 rounded-lg border border-slate-200 bg-white p-4";
+
+  const headingText = darkMode ? "text-slate-200" : "text-slate-900";
+  const subtextColor = darkMode ? "text-slate-400" : "text-slate-500";
+  const bodyText = darkMode ? "text-slate-300" : "text-slate-700";
+
+  const card = darkMode
+    ? "rounded-md border border-[#7B1FFF]/25 bg-[#07030F]/55 p-3 text-xs"
+    : "rounded-md border border-slate-200 bg-slate-50 p-3 text-xs";
+
+  const divider = darkMode
+    ? "border-t border-[#7B1FFF]/20 pt-2 mt-2"
+    : "border-t border-slate-200 pt-2 mt-2";
+
+  const inputClass = darkMode
+    ? "w-full rounded border border-[#7B1FFF]/35 bg-[#07030F]/70 px-2 py-1 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-[#7B1FFF]/70"
+    : "w-full rounded border border-slate-300 bg-white px-2 py-1 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-violet-400";
+
+  const linkClass = darkMode
+    ? "text-sky-300 hover:text-sky-200"
+    : "text-sky-600 hover:text-sky-500";
+
+  const preClass = darkMode
+    ? "mt-2 overflow-auto rounded border border-[#7B1FFF]/25 bg-[#07030F]/65 p-2 text-[11px] text-slate-300"
+    : "mt-2 overflow-auto rounded border border-slate-200 bg-slate-100 p-2 text-[11px] text-slate-700";
+
+  const warningText = darkMode ? "text-amber-300" : "text-amber-600";
+  const errorText = darkMode ? "text-rose-300" : "text-rose-600";
+  const mutedText = darkMode ? "text-slate-400" : "text-slate-500";
+  const monoText = darkMode ? "font-mono text-slate-300" : "font-mono text-slate-600";
+
   const submitValidate = (event) => {
     event.preventDefault();
     if (!subdomain.trim() || !email.trim() || !apiToken.trim()) return;
@@ -49,9 +84,9 @@ export default function IntegrationPanel({
   };
 
   return (
-    <section className="mb-6 rounded-lg border border-[#7B1FFF]/30 bg-[#120522]/70 p-4">
+    <section className={panel}>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">Integration Diagnostics</h2>
+        <h2 className={`text-sm font-semibold ${headingText}`}>Integration Diagnostics</h2>
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -66,29 +101,31 @@ export default function IntegrationPanel({
           ) : (
             <Badge variant="warning">Prompt Locked</Badge>
           )}
-          {integrationsLoading ? <span className="text-xs text-slate-500">Refreshing...</span> : null}
+          {integrationsLoading ? (
+            <span className={`text-xs ${mutedText}`}>Refreshing...</span>
+          ) : null}
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-md border border-[#7B1FFF]/25 bg-[#07030F]/55 p-3 text-xs text-slate-300">
-          <p className="mb-2 font-semibold text-slate-200">Apps Script</p>
-          <p className="mb-2 text-slate-400">
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Apps Script card */}
+        <div className={`${card} ${bodyText}`}>
+          <p className={`mb-2 font-semibold ${headingText}`}>Apps Script</p>
+          <p className={`mb-2 ${subtextColor}`}>
             Schema preflight sync runs automatically before generate, approve, and deploy actions.
           </p>
           <p className="mb-1">Configured: {boolToBadge(integrationsStatus?.appscript?.configured)}</p>
           <p className="mb-1">Health: {statusToBadge(integrationsStatus?.appscript?.health)}</p>
           {integrationsStatus?.appscript?.health_detail ? (
-            <p className="text-rose-300">{integrationsStatus.appscript.health_detail}</p>
+            <p className={errorText}>{integrationsStatus.appscript.health_detail}</p>
           ) : null}
+
           {stageMeta?.status ? (
-            <div className="mt-2 border-t border-[#7B1FFF]/20 pt-2">
-              <p>
-                Last stage write: {statusToBadge(stageMeta.status)}
-              </p>
+            <div className={divider}>
+              <p>Last stage write: {statusToBadge(stageMeta.status)}</p>
               {stageResult?.spreadsheet_url ? (
                 <a
-                  className="text-sky-300 hover:text-sky-200"
+                  className={linkClass}
                   href={stageResult.spreadsheet_url}
                   target="_blank"
                   rel="noreferrer"
@@ -97,73 +134,88 @@ export default function IntegrationPanel({
                 </a>
               ) : null}
               {stageResult?.object_rows_written ? (
-                  <pre className="mt-2 overflow-auto rounded border border-[#7B1FFF]/25 bg-[#07030F]/65 p-2 text-[11px]">
+                <pre className={preClass}>
                   {JSON.stringify(stageResult.object_rows_written, null, 2)}
                 </pre>
               ) : null}
             </div>
           ) : null}
+
           {approvalSync?.status ? (
-            <div className="mt-2 border-t border-[#7B1FFF]/20 pt-2">
-              <p>
-                Last approval sync: {statusToBadge(approvalSync.status)}
-              </p>
+            <div className={divider}>
+              <p>Last approval sync: {statusToBadge(approvalSync.status)}</p>
               {approvalSync?.result?.updated_records ? (
-                <p className="mt-1 text-slate-400">
+                <p className={`mt-1 ${mutedText}`}>
                   Updated rows: {approvalSync.result.updated_records}
                 </p>
               ) : null}
-              {approvalSync?.detail ? <p className="text-rose-300">{approvalSync.detail}</p> : null}
+              {approvalSync?.detail ? (
+                <p className={errorText}>{approvalSync.detail}</p>
+              ) : null}
             </div>
           ) : null}
+
           {plannerRoute || generatorRoute ? (
-            <div className="mt-2 border-t border-[#7B1FFF]/20 pt-2">
-              <p className="mb-1 font-semibold text-slate-200">LLM orchestration</p>
+            <div className={divider}>
+              <p className={`mb-1 font-semibold ${headingText}`}>LLM orchestration</p>
               {plannerRoute ? (
-                <p className="text-slate-400">
-                  planner: <span className="font-mono">{plannerRoute.model}</span> | strict schema: {String(plannerRoute.strict_schema)}
+                <p className={mutedText}>
+                  planner: <span className={monoText}>{plannerRoute.model}</span> | strict schema:{" "}
+                  {String(plannerRoute.strict_schema)}
                 </p>
               ) : null}
               {generatorRoute ? (
-                <p className="text-slate-400">
-                  generator: <span className="font-mono">{generatorRoute.model}</span> | strict schema: {String(generatorRoute.strict_schema)}
+                <p className={mutedText}>
+                  generator: <span className={monoText}>{generatorRoute.model}</span> | strict schema:{" "}
+                  {String(generatorRoute.strict_schema)}
                 </p>
               ) : null}
               {generateMetadata?.ambiguity_score !== undefined ? (
-                <p className="mt-1 text-slate-400">
-                  ambiguity score: {Number(generateMetadata.ambiguity_score).toFixed(2)} (threshold {Number(generateMetadata.ambiguity_threshold || 0).toFixed(2)})
+                <p className={`mt-1 ${mutedText}`}>
+                  ambiguity score: {Number(generateMetadata.ambiguity_score).toFixed(2)} (threshold{" "}
+                  {Number(generateMetadata.ambiguity_threshold || 0).toFixed(2)})
                 </p>
               ) : null}
             </div>
           ) : null}
         </div>
 
-        <div className="rounded-md border border-[#7B1FFF]/25 bg-[#07030F]/55 p-3 text-xs text-slate-300">
-          <p className="mb-2 font-semibold text-slate-200">Zendesk Session</p>
+        {/* Zendesk Session card */}
+        <div className={`${card} ${bodyText}`}>
+          <p className={`mb-2 font-semibold ${headingText}`}>Zendesk Session</p>
           <p className="mb-2">
             Deploy endpoint:{" "}
-            {integrationsStatus?.zendesk?.deploy_endpoint_enabled ? <Badge variant="success">active</Badge> : <Badge variant="warning">inactive</Badge>}
+            {integrationsStatus?.zendesk?.deploy_endpoint_enabled ? (
+              <Badge variant="success">active</Badge>
+            ) : (
+              <Badge variant="warning">inactive</Badge>
+            )}
           </p>
           <p className="mb-2">
-            Session credentials: {zendeskValidated ? <Badge variant="success">valid</Badge> : <Badge variant="warning">not validated</Badge>}
+            Session credentials:{" "}
+            {zendeskValidated ? (
+              <Badge variant="success">valid</Badge>
+            ) : (
+              <Badge variant="warning">not validated</Badge>
+            )}
           </p>
           <form className="space-y-2" onSubmit={submitValidate}>
             <input
               value={subdomain}
               onChange={(event) => setSubdomain(event.target.value)}
-              className="w-full rounded border border-[#7B1FFF]/35 bg-[#07030F]/70 px-2 py-1"
+              className={inputClass}
               placeholder="subdomain (example: acme)"
             />
             <input
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded border border-[#7B1FFF]/35 bg-[#07030F]/70 px-2 py-1"
+              className={inputClass}
               placeholder="agent/admin email"
             />
             <input
               value={apiToken}
               onChange={(event) => setApiToken(event.target.value)}
-              className="w-full rounded border border-[#7B1FFF]/35 bg-[#07030F]/70 px-2 py-1"
+              className={inputClass}
               placeholder="Zendesk API token"
               type="password"
             />
@@ -171,8 +223,9 @@ export default function IntegrationPanel({
               {isValidatingZendesk ? "Validating..." : "Validate Zendesk Credentials"}
             </Button>
           </form>
+
           {zendeskValidationResult ? (
-            <div className="mt-3 border-t border-[#7B1FFF]/20 pt-2">
+            <div className={divider}>
               <p>
                 Result:{" "}
                 {zendeskValidationResult.ok ? (
@@ -183,7 +236,9 @@ export default function IntegrationPanel({
               </p>
               <p className="mt-1">{zendeskValidationResult.detail}</p>
               {zendeskValidationResult.base_url ? (
-                <p className="mt-1 text-slate-400">Target instance: {zendeskValidationResult.base_url}</p>
+                <p className={`mt-1 ${mutedText}`}>
+                  Target instance: {zendeskValidationResult.base_url}
+                </p>
               ) : null}
               {zendeskValidationResult.authenticated_user ? (
                 <p className="mt-1">
@@ -193,7 +248,8 @@ export default function IntegrationPanel({
               ) : null}
             </div>
           ) : null}
-          <div className="mt-3 border-t border-[#7B1FFF]/20 pt-2">
+
+          <div className={divider}>
             <p>
               Context sync:{" "}
               {contextLoading ? (
@@ -205,7 +261,7 @@ export default function IntegrationPanel({
               )}
             </p>
             {contextStatus?.catalogs ? (
-              <p className="mt-1 text-slate-400">
+              <p className={`mt-1 ${mutedText}`}>
                 loaded items:{" "}
                 {Object.values(contextStatus.catalogs).reduce(
                   (acc, entries) => acc + (Array.isArray(entries) ? entries.length : 0),
@@ -215,9 +271,7 @@ export default function IntegrationPanel({
               </p>
             ) : null}
             {contextStatus?.warnings?.length > 0 ? (
-              <p className="mt-1 text-amber-300">
-                {contextStatus.warnings[0]}
-              </p>
+              <p className={`mt-1 ${warningText}`}>{contextStatus.warnings[0]}</p>
             ) : null}
           </div>
         </div>
