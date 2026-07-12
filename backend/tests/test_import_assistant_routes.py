@@ -1681,6 +1681,138 @@ def test_generate_business_blueprint_orchestration_uses_single_parent_batch(monk
     assert "triggers" in generator_calls
 
 
+def test_department_supervisor_retries_only_rejected_source_chunk(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("GEMINI_SUPERVISOR_ENABLED", "true")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setenv("GEMINI_SUPERVISOR_REVIEW_GROUPING", "department")
+    monkeypatch.setenv("GEMINI_SUPERVISOR_MAX_REGENERATION_RETRIES", "1")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_SECONDS", "0")
+    monkeypatch.setenv("LLM_AUTO_CHUNK_PACING_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    reset_batch_store()
+    review_counts: dict[str, int] = {}
+
+    async def fake_planner(prompt: str, **kwargs):
+        return {"object_type": "triggers", "intent": prompt, "confidence": 0.9, "ambiguity_score": 0.1}
+
+    async def fake_blueprint_compiler(**kwargs):  # noqa: ANN001
+        from app.services.import_assistant_service import _build_department_coverage_manifest
+
+        manifest = _build_department_coverage_manifest(
+            prompt=kwargs["prompt"],
+            focus_object_types=["groups", "ticket_forms", "triggers"],
+        )
+        return (
+            {
+                "mode": "compiler",
+                "coverage_manifest": manifest,
+                "target_objects": [],
+                "assumptions": [],
+            },
+            {"model": "test-planner"},
+        )
+
+    async def fake_supervisor_review(self, **kwargs):  # noqa: ANN001
+        review_scope = kwargs.get("review_scope") or {}
+        department = str(review_scope.get("department_name") or "unknown")
+        scope_types = ",".join(review_scope.get("object_types", []) or [])
+        review_key = f"{department}:{scope_types}"
+        review_counts[review_key] = review_counts.get(review_key, 0) + 1
+        reject_initial_claims = (
+            department == "Claims & Incidents"
+            and scope_types == "triggers"
+            and review_counts[review_key] == 1
+        )
+        chunk_specs = list(review_scope.get("chunk_requirements", []) or [])
+        assessments = [
+            {
+                "chunk_id": spec["chunk_id"],
+                "approved": not reject_initial_claims,
+                "quality_score": 0.95 if not reject_initial_claims else 0.4,
+                "blocking_issues": ["Retry this source chunk."] if reject_initial_claims else [],
+                "requires_regeneration": reject_initial_claims,
+            }
+            for spec in chunk_specs
+        ]
+        return {
+            "status": "reviewed",
+            "reason": "",
+            "records": kwargs["records"],
+            "review": {
+                "approved": not reject_initial_claims,
+                "quality_score": 0.95 if not reject_initial_claims else 0.4,
+                "context_gaps": [],
+                "dependency_issues": [],
+                "chunk_assessments": assessments,
+                "patches": [],
+                "memory_delta": ["Untrusted model memory must not be committed."],
+                "public_reasoning_summary": "Department trigger review.",
+                "requires_regeneration": reject_initial_claims,
+            },
+            "patch_summary": {"applied": 0, "rejected": 0, "patch_results": []},
+            "latency_ms": 1,
+        }
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_planner", fake_planner)
+    async def fail_generator(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("Use deterministic department fallback in this test.")
+
+    monkeypatch.setattr("app.services.import_assistant_service.run_generator", fail_generator)
+    monkeypatch.setattr(
+        "app.services.import_assistant_service._run_business_blueprint_compiler",
+        fake_blueprint_compiler,
+    )
+    monkeypatch.setattr(
+        "app.services.gemini_supervisor.GeminiSupervisor.review_and_patch_chunk",
+        fake_supervisor_review,
+    )
+    monkeypatch.setattr("app.services.import_assistant_service.SheetsService", StubSheetsService)
+    monkeypatch.setattr(
+        "app.services.import_assistant_service.AppScriptBridgeService",
+        StubAppScriptBridgeService,
+    )
+    monkeypatch.setattr(
+        "app.routes.import_assistant.AppScriptBridgeService",
+        StubAppScriptBridgeService,
+    )
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate",
+        json={
+            "prompt": (
+                "Build a Zendesk operating model.\n"
+                "Departments:\n"
+                "- Customer Support: handles general customer requests.\n"
+                "- Claims & Incidents: handles claims and safety incidents.\n\n"
+                "Ticket forms for General Support and Claims & Incidents.\n"
+                "Create triggers to route each department."
+            ),
+            "focus_object_types": ["groups", "ticket_forms", "triggers"],
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "pytest-user",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    supervisor = payload["metadata"]["supervisor"]
+    assert payload["generated_counts"]["triggers"] == 6
+    assert review_counts["Customer Support:triggers"] == 1
+    assert review_counts["Claims & Incidents:triggers"] == 2
+    assert supervisor["call_counts"]["consolidated"] == 6
+    assert supervisor["call_counts"]["retry"] == 1
+    assert supervisor["blocked_chunk_ids"] == []
+    assert all("Untrusted model memory" not in item for item in supervisor["memory"])
+    assert len(supervisor["verified_memory"]) == 10
+    get_settings.cache_clear()
+
+
 def test_generate_business_blueprint_wave_failure_uses_deterministic_fallback(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))

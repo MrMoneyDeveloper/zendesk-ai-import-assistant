@@ -13,6 +13,7 @@ BatchStatus = Literal[
     "clarification_required",
     "schemas_selected",
     "generating",
+    "supervisor_review",
     "generated",
     "staging",
     "staged",

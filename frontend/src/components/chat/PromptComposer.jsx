@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LayoutTemplate, Mic, Paperclip, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -10,20 +10,6 @@ const schema = z.object({
   prompt: z.string().min(5, "Prompt must be at least 5 characters."),
 });
 
-const OBJECT_FOCUS_OPTIONS = [
-  { key: "brands", label: "Brands" },
-  { key: "categories", label: "Categories" },
-  { key: "sections", label: "Sections" },
-  { key: "triggers", label: "Triggers" },
-  { key: "automations", label: "Automations" },
-  { key: "macros", label: "Macros" },
-  { key: "views", label: "Views" },
-  { key: "groups", label: "Groups" },
-  { key: "ticket_forms", label: "Forms" },
-  { key: "ticket_fields", label: "Fields" },
-  { key: "articles", label: "Articles" },
-];
-
 export default function PromptComposer({
   onSubmitPrompt,
   onExtractAttachment,
@@ -31,15 +17,10 @@ export default function PromptComposer({
   isLoading,
   isLocked = false,
   lockReason = "",
-  dependencyMode = "match_existing_or_create_new",
-  onDependencyModeChange,
-  onExistingMode = "create_new",
-  onOnExistingModeChange,
   existingItemBehavior = "relate_or_update",
   onExistingItemBehaviorChange,
   selectedContextCount = 0,
   focusObjectTypes = [],
-  onFocusObjectTypesChange,
   attachments = [],
   existingItemOptions = [],
   selectedExistingItems = [],
@@ -80,7 +61,6 @@ export default function PromptComposer({
     []
   );
 
-  const activeFocusSet = useMemo(() => new Set(focusObjectTypes || []), [focusObjectTypes]);
   const hasExplicitFocus = (focusObjectTypes || []).length > 0;
   const activeModeLabel = existingItemBehavior === "create_new" ? "Create New" : "Base";
   const panelClass = darkMode
@@ -90,22 +70,6 @@ export default function PromptComposer({
   const subtlePanel = darkMode
     ? "border-[#7B1FFF]/30 bg-[#120522]/70"
     : "border-slate-200 bg-white";
-  const chipIdle = darkMode
-    ? "border-[#7B1FFF]/30 text-[#B9A7D9] hover:bg-[#7B1FFF]/12"
-    : "border-violet-200 text-violet-700 hover:bg-violet-50";
-  const chipActive = darkMode
-    ? "border-[#7B1FFF]/70 bg-[#7B1FFF]/20 text-[#F4EEFF]"
-    : "border-violet-300 bg-violet-50 text-violet-700";
-
-  const toggleFocus = (key) => {
-    const current = new Set(activeFocusSet);
-    if (current.has(key)) {
-      current.delete(key);
-    } else {
-      current.add(key);
-    }
-    onFocusObjectTypesChange?.(Array.from(current));
-  };
 
   const addExistingContextSelection = () => {
     if (!existingSelectionKey) return;

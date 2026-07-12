@@ -198,6 +198,26 @@ class BatchStore:
             self._write(data)
         return batch
 
+    def append_status_event(
+        self,
+        batch_id: str,
+        status: str,
+        message: str = "",
+    ) -> dict[str, Any]:
+        with _lock:
+            data = self._read()
+            batches = data.setdefault("batches", {})
+            batch = batches.get(batch_id)
+            if not batch:
+                raise KeyError(batch_id)
+
+            history = batch.setdefault("status_history", [])
+            history.append({"status": status, "message": message, "at": _utc_now()})
+            batch["updated_at"] = _utc_now()
+            batches[batch_id] = batch
+            self._write(data)
+        return batch
+
 
 _store: BatchStore | None = None
 

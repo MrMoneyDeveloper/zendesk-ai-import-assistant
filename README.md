@@ -225,8 +225,19 @@ Set these in `backend/.env` to tune model behavior:
 - `LLM_PLANNER_MAX_OUTPUT_TOKENS=900`
 - `LLM_GENERATOR_MAX_OUTPUT_TOKENS=1800`
 - `LLM_CLARIFIER_MAX_OUTPUT_TOKENS=700`
+- `GEMINI_SUPERVISOR_ENABLED=true` enable the Gemini review/patch lane
+- `GEMINI_API_KEY=...` Gemini key, stored only in local env files such as `backend/.env.local`
+- `GEMINI_SUPERVISOR_MODEL=gemini-3.1-flash-lite`
+- `GEMINI_SUPERVISOR_MAX_CONCURRENCY=2`
+- `GEMINI_SUPERVISOR_MIN_REQUEST_INTERVAL_SECONDS=4.2` space request starts for free-tier quotas while retaining two in-flight review lanes
+- `GEMINI_SUPERVISOR_RATE_LIMIT_RETRIES=3` honor provider retry delays before falling back to deterministic gates
+- `GEMINI_SUPERVISOR_AUTO_APPLY_PATCHES=true`
+- `GEMINI_SUPERVISOR_STRICT_MODE=false` keep generation alive if Gemini times out or rate-limits
+- `GEMINI_SUPERVISOR_APPROVAL_THRESHOLD=0.80` minimum effective score after deterministic gates
+- `GEMINI_SUPERVISOR_MAX_REGENERATION_RETRIES=1` retry only failed source chunks once
+- `GEMINI_SUPERVISOR_REVIEW_GROUPING=department` consolidate heavy operating-model reviews by topic/department
 - `APPS_SCRIPT_HEALTH_TIMEOUT_SECONDS=3`
 - `INTEGRATIONS_HEALTH_CACHE_SECONDS=45`
 - `ZENDESK_FALLBACK_404_COOLDOWN_SECONDS=1800`
 
-Default behavior is safe for free-tier PoC usage: inference-first generation, single-item planner bypass, compatibility-first single-item generator, multi-item chunking, strict deploy safety, and lean metadata retention.
+Default behavior is safe for free-tier PoC usage: inference-first generation, single-item planner bypass, compatibility-first single-item generator, multi-item chunking, Gemini safe-patch supervision when configured, strict deploy safety, and lean metadata retention.

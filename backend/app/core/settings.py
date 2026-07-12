@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / ".env.local", override=True)
 
 
 def _as_bool(value: str | None, default: bool) -> bool:
@@ -192,6 +193,19 @@ class Settings:
     zendesk_target_environment: str
     zendesk_fallback_404_cooldown_seconds: int
     llm_wave_object_deterministic_failover_threshold: int
+    gemini_supervisor_enabled: bool
+    gemini_api_key: str
+    gemini_supervisor_model: str
+    gemini_supervisor_max_concurrency: int
+    gemini_supervisor_min_request_interval_seconds: float
+    gemini_supervisor_rate_limit_retries: int
+    gemini_supervisor_auto_apply_patches: bool
+    gemini_supervisor_include_thought_summary: bool
+    gemini_supervisor_timeout_seconds: float
+    gemini_supervisor_strict_mode: bool
+    gemini_supervisor_approval_threshold: float
+    gemini_supervisor_max_regeneration_retries: int
+    gemini_supervisor_review_grouping: str
 
 
 @lru_cache
@@ -444,5 +458,51 @@ def get_settings() -> Settings:
         llm_wave_object_deterministic_failover_threshold=max(
             _as_int(os.getenv("LLM_WAVE_OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD"), 3),
             2,
+        ),
+        gemini_supervisor_enabled=_as_bool(os.getenv("GEMINI_SUPERVISOR_ENABLED"), True),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
+        gemini_supervisor_model=(
+            os.getenv("GEMINI_SUPERVISOR_MODEL", "").strip()
+            or "gemini-3.1-flash-lite"
+        ),
+        gemini_supervisor_max_concurrency=max(
+            _as_int(os.getenv("GEMINI_SUPERVISOR_MAX_CONCURRENCY"), 2),
+            1,
+        ),
+        gemini_supervisor_min_request_interval_seconds=max(
+            _as_float(os.getenv("GEMINI_SUPERVISOR_MIN_REQUEST_INTERVAL_SECONDS"), 0.0),
+            0.0,
+        ),
+        gemini_supervisor_rate_limit_retries=max(
+            _as_int(os.getenv("GEMINI_SUPERVISOR_RATE_LIMIT_RETRIES"), 3),
+            0,
+        ),
+        gemini_supervisor_auto_apply_patches=_as_bool(
+            os.getenv("GEMINI_SUPERVISOR_AUTO_APPLY_PATCHES"),
+            True,
+        ),
+        gemini_supervisor_include_thought_summary=_as_bool(
+            os.getenv("GEMINI_SUPERVISOR_INCLUDE_THOUGHT_SUMMARY"),
+            True,
+        ),
+        gemini_supervisor_timeout_seconds=max(
+            _as_float(os.getenv("GEMINI_SUPERVISOR_TIMEOUT_SECONDS"), 30.0),
+            5.0,
+        ),
+        gemini_supervisor_strict_mode=_as_bool(
+            os.getenv("GEMINI_SUPERVISOR_STRICT_MODE"),
+            False,
+        ),
+        gemini_supervisor_approval_threshold=min(
+            max(_as_float(os.getenv("GEMINI_SUPERVISOR_APPROVAL_THRESHOLD"), 0.80), 0.0),
+            1.0,
+        ),
+        gemini_supervisor_max_regeneration_retries=max(
+            _as_int(os.getenv("GEMINI_SUPERVISOR_MAX_REGENERATION_RETRIES"), 1),
+            0,
+        ),
+        gemini_supervisor_review_grouping=(
+            os.getenv("GEMINI_SUPERVISOR_REVIEW_GROUPING", "department").strip().lower()
+            or "department"
         ),
     )

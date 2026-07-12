@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 from app.models.schemas import ValidationSummary
@@ -7,6 +8,8 @@ from app.services.import_assistant_service import (
     _apply_dependency_resolution,
     _annotate_duplicate_candidates,
     _build_deterministic_chunk_rows,
+    _build_department_coverage_manifest,
+    _build_department_supervisor_review_manifest,
     _build_catalog_lookup,
     _build_chunk_plan,
     _build_llm_routes_metadata,
@@ -21,13 +24,18 @@ from app.services.import_assistant_service import (
     _extract_object_type_targets,
     _extract_explicit_constraints,
     _evaluate_generation_safety,
+    _evaluate_department_coverage,
+    _apply_coverage_gate_to_preview,
     _is_business_blueprint_prompt,
     _can_use_deterministic_chunk_fallback,
+    _should_use_department_template_first,
     _resolve_wave_api_key,
     _resolve_wave_generator_model,
+    _run_business_blueprint_compiler,
     _reconcile_backlog_item,
 )
 from app.services.planner import _resolve_fallback_object_type
+from app.services.gemini_supervisor import evaluate_supervisor_bundle
 
 
 def test_build_preview_records_sets_warnings_and_blocks():
@@ -109,6 +117,8 @@ def test_build_llm_routes_metadata_includes_wave_generator_overrides():
     assert metadata["generator_wave4"] == "meta-llama/llama-4-scout-17b-16e-instruct"
     assert metadata["generator_wave3_api_key_configured"] is True
     assert metadata["generator_wave4_api_key_configured"] is True
+    assert metadata["gemini_supervisor"]["min_request_interval_seconds"] == 0.0
+    assert metadata["gemini_supervisor"]["rate_limit_retries"] == 0
 
 
 def test_duplicate_annotation_adds_dependency_note():
@@ -704,6 +714,28 @@ def test_deterministic_chunk_fallback_support_includes_wave3_rule_objects():
     assert _can_use_deterministic_chunk_fallback("automations") is True
 
 
+def test_department_objects_are_template_first_for_gemini_supervision():
+    backlog_item = {"source": "department_coverage"}
+    department_types = {
+        "categories",
+        "sections",
+        "groups",
+        "ticket_fields",
+        "ticket_forms",
+        "views",
+        "triggers",
+        "macros",
+        "automations",
+        "articles",
+    }
+
+    assert all(
+        _should_use_department_template_first(backlog_item, object_type)
+        for object_type in department_types
+    )
+    assert _should_use_department_template_first({"source": "fallback"}, "categories") is False
+
+
 def test_build_deterministic_chunk_rows_generates_valid_trigger_rule_payload():
     rows = _build_deterministic_chunk_rows(
         object_type="triggers",
@@ -770,6 +802,398 @@ def test_build_orchestration_backlog_orders_by_wave_dependency():
     waves = [item["wave"] for item in backlog]
     assert waves == sorted(waves)
     assert backlog[0]["object_type"] == "groups"
+
+
+APEX_OPERATING_MODEL_PROMPT = """
+Build a Zendesk support operating model for Apex Mobility Finance.
+
+Business context:
+Apex has these departments:
+- Customer Support: first-line support for account questions, payment issues, login problems, and general requests.
+- Claims & Incidents: handles damaged vehicles, theft reports, accident claims, insurance evidence, and urgent safety incidents.
+- Finance Operations: handles failed payments, settlement disputes, refunds, payoff quotes, and billing corrections.
+- Fleet Onboarding: helps business customers onboard multiple riders, verify documents, activate vehicles, and schedule handover.
+- Technical Support: handles app bugs, GPS/device issues, charger problems, battery diagnostics, and telematics troubleshooting.
+- Compliance: handles KYC document review, suspicious activity, regulatory complaints, and data/privacy requests.
+- VIP / Enterprise Success: handles high-value fleet accounts, partner escalations, and white-glove support.
+
+Create a complete Zendesk configuration in dependency order:
+- Groups for the departments above, reusing existing matching groups if selected.
+- Ticket fields for Department, Customer Segment, Vehicle Type, Issue Category, Incident Severity, Payment Status, KYC Status, Fleet Size, and Requested Outcome.
+- Ticket forms for General Support, Claims & Incidents, Finance Operations, Fleet Onboarding, Technical Support, Compliance Review, and VIP Enterprise Support.
+- Triggers to route tickets to the correct department based on form, issue category, customer segment, severity, and payment/KYC signals.
+- Automations for stale urgent incidents, unresolved failed payments, pending KYC reviews, and enterprise escalations.
+- Macros for first response, missing information request, payment dispute acknowledgement, incident claim acknowledgement, KYC document request, technical troubleshooting steps, and VIP escalation acknowledgement.
+- Views for each department showing useful columns like requester, priority, status, vehicle type, issue category, severity, payment status, KYC status, assignee, and updated date.
+- Help center categories/sections/articles for payments, claims, onboarding, technical troubleshooting, compliance/KYC, and enterprise fleet support.
+
+Operational rules:
+- Use clear tags such as apex_payment_issue, apex_claims_incident, apex_fleet_onboarding, apex_technical_support, apex_kyc_review, apex_enterprise_vip, urgent_safety_incident.
+"""
+
+
+def test_department_coverage_manifest_extracts_apex_operating_model():
+    manifest = _build_department_coverage_manifest(
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        focus_object_types=[],
+    )
+
+    assert manifest["enabled"] is True
+    assert manifest["profile"] == "heavy"
+    assert [item["name"] for item in manifest["departments"]] == [
+        "Customer Support",
+        "Claims & Incidents",
+        "Finance Operations",
+        "Fleet Onboarding",
+        "Technical Support",
+        "Compliance",
+        "VIP / Enterprise Success",
+    ]
+    assert manifest["target_counts"]["groups"] == 7
+    assert manifest["target_counts"]["views"] == 14
+    assert manifest["target_counts"]["triggers"] == 21
+    assert manifest["target_counts"]["automations"] == 14
+    assert manifest["target_counts"]["macros"] == 21
+    assert manifest["target_counts"]["articles"] == 14
+    assert manifest["target_total"] >= 100
+
+
+def test_department_coverage_backlog_expands_heavy_minimums_by_wave():
+    manifest = _build_department_coverage_manifest(
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        focus_object_types=[],
+    )
+    backlog = _build_orchestration_backlog(
+        blueprint={"coverage_manifest": manifest, "target_objects": []},
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        dependency_mode="match_existing_or_create_new",
+        focus_object_types=[],
+    )
+
+    assert [item["wave"] for item in backlog] == sorted(item["wave"] for item in backlog)
+    assert sum(1 for item in backlog if item["object_type"] == "groups") == 7
+    assert sum(1 for item in backlog if item["object_type"] == "ticket_forms") == 7
+    assert sum(item["target_count"] for item in backlog if item["object_type"] == "views") == 14
+    assert sum(item["target_count"] for item in backlog if item["object_type"] == "triggers") == 21
+    assert sum(item["target_count"] for item in backlog if item["object_type"] == "automations") == 14
+    assert sum(item["target_count"] for item in backlog if item["object_type"] == "macros") == 21
+    assert sum(item["target_count"] for item in backlog if item["object_type"] == "articles") == 14
+    assert all(item["source"] == "department_coverage" for item in backlog)
+
+
+def test_apex_department_supervisor_manifest_consolidates_to_35_initial_calls():
+    manifest = _build_department_coverage_manifest(
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        focus_object_types=[],
+    )
+    backlog = _build_orchestration_backlog(
+        blueprint={"coverage_manifest": manifest, "target_objects": []},
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        dependency_mode="match_existing_or_create_new",
+        focus_object_types=[],
+    )
+
+    review_units = _build_department_supervisor_review_manifest(backlog)
+
+    assert len(review_units) == 35
+    assert len([item for item in review_units if item["wave"] == 1]) == 6
+    assert len([item for item in review_units if item["wave"] == 2]) == 8
+    assert len([item for item in review_units if item["wave"] in {3, 4, 5}]) == 21
+
+
+def test_apex_business_blueprint_compiler_bypasses_generator_model():
+    blueprint, telemetry = asyncio.run(
+        _run_business_blueprint_compiler(
+            prompt=APEX_OPERATING_MODEL_PROMPT,
+            dependency_mode="match_existing_or_create_new",
+            focus_object_types=[],
+            object_targets={},
+            planner_route=SimpleNamespace(model="unused", max_output_tokens=300),
+        )
+    )
+
+    assert blueprint["mode"] == "deterministic_fallback"
+    assert blueprint["coverage_manifest"]["enabled"] is True
+    assert telemetry == {"bypassed": True, "reason": "department_coverage_manifest"}
+
+
+def test_apex_deterministic_department_chunks_pass_enforced_supervisor_gate():
+    manifest = _build_department_coverage_manifest(
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        focus_object_types=[],
+    )
+    backlog = _build_orchestration_backlog(
+        blueprint={"coverage_manifest": manifest, "target_objects": []},
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        dependency_mode="match_existing_or_create_new",
+        focus_object_types=[],
+    )
+    allowed_references = {
+        "groups": [item["group_title"] for item in manifest["departments"]],
+        "ticket_forms": [item["form_title"] for item in manifest["departments"]],
+        "ticket_fields": list(manifest["ticket_fields"]),
+    }
+    all_rows = []
+
+    for item in backlog:
+        object_type = item["object_type"]
+        rows = _build_deterministic_chunk_rows(
+            object_type=object_type,
+            target_count=item["target_count"],
+            prompt=APEX_OPERATING_MODEL_PROMPT,
+            reference_catalog={},
+            existing_titles=[],
+            generated_rows=[],
+            reason="gate-regression",
+            backlog_item=item,
+        )
+        all_rows.extend(rows)
+        chunk_id = f"{item['backlog_id']}:1"
+        for index, row in enumerate(rows):
+            row["_supervisor_chunk_id"] = chunk_id
+            row["_supervisor_record_key"] = f"{chunk_id}:{index}"
+        expected_titles = []
+        if object_type == "groups":
+            expected_titles = [item["department_name"]]
+        elif object_type == "ticket_forms":
+            expected_titles = [item["form_title"]]
+        spec = {
+            "chunk_id": chunk_id,
+            "object_type": object_type,
+            "target_count": item["target_count"],
+            "fields": item.get("fields", []),
+            "expected_titles": expected_titles,
+        }
+        review = {
+            "approved": True,
+            "quality_score": 0.95,
+            "requires_regeneration": False,
+            "chunk_assessments": [
+                {
+                    "chunk_id": chunk_id,
+                    "approved": True,
+                    "quality_score": 0.95,
+                    "blocking_issues": [],
+                    "requires_regeneration": False,
+                }
+            ],
+        }
+
+        gate = evaluate_supervisor_bundle(
+            rows=rows,
+            chunk_specs=[spec],
+            review=review,
+            approval_threshold=0.8,
+            allowed_references=allowed_references,
+        )
+
+        assert gate["effective_approved"] is True, (
+            object_type,
+            gate["chunk_assessments"][0]["approval_gate_reasons"],
+        )
+
+    coverage = _evaluate_department_coverage(manifest=manifest, records=all_rows)
+    assert len(all_rows) >= 100
+    assert coverage["status"] == "passed"
+    assert all(item["status"] == "passed" for item in coverage["departments"])
+
+
+def test_apex_coverage_gate_detects_global_article_count_loss():
+    manifest = _build_department_coverage_manifest(
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        focus_object_types=[],
+    )
+    backlog = _build_orchestration_backlog(
+        blueprint={"coverage_manifest": manifest, "target_objects": []},
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        dependency_mode="match_existing_or_create_new",
+        focus_object_types=[],
+    )
+    rows = []
+    for item in backlog:
+        rows.extend(
+            _build_deterministic_chunk_rows(
+                object_type=item["object_type"],
+                target_count=item["target_count"],
+                prompt=APEX_OPERATING_MODEL_PROMPT,
+                reference_catalog={},
+                existing_titles=[row["title"] for row in rows],
+                generated_rows=rows,
+                reason="coverage-regression",
+                backlog_item=item,
+            )
+        )
+    article_indexes = [
+        index for index, row in enumerate(rows) if row["object_type"] == "articles"
+    ]
+    rows = [
+        row
+        for index, row in enumerate(rows)
+        if index not in set(article_indexes[-2:])
+    ]
+
+    coverage = _evaluate_department_coverage(manifest=manifest, records=rows)
+
+    assert coverage["status"] == "warning"
+    assert coverage["global"]["missing"]["articles"] == 2
+    assert any(
+        item["department"] == "global"
+        and item["object_type"] == "articles"
+        and item["missing"] == 2
+        for item in coverage["missing"]
+    )
+
+
+def test_department_wave4_templates_build_deployable_trigger_rows():
+    manifest = _build_department_coverage_manifest(
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        focus_object_types=[],
+    )
+    backlog = _build_orchestration_backlog(
+        blueprint={"coverage_manifest": manifest, "target_objects": []},
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        dependency_mode="match_existing_or_create_new",
+        focus_object_types=[],
+    )
+    trigger_item = next(
+        item
+        for item in backlog
+        if item["object_type"] == "triggers" and item["department_name"] == "Claims & Incidents"
+    )
+
+    rows = _build_deterministic_chunk_rows(
+        object_type="triggers",
+        target_count=3,
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        reference_catalog={},
+        existing_titles=[],
+        generated_rows=[],
+        reason="template-first",
+        backlog_item=trigger_item,
+    )
+
+    assert len(rows) == 3
+    assert all(row["object_type"] == "triggers" for row in rows)
+    assert all(row["conditions"] for row in rows)
+    assert all(row["actions"] for row in rows)
+    assert any(
+        action["field"] == "group_id" and action["value"] == "Claims & Incidents"
+        for row in rows
+        for action in row["actions"]
+    )
+    assert any("apex_claims_incident" in str(action["value"]) for row in rows for action in row["actions"])
+
+
+def test_department_coverage_gate_warns_without_blocking_preview():
+    manifest = _build_department_coverage_manifest(
+        prompt=APEX_OPERATING_MODEL_PROMPT,
+        focus_object_types=[],
+    )
+    preview_records = [
+        {
+            "record_id": "REC-0001",
+            "object_type": "groups",
+            "title": "Customer Support",
+            "validation_status": "passed",
+            "warnings": [],
+            "conditions": [],
+            "actions": [{"field": "description", "value": "Customer Support"}],
+        }
+    ]
+
+    coverage = _evaluate_department_coverage(manifest=manifest, records=preview_records)
+    patched = _apply_coverage_gate_to_preview(preview_records, coverage)
+
+    assert coverage["status"] == "warning"
+    assert coverage["missing_count"] > 0
+    assert patched[0]["validation_status"] == "warning"
+    assert any("Coverage gate warning" in warning for warning in patched[0]["warnings"])
+
+
+def test_canonicalize_articles_allows_same_batch_section_dependency():
+    rows = [
+        {
+            "object_type": "sections",
+            "title": "Claims",
+            "conditions": [],
+            "actions": [{"field": "locale", "value": "en-us"}],
+        },
+        {
+            "object_type": "articles",
+            "title": "Claims Required Information",
+            "conditions": [],
+            "actions": [
+                {"field": "section_name", "value": "Claims"},
+                {"field": "body", "value": "<p>Claims information.</p>"},
+            ],
+        },
+    ]
+
+    normalized_rows, _field_meta, _form_meta, canonicalization = _canonicalize_generated_rows(
+        rows=rows,
+        prompt="Create claims article and section",
+        reference_catalog={"ticket_fields": [], "sections": []},
+        existing_index={},
+        related_lookup={},
+        catalog_lookup={},
+        settings=SimpleNamespace(
+            ticket_field_default_type="text",
+            inference_policy="infer_with_warnings",
+            form_missing_field_mode="warn",
+        ),
+    )
+
+    article = next(row for row in normalized_rows if row["object_type"] == "articles")
+    assert "validation_overrides" not in article
+    assert canonicalization["trigger_article"]["blocked_records"] == 0
+    assert any(action["field"] == "section_name" and action["value"] == "Claims" for action in article["actions"])
+
+
+def test_canonicalize_article_resolves_topic_alias_after_section_title_patch():
+    rows = [
+        {
+            "object_type": "sections",
+            "title": "Damaged Vehicles & Insurance Claims",
+            "conditions": [],
+            "actions": [
+                {"field": "locale", "value": "en-us"},
+                {"field": "category_name", "value": "claims Support"},
+            ],
+            "_supervisor_title_aliases": ["claims"],
+        },
+        {
+            "object_type": "articles",
+            "title": "Claims Required Information",
+            "conditions": [],
+            "actions": [
+                {"field": "section_name", "value": "claims"},
+                {"field": "body", "value": "<p>Claims information with enough operational detail.</p>"},
+            ],
+        },
+    ]
+
+    normalized_rows, _field_meta, _form_meta, canonicalization = _canonicalize_generated_rows(
+        rows=rows,
+        prompt="Create claims article and section",
+        reference_catalog={"ticket_fields": [], "sections": []},
+        existing_index={},
+        related_lookup={},
+        catalog_lookup={},
+        settings=SimpleNamespace(
+            ticket_field_default_type="text",
+            inference_policy="infer_with_warnings",
+            form_missing_field_mode="warn",
+        ),
+    )
+
+    article = next(row for row in normalized_rows if row["object_type"] == "articles")
+    assert "validation_overrides" not in article
+    assert canonicalization["trigger_article"]["blocked_records"] == 0
+    assert any(
+        action["field"] == "section_name"
+        and action["value"] == "Damaged Vehicles & Insurance Claims"
+        for action in article["actions"]
+    )
 
 
 def test_reconcile_backlog_item_respects_force_existing_only():

@@ -28,6 +28,11 @@ from app.models.schemas import (
     ValidationSummary,
 )
 from app.services.batch_store import get_batch_store
+from app.services.gemini_supervisor import (
+    GeminiSupervisor,
+    GeminiSupervisorError,
+    evaluate_supervisor_bundle,
+)
 from app.services.generator import GeneratorStructuredOutputError, run_generator
 from app.services.planner import run_planner
 from app.services.appscript_bridge import AppScriptBridgeService
@@ -195,6 +200,54 @@ ORCHESTRATION_WAVE_BY_OBJECT = {
 }
 WAVE3_RULE_OBJECT_TYPES = {"triggers", "macros", "automations"}
 OBJECT_DETERMINISTIC_FAILOVER_THRESHOLD = 3
+DEPARTMENT_COVERAGE_SOURCE = "department_coverage"
+DEPARTMENT_TEMPLATE_FIRST_OBJECT_TYPES = frozenset(
+    {
+        "categories",
+        "sections",
+        "groups",
+        "ticket_fields",
+        "ticket_forms",
+        "views",
+        "triggers",
+        "macros",
+        "automations",
+        "articles",
+    }
+)
+DEPARTMENT_HEAVY_MINIMUMS = {
+    "groups": 1,
+    "ticket_forms": 1,
+    "views": 2,
+    "triggers": 3,
+    "macros": 3,
+    "automations": 2,
+    "articles": 2,
+}
+DEPARTMENT_COVERAGE_OBJECT_TYPES = tuple(DEPARTMENT_HEAVY_MINIMUMS.keys())
+DEPARTMENT_SHARED_FIELD_FALLBACKS = [
+    "Department",
+    "Customer Segment",
+    "Vehicle Type",
+    "Issue Category",
+    "Incident Severity",
+    "Payment Status",
+    "KYC Status",
+    "Fleet Size",
+    "Requested Outcome",
+]
+DEPARTMENT_VIEW_COLUMNS = [
+    "requester",
+    "priority",
+    "status",
+    "vehicle_type",
+    "issue_category",
+    "incident_severity",
+    "payment_status",
+    "kyc_status",
+    "assignee",
+    "updated_at",
+]
 
 ARTICLE_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "content" / "article_templates"
 ARTICLE_TEMPLATE_INDEX = {
@@ -371,6 +424,7 @@ def _build_deterministic_planner_plan(
     dependency_mode: str,
     focus_object_types: list[str],
     estimated_count: int,
+    bypass_reason: str = "single_item_explicit_prompt",
 ) -> dict:
     object_type = _infer_object_type_from_prompt(
         prompt=prompt,
@@ -383,14 +437,14 @@ def _build_deterministic_planner_plan(
         "ambiguity_score": 0.18,
         "ambiguity_reasons": [],
         "clarification_questions": [],
-        "dependency_notes": "Deterministic planner bypass applied for explicit single-item request.",
+        "dependency_notes": f"Deterministic planner bypass applied: {bypass_reason}.",
         "llm": {
             "task": "planner",
             "model": "deterministic_inference",
             "strict_schema": False,
             "telemetry": {
                 "bypassed": True,
-                "bypass_reason": "single_item_explicit_prompt",
+                "bypass_reason": bypass_reason,
                 "dependency_mode": dependency_mode,
                 "estimated_requested_records": int(estimated_count),
             },
@@ -438,6 +492,28 @@ def _build_llm_routes_metadata(
         "generator_wave4": str(settings.llm_model_generator_wave4 or "").strip() or None,
         "generator_secondary": str(getattr(settings, "llm_model_generator_secondary", "") or "").strip() or None,
         "generator_tertiary": str(getattr(settings, "llm_model_generator_tertiary", "") or "").strip() or None,
+        "gemini_supervisor": {
+            "enabled": bool(getattr(settings, "gemini_supervisor_enabled", False)),
+            "model": str(getattr(settings, "gemini_supervisor_model", "") or "").strip() or None,
+            "api_key_configured": bool(str(getattr(settings, "gemini_api_key", "") or "").strip()),
+            "auto_apply_patches": bool(
+                getattr(settings, "gemini_supervisor_auto_apply_patches", True)
+            ),
+            "max_concurrency": int(
+                getattr(settings, "gemini_supervisor_max_concurrency", 1) or 1
+            ),
+            "min_request_interval_seconds": float(
+                getattr(
+                    settings,
+                    "gemini_supervisor_min_request_interval_seconds",
+                    0.0,
+                )
+                or 0.0
+            ),
+            "rate_limit_retries": int(
+                getattr(settings, "gemini_supervisor_rate_limit_retries", 0) or 0
+            ),
+        },
         "generator_wave3_api_key_configured": bool(
             str(getattr(settings, "xai_api_key_wave3", "") or "").strip()
         ),
@@ -1566,6 +1642,495 @@ def _normalize_blueprint_target_objects(
     )
 
 
+def _coverage_key(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _split_prompt_list(raw: object) -> list[str]:
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    text = re.sub(r"\s+\band\b\s+", ", ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text)
+    items: list[str] = []
+    seen: set[str] = set()
+    for part in re.split(r"[,;]", text):
+        cleaned = str(part).strip(" .:-")
+        cleaned = re.sub(r"^(?:and|or|the)\s+", "", cleaned, flags=re.IGNORECASE).strip()
+        if not cleaned:
+            continue
+        key = _coverage_key(cleaned)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        items.append(cleaned)
+    return items
+
+
+def _extract_named_list_after(prompt: str, pattern: str) -> list[str]:
+    match = re.search(pattern, str(prompt or ""), flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return []
+    raw = str(match.group("items") or "").strip()
+    raw = re.split(r"(?:\n\s*[-*]\s+|\n\s*[A-Z][A-Za-z /&-]{2,40}\s*:)", raw, maxsplit=1)[0]
+    return _split_prompt_list(raw)
+
+
+def _extract_department_specs_from_prompt(prompt: str) -> list[dict[str, str]]:
+    lines = str(prompt or "").splitlines()
+    specs: list[dict[str, str]] = []
+    seen: set[str] = set()
+    in_department_block = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if in_department_block and specs:
+                break
+            continue
+        if re.search(r"\bdepartments?\b\s*:", stripped, flags=re.IGNORECASE):
+            in_department_block = True
+            continue
+        if not in_department_block:
+            continue
+        if not re.match(r"^[-*]\s+", stripped):
+            if specs:
+                break
+            continue
+        item = re.sub(r"^[-*]\s+", "", stripped).strip()
+        match = re.match(r"(?P<name>[^:]{2,90})(?::\s*(?P<description>.*))?$", item)
+        if not match:
+            continue
+        name = str(match.group("name") or "").strip(" .")
+        description = str(match.group("description") or "").strip()
+        if not name or len(name) > 90:
+            continue
+        key = _coverage_key(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        specs.append(
+            {
+                "name": name,
+                "description": description,
+                "slug": _slugify_option_value(name),
+            }
+        )
+    return specs[:20]
+
+
+def _extract_explicit_ticket_fields_from_prompt(prompt: str) -> list[str]:
+    fields = _extract_named_list_after(
+        prompt,
+        r"\bticket\s+fields?\s+for\s+(?P<items>[^.\n]+)",
+    )
+    if fields:
+        return fields[:40]
+    return []
+
+
+def _extract_explicit_ticket_forms_from_prompt(prompt: str) -> list[str]:
+    forms = _extract_named_list_after(
+        prompt,
+        r"\bticket\s+forms?\s+for\s+(?P<items>[^.\n]+)",
+    )
+    if forms:
+        return forms[:40]
+    return []
+
+
+def _extract_help_center_topics_from_prompt(prompt: str) -> list[str]:
+    topics = _extract_named_list_after(
+        prompt,
+        r"\bhelp\s+center\b[^\n.]*?\bfor\s+(?P<items>[^.\n]+)",
+    )
+    return topics[:40]
+
+
+def _extract_tag_hints_from_prompt(prompt: str) -> list[str]:
+    tags = _extract_named_list_after(
+        prompt,
+        r"\btags?\s+(?:such\s+as|including)\s+(?P<items>[^.\n]+)",
+    )
+    return [
+        re.sub(r"[^a-z0-9_-]+", "", tag.strip().lower())
+        for tag in tags[:80]
+        if re.sub(r"[^a-z0-9_-]+", "", tag.strip().lower())
+    ]
+
+
+def _match_department_form(department_name: str, explicit_forms: list[str], used: set[str]) -> str:
+    department_key = _coverage_key(department_name)
+    department_words = {
+        word
+        for word in department_key.split()
+        if word not in {"and", "or", "support", "operations", "ops", "success", "team"}
+    }
+    best_form = ""
+    best_score = 0
+    for form in explicit_forms:
+        form_key = _coverage_key(form)
+        if form_key in used:
+            continue
+        form_words = set(form_key.split())
+        score = len(department_words & form_words)
+        if "customer" in department_words and "general" in form_words:
+            score += 2
+        if {"vip", "enterprise"} & department_words and {"vip", "enterprise"} & form_words:
+            score += 2
+        if "compliance" in department_words and "review" in form_words:
+            score += 1
+        if score > best_score:
+            best_score = score
+            best_form = form
+    if best_form:
+        used.add(_coverage_key(best_form))
+        return best_form
+    return f"{department_name} Support"
+
+
+def _match_department_topic(department_name: str, topics: list[str]) -> str:
+    if not topics:
+        return department_name
+    department_key = _coverage_key(department_name)
+    department_words = set(department_key.split())
+    best_topic = topics[0]
+    best_score = 0
+    for topic in topics:
+        topic_words = set(_coverage_key(topic).split())
+        score = len(department_words & topic_words)
+        if "finance" in department_words and {"payment", "payments", "billing"} & topic_words:
+            score += 2
+        if "claims" in department_words and {"claim", "claims", "incident", "incidents"} & topic_words:
+            score += 2
+        if "fleet" in department_words and {"fleet", "onboarding"} & topic_words:
+            score += 2
+        if "technical" in department_words and {"technical", "troubleshooting"} & topic_words:
+            score += 2
+        if "compliance" in department_words and {"compliance", "kyc"} & topic_words:
+            score += 2
+        if {"vip", "enterprise"} & department_words and {"vip", "enterprise"} & topic_words:
+            score += 2
+        if score > best_score:
+            best_score = score
+            best_topic = topic
+    return best_topic
+
+
+def _match_department_tag(department_name: str, tag_hints: list[str]) -> str:
+    department_key = _coverage_key(department_name)
+    keyword_sets = [
+        (("claims", "incident"), ("claim", "claims", "incident", "incidents", "safety")),
+        (("finance", "payment"), ("finance", "payment", "payments", "billing", "refund")),
+        (("fleet", "onboarding"), ("fleet", "onboard", "onboarding")),
+        (("technical",), ("technical", "tech", "device", "bug")),
+        (("compliance", "kyc"), ("compliance", "kyc", "privacy")),
+        (("vip", "enterprise"), ("vip", "enterprise")),
+        (("customer",), ("customer", "general", "account")),
+    ]
+    for tag in tag_hints:
+        tag_key = _coverage_key(tag)
+        for department_tokens, tag_tokens in keyword_sets:
+            if any(token in department_key for token in department_tokens) and any(
+                token in tag_key for token in tag_tokens
+            ):
+                return tag
+    slug = _slugify_option_value(department_name)
+    return f"apex_{slug}" if not slug.startswith("apex_") else slug
+
+
+def _build_department_coverage_manifest(
+    *,
+    prompt: str,
+    focus_object_types: list[str] | None = None,
+) -> dict:
+    departments = _extract_department_specs_from_prompt(prompt)
+    explicit_forms = _extract_explicit_ticket_forms_from_prompt(prompt)
+    ticket_fields = _extract_explicit_ticket_fields_from_prompt(prompt)
+    help_topics = _extract_help_center_topics_from_prompt(prompt)
+    tags = _extract_tag_hints_from_prompt(prompt)
+
+    if len(departments) < 2:
+        return {
+            "enabled": False,
+            "profile": "none",
+            "reason": "fewer_than_two_named_departments",
+            "departments": departments,
+            "explicit_forms": explicit_forms,
+            "ticket_fields": ticket_fields,
+            "help_center_topics": help_topics,
+            "tags": tags,
+        }
+
+    if not ticket_fields:
+        ticket_fields = list(DEPARTMENT_SHARED_FIELD_FALLBACKS)
+    if not help_topics:
+        help_topics = [department["name"] for department in departments]
+
+    used_forms: set[str] = set()
+    enriched_departments: list[dict] = []
+    for department in departments:
+        name = str(department.get("name", "")).strip()
+        if not name:
+            continue
+        form_title = _match_department_form(name, explicit_forms, used_forms)
+        topic = _match_department_topic(name, help_topics)
+        tag = _match_department_tag(name, tags)
+        enriched_departments.append(
+            {
+                **department,
+                "group_title": name,
+                "form_title": form_title,
+                "topic": topic,
+                "tag": tag,
+                "minimums": dict(DEPARTMENT_HEAVY_MINIMUMS),
+            }
+        )
+
+    target_counts = {
+        "categories": max(len(help_topics), 1),
+        "sections": max(len(help_topics), 1),
+        "groups": len(enriched_departments),
+        "ticket_fields": max(len(ticket_fields), 1),
+        "ticket_forms": len(enriched_departments),
+        "views": len(enriched_departments) * DEPARTMENT_HEAVY_MINIMUMS["views"],
+        "triggers": len(enriched_departments) * DEPARTMENT_HEAVY_MINIMUMS["triggers"],
+        "macros": len(enriched_departments) * DEPARTMENT_HEAVY_MINIMUMS["macros"],
+        "automations": len(enriched_departments) * DEPARTMENT_HEAVY_MINIMUMS["automations"],
+        "articles": len(enriched_departments) * DEPARTMENT_HEAVY_MINIMUMS["articles"],
+    }
+    focus_set = {_normalize_object_type(item) for item in (focus_object_types or []) if str(item).strip()}
+    if focus_set:
+        target_counts = {
+            object_type: count
+            for object_type, count in target_counts.items()
+            if object_type in focus_set
+        }
+
+    return {
+        "enabled": True,
+        "profile": "heavy",
+        "coverage_mode": "preview_with_warnings",
+        "wave4_strategy": "hybrid_by_type",
+        "source": "department_bullet_list",
+        "departments": enriched_departments,
+        "explicit_forms": explicit_forms,
+        "ticket_fields": ticket_fields,
+        "help_center_topics": help_topics,
+        "tags": tags,
+        "minimums": dict(DEPARTMENT_HEAVY_MINIMUMS),
+        "target_counts": target_counts,
+        "target_total": sum(int(value or 0) for value in target_counts.values()),
+    }
+
+
+def _department_manifest_target_objects(
+    manifest: dict,
+    *,
+    fallback_targets: dict[str, int] | None = None,
+) -> list[dict]:
+    targets: dict[str, int] = {
+        _normalize_object_type(key): max(int(value or 0), 0)
+        for key, value in (fallback_targets or {}).items()
+    }
+    if manifest.get("enabled"):
+        for key, value in dict(manifest.get("target_counts", {}) or {}).items():
+            object_type = _normalize_object_type(str(key))
+            targets[object_type] = max(int(targets.get(object_type, 0) or 0), int(value or 0))
+    return [
+        {
+            "object_type": object_type,
+            "target_count": count,
+            "priority": _resolve_wave_for_object_type(object_type),
+            "wave": _resolve_wave_for_object_type(object_type),
+            "source": DEPARTMENT_COVERAGE_SOURCE if manifest.get("enabled") else "fallback",
+        }
+        for object_type, count in targets.items()
+        if count > 0
+    ]
+
+
+def _merge_blueprint_targets_with_manifest(target_objects: list[dict], manifest: dict) -> list[dict]:
+    if not manifest.get("enabled"):
+        return target_objects
+    merged: dict[str, dict] = {}
+    for item in target_objects:
+        object_type = _normalize_object_type(str(item.get("object_type", "")))
+        if not object_type:
+            continue
+        merged[object_type] = dict(item)
+    for item in _department_manifest_target_objects(manifest):
+        object_type = _normalize_object_type(str(item.get("object_type", "")))
+        existing = merged.get(object_type, {})
+        merged[object_type] = {
+            **existing,
+            **item,
+            "target_count": max(
+                int(existing.get("target_count", 0) or 0),
+                int(item.get("target_count", 0) or 0),
+            ),
+            "source": DEPARTMENT_COVERAGE_SOURCE,
+        }
+    return sorted(
+        merged.values(),
+        key=lambda item: (int(item.get("wave", 9)), int(item.get("priority", 9)), str(item.get("object_type", ""))),
+    )
+
+
+def _build_department_coverage_backlog(
+    *,
+    manifest: dict,
+    dependency_mode: str,
+    focus_object_types: list[str],
+) -> list[dict]:
+    if not manifest.get("enabled"):
+        return []
+    allowed_focus = {_normalize_object_type(item) for item in focus_object_types if str(item).strip()}
+    rows: list[dict] = []
+
+    def add_item(
+        object_type: str,
+        *,
+        target_count: int = 1,
+        priority_offset: int = 0,
+        department: dict | None = None,
+        topic: str = "",
+        title_hint: str = "",
+        fields: list[str] | None = None,
+        coverage_kind: str = "",
+    ) -> None:
+        normalized = _normalize_object_type(object_type)
+        if allowed_focus and normalized not in allowed_focus:
+            return
+        wave = _resolve_wave_for_object_type(normalized)
+        row = {
+            "object_type": normalized,
+            "target_count": max(int(target_count or 1), 1),
+            "wave": wave,
+            "priority": (wave * 100) + int(priority_offset or 0),
+            "source": DEPARTMENT_COVERAGE_SOURCE,
+            "dependency_mode": dependency_mode,
+            "coverage_kind": coverage_kind or normalized,
+        }
+        if department:
+            row["department"] = department
+            row["department_name"] = str(department.get("name", "")).strip()
+            row["department_slug"] = str(department.get("slug", "")).strip()
+            row["department_tag"] = str(department.get("tag", "")).strip()
+            row["form_title"] = str(department.get("form_title", "")).strip()
+            row["topic"] = str(department.get("topic", "")).strip()
+        if topic:
+            row["topic"] = topic
+        if title_hint:
+            row["title_hint"] = title_hint
+        if fields:
+            row["fields"] = fields
+            if not department:
+                row["department_names"] = departments
+        rows.append(row)
+
+    topics = [str(item).strip() for item in list(manifest.get("help_center_topics", []) or []) if str(item).strip()]
+    fields = [str(item).strip() for item in list(manifest.get("ticket_fields", []) or []) if str(item).strip()]
+    departments = [item for item in list(manifest.get("departments", []) or []) if isinstance(item, dict)]
+
+    for index, topic in enumerate(topics, start=1):
+        add_item("categories", priority_offset=index, topic=topic, title_hint=f"{topic} Support")
+        add_item("sections", priority_offset=50 + index, topic=topic, title_hint=topic)
+
+    if fields:
+        add_item(
+            "ticket_fields",
+            target_count=len(fields),
+            priority_offset=10,
+            fields=fields,
+            coverage_kind="shared_ticket_fields",
+        )
+
+    for index, department in enumerate(departments, start=1):
+        add_item("groups", priority_offset=index, department=department)
+    for index, department in enumerate(departments, start=1):
+        add_item("ticket_forms", priority_offset=index, department=department)
+        add_item(
+            "views",
+            target_count=DEPARTMENT_HEAVY_MINIMUMS["views"],
+            priority_offset=50 + index,
+            department=department,
+        )
+    for index, department in enumerate(departments, start=1):
+        add_item(
+            "triggers",
+            target_count=DEPARTMENT_HEAVY_MINIMUMS["triggers"],
+            priority_offset=index,
+            department=department,
+        )
+        add_item(
+            "automations",
+            target_count=DEPARTMENT_HEAVY_MINIMUMS["automations"],
+            priority_offset=50 + index,
+            department=department,
+        )
+        add_item(
+            "macros",
+            target_count=DEPARTMENT_HEAVY_MINIMUMS["macros"],
+            priority_offset=100 + index,
+            department=department,
+        )
+    for index, department in enumerate(departments, start=1):
+        add_item(
+            "articles",
+            target_count=DEPARTMENT_HEAVY_MINIMUMS["articles"],
+            priority_offset=index,
+            department=department,
+        )
+
+    rows = sorted(
+        rows,
+        key=lambda row: (int(row.get("wave", 9)), int(row.get("priority", 999)), str(row.get("title_hint", ""))),
+    )
+    for index, row in enumerate(rows, start=1):
+        row["backlog_id"] = f"BL-{index:03d}"
+    return rows
+
+
+def _build_department_supervisor_review_manifest(backlog: list[dict]) -> list[dict]:
+    units: dict[tuple[int, str], dict] = {}
+    for item in backlog:
+        if str(item.get("source", "")).strip() != DEPARTMENT_COVERAGE_SOURCE:
+            continue
+        wave = int(item.get("wave", 0) or 0)
+        department = str(item.get("department_name", "")).strip()
+        topic = str(item.get("topic", "")).strip()
+        object_type = _normalize_object_type(str(item.get("object_type", "")))
+        coverage_kind = str(item.get("coverage_kind", "")).strip()
+        if wave == 1:
+            bundle_key = f"topic:{_coverage_key(topic or item.get('title_hint') or object_type)}"
+        elif wave == 2 and coverage_kind == "shared_ticket_fields":
+            bundle_key = "shared:ticket_fields"
+        elif department:
+            bundle_key = f"department:{_coverage_key(department)}"
+        else:
+            bundle_key = f"type:{object_type}"
+        key = (wave, bundle_key)
+        unit = units.setdefault(
+            key,
+            {
+                "review_unit_id": f"wave-{wave}:{bundle_key}",
+                "wave": wave,
+                "bundle_key": bundle_key,
+                "department_name": department,
+                "topic": topic,
+                "object_types": [],
+                "backlog_ids": [],
+            },
+        )
+        if object_type and object_type not in unit["object_types"]:
+            unit["object_types"].append(object_type)
+        backlog_id = str(item.get("backlog_id", "")).strip()
+        if backlog_id:
+            unit["backlog_ids"].append(backlog_id)
+    return sorted(units.values(), key=lambda item: (item["wave"], item["bundle_key"]))
+
+
 async def _run_business_blueprint_compiler(
     *,
     prompt: str,
@@ -1574,6 +2139,10 @@ async def _run_business_blueprint_compiler(
     object_targets: dict[str, int],
     planner_route,
 ) -> tuple[dict, dict]:
+    coverage_manifest = _build_department_coverage_manifest(
+        prompt=prompt,
+        focus_object_types=focus_object_types,
+    )
     fallback_blueprint = {
         "mode": "deterministic_fallback",
         "capabilities": ["inference_first", "match_existing_or_create"],
@@ -1582,18 +2151,19 @@ async def _run_business_blueprint_compiler(
         ],
         "priorities": ["deterministic_wave_order", "reuse_before_create", "fail_whole_run"],
         "dependency_hints": [],
-        "target_objects": [
-            {
-                "object_type": key,
-                "target_count": value,
-                "priority": _resolve_wave_for_object_type(key),
-                "wave": _resolve_wave_for_object_type(key),
-            }
-            for key, value in object_targets.items()
-        ],
+        "coverage_manifest": coverage_manifest,
+        "target_objects": _department_manifest_target_objects(
+            coverage_manifest,
+            fallback_targets=object_targets,
+        ),
     }
     if not str(prompt or "").strip():
         return fallback_blueprint, {"bypassed": True, "reason": "empty_prompt"}
+    if coverage_manifest.get("enabled"):
+        return fallback_blueprint, {
+            "bypassed": True,
+            "reason": "department_coverage_manifest",
+        }
 
     client = GrokClient()
     user_payload = {
@@ -1640,6 +2210,10 @@ async def _run_business_blueprint_compiler(
             payload.get("target_objects"),
             fallback_targets=object_targets,
         )
+        target_objects = _merge_blueprint_targets_with_manifest(
+            target_objects,
+            coverage_manifest,
+        )
         blueprint = {
             "mode": "compiler",
             "capabilities": [
@@ -1662,6 +2236,7 @@ async def _run_business_blueprint_compiler(
                 for item in list(payload.get("dependency_hints", []) or [])
                 if str(item).strip()
             ][:12],
+            "coverage_manifest": coverage_manifest,
             "target_objects": target_objects,
         }
         telemetry = GrokClient.get_last_call_metrics("planner")
@@ -1682,6 +2257,14 @@ def _build_orchestration_backlog(
     dependency_mode: str,
     focus_object_types: list[str],
 ) -> list[dict]:
+    manifest = blueprint.get("coverage_manifest", {}) if isinstance(blueprint, dict) else {}
+    if isinstance(manifest, dict) and manifest.get("enabled"):
+        return _build_department_coverage_backlog(
+            manifest=manifest,
+            dependency_mode=dependency_mode,
+            focus_object_types=focus_object_types,
+        )
+
     normalized_targets = _normalize_blueprint_target_objects(
         blueprint.get("target_objects"),
         fallback_targets=_extract_object_type_targets(
@@ -1809,11 +2392,39 @@ def _build_wave_prompt(
         "create": "Create new configuration when no safe match exists.",
     }.get(mode, "Create or match existing configuration as needed.")
 
+    coverage_lines: list[str] = []
+    if str(item.get("source", "")).strip() == DEPARTMENT_COVERAGE_SOURCE:
+        department_name = str(item.get("department_name", "")).strip()
+        form_title = str(item.get("form_title", "")).strip()
+        topic = str(item.get("topic", "")).strip()
+        tag = str(item.get("department_tag", "")).strip()
+        title_hint = str(item.get("title_hint", "")).strip()
+        fields = [str(field).strip() for field in list(item.get("fields", []) or []) if str(field).strip()]
+        coverage_lines.append("Coverage mode: department-first full operating model.")
+        if department_name:
+            coverage_lines.append(f"Department target: {department_name}.")
+        if form_title:
+            coverage_lines.append(f"Department ticket form: {form_title}.")
+        if topic:
+            coverage_lines.append(f"Help-center topic/section target: {topic}.")
+        if tag:
+            coverage_lines.append(f"Required department tag: {tag}.")
+        if title_hint:
+            coverage_lines.append(f"Title/topic hint: {title_hint}.")
+        if fields:
+            coverage_lines.append(f"Shared ticket fields to create/reference: {', '.join(fields)}.")
+        coverage_lines.append(
+            "Use clear dependency notes by name for generated groups, forms, fields, categories, and sections."
+        )
+
+    coverage_suffix = "\n" + "\n".join(coverage_lines) if coverage_lines else ""
+
     return (
         f"Business brief: {prompt}\n"
         f"Wave object type: {object_type}\n"
         f"Target records for this wave item: {target_count}\n"
         f"Execution mode: {mode}. {mode_instruction}{base_suffix}"
+        f"{coverage_suffix}"
     )
 
 
@@ -2013,6 +2624,454 @@ def _can_use_deterministic_chunk_fallback(object_type: str) -> bool:
     }
 
 
+def _should_use_department_template_first(backlog_item: dict, object_type: str) -> bool:
+    return bool(
+        str((backlog_item or {}).get("source", "")).strip() == DEPARTMENT_COVERAGE_SOURCE
+        and _normalize_object_type(object_type) in DEPARTMENT_TEMPLATE_FIRST_OBJECT_TYPES
+    )
+
+
+def _field_options_for_department_manifest(field_title: str, departments: list[str]) -> list[str]:
+    key = _coverage_key(field_title)
+    if key == "department":
+        return departments or ["Customer Support", "Finance Operations"]
+    option_map = {
+        "customer segment": ["Gig Worker", "Small Business", "Fleet Account", "VIP / Enterprise"],
+        "vehicle type": ["Electric Scooter", "Delivery E-bike", "Small EV Fleet"],
+        "issue category": [
+            "Account Question",
+            "Payment Issue",
+            "Login Problem",
+            "Damaged Vehicle",
+            "Theft Report",
+            "Accident Claim",
+            "KYC Review",
+            "App Bug",
+            "GPS Device Issue",
+            "Charger Problem",
+            "Battery Diagnostic",
+            "Enterprise Escalation",
+        ],
+        "incident severity": ["Low", "Medium", "High", "Urgent Safety Incident"],
+        "payment status": ["Current", "Failed Payment", "Disputed", "Refund Pending", "Payoff Requested"],
+        "kyc status": ["Not Started", "Pending Review", "Approved", "Rejected", "More Info Required"],
+        "fleet size": ["1 Rider", "2-5 Riders", "6-20 Riders", "21+ Riders"],
+        "requested outcome": ["Information", "Correction", "Refund", "Escalation", "Vehicle Handover", "Technical Fix"],
+    }
+    return option_map.get(key, [])
+
+
+def _html_paragraphs(*paragraphs: str) -> str:
+    return "".join(
+        f"<p>{re.sub(r'<[^>]+>', '', str(paragraph).strip())}</p>"
+        for paragraph in paragraphs
+        if str(paragraph).strip()
+    )
+
+
+def _department_copy_guidance(department_name: str, topic: str) -> dict[str, str]:
+    key = _coverage_key(f"{department_name} {topic}")
+    profiles = [
+        (
+            {"claim", "claims", "incident", "incidents"},
+            {
+                "evidence": "the incident date and time, location, vehicle ID, photos, safety status, and any police or insurance reference",
+                "process": "triage immediate safety risk, validate the incident evidence, and coordinate the claim or recovery path",
+                "urgent": "For an active safety risk, stop using the vehicle when safe to do so and contact local emergency services before updating the ticket.",
+            },
+        ),
+        (
+            {"finance", "payment", "payments", "billing"},
+            {
+                "evidence": "the account holder, transaction date, amount, payment or bank reference, supporting statement, and requested correction",
+                "process": "reconcile the account ledger, verify settlement or refund state, and document the financial outcome",
+                "urgent": "Do not include full card numbers, passwords, or one-time PINs in the ticket.",
+            },
+        ),
+        (
+            {"fleet", "onboarding"},
+            {
+                "evidence": "the company account, rider roster, required identity documents, vehicle allocation, activation state, and target handover date",
+                "process": "verify onboarding documents, resolve activation blockers, and coordinate vehicle handover readiness",
+                "urgent": "Call out any rider or handover deadline that is already at risk so the queue can prioritize the blocker.",
+            },
+        ),
+        (
+            {"technical", "troubleshooting", "device", "app"},
+            {
+                "evidence": "the vehicle or device ID, app and device version, timestamps, screenshots, diagnostic results, and troubleshooting already attempted",
+                "process": "reproduce the fault, isolate app, device, charger, battery, GPS, or telematics causes, and provide the next diagnostic action",
+                "urgent": "For overheating, smoke, damaged wiring, or unsafe vehicle behavior, stop use and move away from the equipment before reporting details.",
+            },
+        ),
+        (
+            {"compliance", "kyc", "privacy", "regulatory"},
+            {
+                "evidence": "the legal account name, document type, jurisdiction, submission date, review notice, and the specific compliance or privacy outcome requested",
+                "process": "verify the review stage, identify the regulatory or document gap, and route restricted evidence to the authorized reviewer",
+                "urgent": "Use only approved secure attachment channels for identity documents and never place passwords or authentication codes in comments.",
+            },
+        ),
+        (
+            {"vip", "enterprise", "partner"},
+            {
+                "evidence": "the organization and account, fleet size, impacted riders or vehicles, business impact, deadline, partner contact, and requested resolution",
+                "process": "assign an enterprise owner, coordinate dependent teams, and maintain one consolidated resolution path",
+                "urgent": "State any operational outage, contractual milestone, or safety impact clearly so the escalation priority can be validated.",
+            },
+        ),
+    ]
+    key_tokens = set(key.split())
+    for tokens, guidance in profiles:
+        if key_tokens & tokens:
+            return guidance
+    return {
+        "evidence": "the account email, contact details, issue summary, relevant timestamps, screenshots or documents, and the outcome requested",
+        "process": "confirm the request type, resolve first-line checks, and route any specialist work with complete context",
+        "urgent": "Do not include passwords, one-time PINs, or full payment credentials in the ticket.",
+    }
+
+
+def _department_coverage_row_templates(
+    *,
+    object_type: str,
+    target_count: int,
+    backlog_item: dict,
+    fallback_note: str,
+    make_unique_title,
+) -> list[dict]:
+    if str(backlog_item.get("source", "")).strip() != DEPARTMENT_COVERAGE_SOURCE:
+        return []
+    normalized = _normalize_object_type(object_type)
+    requested_count = max(int(target_count or 1), 1)
+    department = backlog_item.get("department") if isinstance(backlog_item.get("department"), dict) else {}
+    department_name = str(backlog_item.get("department_name") or department.get("name") or "").strip()
+    department_description = str(department.get("description", "")).strip()
+    form_title = str(backlog_item.get("form_title") or department.get("form_title") or "").strip()
+    topic = str(backlog_item.get("topic") or department.get("topic") or "").strip()
+    tag = str(backlog_item.get("department_tag") or department.get("tag") or "").strip()
+    title_hint = str(backlog_item.get("title_hint", "")).strip()
+    fields = [
+        str(field).strip()
+        for field in list(backlog_item.get("fields", []) or [])
+        if str(field).strip()
+    ]
+    department_names = [
+        str(item.get("name", "")).strip()
+        for item in list(backlog_item.get("department_names", []) or [])
+        if isinstance(item, dict) and str(item.get("name", "")).strip()
+    ]
+    if not department_names and department_name:
+        department_names = [department_name]
+
+    dependency_note = (
+        f"Department coverage template for {department_name}."
+        if department_name
+        else "Department coverage template."
+    )
+    notes = [fallback_note, dependency_note]
+    if form_title:
+        notes.append(f"Depends on ticket form: {form_title}.")
+    if department_name and normalized not in {"groups", "ticket_fields"}:
+        notes.append(f"Depends on group: {department_name}.")
+    if topic and normalized == "articles":
+        notes.append(f"Depends on same-batch help center section: {topic}.")
+
+    if normalized == "categories":
+        base = title_hint or (f"{topic} Support" if topic else "Support Knowledge Base")
+        return [
+            {
+                "object_type": "categories",
+                "title": make_unique_title(base, 1),
+                "conditions": [],
+                "actions": [{"field": "locale", "value": "en-us"}],
+                "dependency_notes": notes,
+            }
+        ]
+
+    if normalized == "sections":
+        base = title_hint or topic or "General Support"
+        category_title = f"{topic} Support" if topic else "Support Knowledge Base"
+        return [
+            {
+                "object_type": "sections",
+                "title": make_unique_title(base, 1),
+                "conditions": [],
+                "actions": [
+                    {"field": "locale", "value": "en-us"},
+                    {"field": "category_name", "value": category_title},
+                ],
+                "dependency_notes": [*notes, f"Depends on same-batch help center category: {category_title}."],
+            }
+        ]
+
+    if normalized == "groups" and department_name:
+        description = department_description or f"Owns {department_name.lower()} support workflows."
+        return [
+            {
+                "object_type": "groups",
+                "title": make_unique_title(department_name, 1),
+                "conditions": [],
+                "actions": [{"field": "description", "value": description}],
+                "dependency_notes": notes,
+            }
+        ]
+
+    if normalized == "ticket_fields":
+        field_titles = fields or list(DEPARTMENT_SHARED_FIELD_FALLBACKS)
+        rows: list[dict] = []
+        all_departments = department_names or ([department_name] if department_name else [])
+        for index, field_title in enumerate(field_titles[:requested_count], start=1):
+            options = _field_options_for_department_manifest(field_title, all_departments)
+            field_type = "tagger" if options else "text"
+            actions: list[dict] = [{"field": "field_type", "value": field_type}]
+            if options:
+                actions.append(
+                    {
+                        "field": "custom_field_options",
+                        "value": [
+                            {"name": option[:80], "value": _slugify_option_value(option)}
+                            for option in options[:30]
+                        ],
+                    }
+                )
+            rows.append(
+                {
+                    "object_type": "ticket_fields",
+                    "title": make_unique_title(field_title, index),
+                    "conditions": [],
+                    "actions": actions,
+                    "dependency_notes": notes,
+                }
+            )
+        return rows
+
+    if normalized == "ticket_forms" and department_name:
+        form_name = form_title or f"{department_name} Support"
+        form_fields = fields or list(DEPARTMENT_SHARED_FIELD_FALLBACKS)
+        return [
+            {
+                "object_type": "ticket_forms",
+                "title": make_unique_title(form_name, 1),
+                "conditions": [],
+                "actions": [{"field": "ticket_field_names", "value": form_fields[:12]}],
+                "dependency_notes": [*notes, f"References shared ticket fields: {', '.join(form_fields[:12])}."],
+            }
+        ]
+
+    if normalized == "views" and department_name:
+        variants = [
+            (
+                f"{department_name} Open Queue",
+                [
+                    {"field": "status", "operator": "less_than", "value": "solved"},
+                    {"field": "group_id", "operator": "is", "value": department_name},
+                ],
+            ),
+            (
+                f"{department_name} Escalations",
+                [
+                    {"field": "status", "operator": "less_than", "value": "solved"},
+                    {"field": "priority", "operator": "greater_than", "value": "normal"},
+                    {"field": "group_id", "operator": "is", "value": department_name},
+                ],
+            ),
+        ]
+        rows = []
+        for index in range(1, requested_count + 1):
+            title, conditions = variants[(index - 1) % len(variants)]
+            rows.append(
+                {
+                    "object_type": "views",
+                    "title": make_unique_title(title, index),
+                    "conditions": [dict(item) for item in conditions],
+                    "actions": [{"field": "output_columns", "value": list(DEPARTMENT_VIEW_COLUMNS)}],
+                    "dependency_notes": notes,
+                }
+            )
+        return rows
+
+    if normalized == "triggers" and department_name:
+        tag_value = tag or _slugify_option_value(department_name)
+        variants = [
+            (
+                f"Routing: {department_name} Intake",
+                [
+                    {"field": "ticket_form_id", "operator": "is", "value": form_title or department_name},
+                    {"field": "status", "operator": "is", "value": "new"},
+                ],
+                [
+                    {"field": "group_id", "value": department_name},
+                    {"field": "set_tags", "value": tag_value},
+                ],
+            ),
+            (
+                f"Escalation: {department_name} High Priority",
+                [
+                    {"field": "priority", "operator": "greater_than", "value": "normal"},
+                    {"field": "status", "operator": "less_than", "value": "solved"},
+                ],
+                [
+                    {"field": "group_id", "value": department_name},
+                    {"field": "set_tags", "value": f"{tag_value} {tag_value}_escalated"},
+                ],
+            ),
+            (
+                f"Signal: {department_name} Tagged Follow-Up",
+                [
+                    {"field": "set_tags", "operator": "includes", "value": tag_value},
+                    {"field": "status", "operator": "less_than", "value": "solved"},
+                ],
+                [
+                    {"field": "group_id", "value": department_name},
+                    {"field": "set_tags", "value": f"{tag_value} {tag_value}_routed"},
+                ],
+            ),
+        ]
+        rows = []
+        for index in range(1, requested_count + 1):
+            title, conditions, actions = variants[(index - 1) % len(variants)]
+            rows.append(
+                {
+                    "object_type": "triggers",
+                    "title": make_unique_title(title, index),
+                    "conditions": [dict(item) for item in conditions],
+                    "actions": [dict(item) for item in actions],
+                    "dependency_notes": notes,
+                }
+            )
+        return rows
+
+    if normalized == "automations" and department_name:
+        tag_value = tag or _slugify_option_value(department_name)
+        variants = [
+            (
+                f"Automation: {department_name} Stale Open Follow-Up",
+                [
+                    {"field": "group_id", "operator": "is", "value": department_name},
+                    {"field": "status", "operator": "less_than", "value": "solved"},
+                    {"field": "hours_since_update", "operator": "greater_than", "value": "24"},
+                ],
+                [
+                    {"field": "set_tags", "value": f"{tag_value} stale_follow_up"},
+                    {"field": "priority", "value": "high"},
+                ],
+            ),
+            (
+                f"Automation: {department_name} Escalation Reminder",
+                [
+                    {"field": "group_id", "operator": "is", "value": department_name},
+                    {"field": "priority", "operator": "greater_than", "value": "normal"},
+                    {"field": "hours_since_update", "operator": "greater_than", "value": "12"},
+                ],
+                [
+                    {"field": "set_tags", "value": f"{tag_value} escalation_reminder"},
+                    {"field": "status", "value": "open"},
+                ],
+            ),
+        ]
+        rows = []
+        for index in range(1, requested_count + 1):
+            title, conditions, actions = variants[(index - 1) % len(variants)]
+            rows.append(
+                {
+                    "object_type": "automations",
+                    "title": make_unique_title(title, index),
+                    "conditions": [dict(item) for item in conditions],
+                    "actions": [dict(item) for item in actions],
+                    "dependency_notes": notes,
+                }
+            )
+        return rows
+
+    if normalized == "macros" and department_name:
+        tag_value = tag or _slugify_option_value(department_name)
+        guidance = _department_copy_guidance(department_name, topic)
+        variants = [
+            (
+                f"{department_name} First Response",
+                (
+                    f"Thanks for contacting Apex Mobility Finance. The {department_name} team has received your request and will "
+                    f"{guidance['process']}. To avoid delays, reply with {guidance['evidence']}. We will keep progress and decisions in this ticket."
+                ),
+            ),
+            (
+                f"{department_name} Missing Information Request",
+                (
+                    f"The {department_name} team needs more information before the next review. Please reply with {guidance['evidence']}, "
+                    f"and confirm the outcome you need. {guidance['urgent']}"
+                ),
+            ),
+            (
+                f"{department_name} Escalation Acknowledgement",
+                (
+                    f"Your request has been escalated to a {department_name} specialist. The specialist will {guidance['process']}. "
+                    "Please keep related updates and new evidence on this ticket so the escalation remains coordinated. "
+                    f"{guidance['urgent']}"
+                ),
+            ),
+        ]
+        rows = []
+        for index in range(1, requested_count + 1):
+            title, body = variants[(index - 1) % len(variants)]
+            rows.append(
+                {
+                    "object_type": "macros",
+                    "title": make_unique_title(title, index),
+                    "conditions": [],
+                    "actions": [
+                        {"field": "comment_value", "value": body},
+                        {"field": "set_tags", "value": f"{tag_value} macro_response"},
+                    ],
+                    "dependency_notes": notes,
+                }
+            )
+        return rows
+
+    if normalized == "articles":
+        article_topic = topic or department_name or "Support"
+        guidance = _department_copy_guidance(department_name, article_topic)
+        variants = [
+            (
+                f"{article_topic}: What to Expect",
+                _html_paragraphs(
+                    f"This article explains how Apex Mobility Finance handles {article_topic.lower()} requests.",
+                    f"Before contacting support, gather {guidance['evidence']}. Describe the business or customer impact and the outcome you need.",
+                    f"The assigned team will {guidance['process']}. It will record evidence checks, ownership changes, and the resolution decision on the same ticket.",
+                    f"{guidance['urgent']} Add new evidence to the existing ticket instead of opening duplicates, because duplicate requests can split context and delay ownership.",
+                ),
+            ),
+            (
+                f"{article_topic}: Required Information",
+                _html_paragraphs(
+                    f"Use this checklist when submitting a {article_topic.lower()} request.",
+                    f"Include {guidance['evidence']}. Also select the closest issue category, severity, customer segment, and requested outcome on the support form.",
+                    "Make screenshots and documents legible, include relevant dates and references, and explain what has already been tried. Do not send credentials or authentication codes.",
+                    f"After submission, the team will {guidance['process']}. {guidance['urgent']}",
+                ),
+            ),
+        ]
+        rows = []
+        for index in range(1, requested_count + 1):
+            title, body = variants[(index - 1) % len(variants)]
+            rows.append(
+                {
+                    "object_type": "articles",
+                    "title": make_unique_title(title, index),
+                    "conditions": [],
+                    "actions": [
+                        {"field": "locale", "value": "en-us"},
+                        {"field": "section_name", "value": article_topic},
+                        {"field": "body", "value": body},
+                    ],
+                    "dependency_notes": notes,
+                }
+            )
+        return rows
+
+    return []
+
+
 def _build_deterministic_chunk_rows(
     *,
     object_type: str,
@@ -2022,15 +3081,25 @@ def _build_deterministic_chunk_rows(
     existing_titles: list[str] | None,
     generated_rows: list[dict] | None,
     reason: str,
+    backlog_item: dict | None = None,
 ) -> list[dict]:
     normalized_object_type = _normalize_object_type(object_type)
     requested_count = max(int(target_count or 1), 1)
     prompt_text = str(prompt or "").strip()
-    existing_title_keys = {
-        _normalize_title_for_dedupe(title)
-        for title in (existing_titles or [])
-        if str(title).strip()
-    }
+    if str((backlog_item or {}).get("source", "")).strip() == DEPARTMENT_COVERAGE_SOURCE:
+        existing_title_keys = {
+            _normalize_title_for_dedupe(str(row.get("title", "")))
+            for row in (generated_rows or [])
+            if isinstance(row, dict)
+            and _normalize_object_type(str(row.get("object_type", ""))) == normalized_object_type
+            and str(row.get("title", "")).strip()
+        }
+    else:
+        existing_title_keys = {
+            _normalize_title_for_dedupe(title)
+            for title in (existing_titles or [])
+            if str(title).strip()
+        }
 
     def _next_unique_title(base: str, position: int) -> str:
         candidate = str(base or "").strip() or f"Generated {normalized_object_type.rstrip('s').title()}"
@@ -2048,10 +3117,25 @@ def _build_deterministic_chunk_rows(
             suffix += 1
 
     rows: list[dict] = []
-    fallback_note = (
-        f"Deterministic {normalized_object_type} fallback used because model output could not be parsed. "
-        f"Source error: {reason}"
+    if "template-first" in str(reason or "").lower() or "template-first generation" in str(reason or "").lower():
+        fallback_note = (
+            f"Deterministic {normalized_object_type} template used for department coverage. "
+            f"Reason: {reason}"
+        )
+    else:
+        fallback_note = (
+            f"Deterministic {normalized_object_type} fallback used because model output could not be parsed. "
+            f"Source error: {reason}"
+        )
+    coverage_rows = _department_coverage_row_templates(
+        object_type=normalized_object_type,
+        target_count=requested_count,
+        backlog_item=backlog_item or {},
+        fallback_note=fallback_note,
+        make_unique_title=_next_unique_title,
     )
+    if coverage_rows:
+        return coverage_rows
 
     if normalized_object_type == "ticket_fields":
         field_specs = _extract_ticket_field_specs_from_prompt(prompt_text)
@@ -2347,6 +3431,7 @@ def _supplement_chunk_rows_to_target(
     existing_titles: list[str] | None,
     generated_rows: list[dict] | None,
     reason: str,
+    backlog_item: dict | None = None,
 ) -> tuple[list[dict], int]:
     normalized_target = max(int(target_count or 1), 1)
     current_rows = list(chunk_rows or [])
@@ -2368,6 +3453,7 @@ def _supplement_chunk_rows_to_target(
         existing_titles=title_seed,
         generated_rows=list(generated_rows or []) + current_rows,
         reason=reason,
+        backlog_item=backlog_item,
     )
     if not supplements:
         return current_rows, 0
@@ -3177,6 +4263,7 @@ def _canonicalize_article_record(
     reference_catalog: dict[str, list[dict]],
     related_lookup: dict[str, dict[str, str]] | None,
     catalog_lookup: dict[str, dict[str, str]] | None,
+    generated_section_lookup: dict[str, str] | None = None,
 ) -> dict:
     info = {
         "title": str(row.get("title", "Untitled article")).strip() or "Untitled article",
@@ -3241,29 +4328,41 @@ def _canonicalize_article_record(
         if lookup_source and lookup_source != "direct_id":
             info["alias_mappings"].append(f"section_id resolved from {lookup_source}")
     else:
-        fallback_section = None
-        section_rows = reference_catalog.get("sections", [])
-        if isinstance(section_rows, list) and section_rows:
-            first = section_rows[0]
-            if isinstance(first, dict):
-                first_id = str(first.get("id", "")).strip()
-                if first_id.isdigit():
-                    fallback_section = first_id
-        if fallback_section:
-            _set_action_value(row, "section_id", fallback_section)
-            info["defaults_applied"].append("section_id=default_first_section")
+        section_text = str(section_raw or "").strip()
+        generated_section_name = None
+        if section_text:
+            generated_section_name = (generated_section_lookup or {}).get(_normalize_lookup_name(section_text))
+        if generated_section_name:
+            _drop_row_entries_by_aliases(row, ARTICLE_FIELD_ALIASES["section_id"])
+            _set_action_value(row, "section_name", generated_section_name)
+            info["defaults_applied"].append("section_name=same_batch_dependency")
             info["warnings"].append(
-                f"section_id was not explicit; defaulted to section_id={fallback_section} from context."
+                f"section_name '{generated_section_name}' will be resolved after same-batch section deployment."
             )
         else:
-            row.setdefault("validation_overrides", {})
-            row["validation_overrides"]["blocked_reason"] = (
-                "Article requires a numeric section_id. Provide a valid section or include it in context."
-            )
-            info["blocked"] = True
-            info["warnings"].append(
-                "Article blocked: unable to resolve numeric section_id from prompt or context."
-            )
+            fallback_section = None
+            section_rows = reference_catalog.get("sections", [])
+            if isinstance(section_rows, list) and section_rows:
+                first = section_rows[0]
+                if isinstance(first, dict):
+                    first_id = str(first.get("id", "")).strip()
+                    if first_id.isdigit():
+                        fallback_section = first_id
+            if fallback_section:
+                _set_action_value(row, "section_id", fallback_section)
+                info["defaults_applied"].append("section_id=default_first_section")
+                info["warnings"].append(
+                    f"section_id was not explicit; defaulted to section_id={fallback_section} from context."
+                )
+            else:
+                row.setdefault("validation_overrides", {})
+                row["validation_overrides"]["blocked_reason"] = (
+                    "Article requires a numeric section_id. Provide a valid section or include it in context."
+                )
+                info["blocked"] = True
+                info["warnings"].append(
+                    "Article blocked: unable to resolve numeric section_id from prompt or context."
+                )
 
     for warning in info["warnings"]:
         _append_dependency_note(row, warning)
@@ -3777,6 +4876,28 @@ def _apply_dependency_resolution(
     unresolved_links = 0
     unresolved_samples: list[str] = []
     patched_rows: list[dict] = []
+    same_batch_lookup: dict[str, dict[str, str]] = {
+        "brand": {},
+        "category": {},
+        "section": {},
+        "group": {},
+        "ticket_form": {},
+    }
+    generated_reference_types = {
+        "brands": "brand",
+        "categories": "category",
+        "sections": "section",
+        "groups": "group",
+        "ticket_forms": "ticket_form",
+    }
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        object_type = _normalize_object_type(str(row.get("object_type", "")))
+        reference_type = generated_reference_types.get(object_type)
+        title = str(row.get("title", "")).strip()
+        if reference_type and title:
+            same_batch_lookup.setdefault(reference_type, {})[_normalize_lookup_name(title)] = title
 
     for row in rows:
         if not isinstance(row, dict):
@@ -3823,6 +4944,12 @@ def _apply_dependency_resolution(
                     resolved_links += 1
                     row_notes.append(
                         f"{field}: mapped '{value}' to ID {resolved} from {lookup_source}."
+                    )
+                    continue
+                same_batch_reference = same_batch_lookup.get(expected_object, {}).get(normalized_value)
+                if same_batch_reference:
+                    row_notes.append(
+                        f"{field}: '{value}' references same-batch {expected_object} '{same_batch_reference}'."
                     )
                     continue
 
@@ -3929,6 +5056,214 @@ def _build_preview_records(
 def _count_generated(records: list[dict]) -> dict[str, int]:
     counts = Counter(row.get("object_type", "recommendations") for row in records)
     return dict(counts)
+
+
+def _row_search_text(row: dict) -> str:
+    parts = [
+        str(row.get("title", "")),
+        str(row.get("preview_summary", "")),
+        " ".join(str(item) for item in list(row.get("warnings", []) or [])),
+        " ".join(str(item) for item in list(row.get("dependency_notes", []) or [])),
+    ]
+    for bucket_name in ("conditions", "actions"):
+        for entry in list(row.get(bucket_name, []) or []):
+            if isinstance(entry, dict):
+                parts.append(str(entry.get("field", "")))
+                parts.append(str(entry.get("value", "")))
+    return _coverage_key(" ".join(parts))
+
+
+def _row_matches_department(row: dict, department: dict) -> bool:
+    search_text = _row_search_text(row)
+    department_name = str(department.get("name", "")).strip()
+    form_title = str(department.get("form_title", "")).strip()
+    tag = str(department.get("tag", "")).strip()
+    candidates = [
+        department_name,
+        form_title,
+        tag,
+        str(department.get("slug", "")).strip(),
+    ]
+    for candidate in candidates:
+        key = _coverage_key(candidate)
+        if key and key in search_text:
+            return True
+    department_words = [
+        word
+        for word in _coverage_key(department_name).split()
+        if len(word) > 3 and word not in {"support", "operations", "success"}
+    ]
+    return bool(department_words and any(word in search_text for word in department_words))
+
+
+def _evaluate_department_coverage(
+    *,
+    manifest: dict,
+    records: list[dict],
+) -> dict:
+    if not isinstance(manifest, dict) or not manifest.get("enabled"):
+        return {
+            "enabled": False,
+            "status": "skipped",
+            "reason": str((manifest or {}).get("reason", "not_enabled")) if isinstance(manifest, dict) else "not_enabled",
+            "departments": [],
+            "missing": [],
+            "totals": {"required": 0, "generated": len(records)},
+        }
+
+    departments = [item for item in list(manifest.get("departments", []) or []) if isinstance(item, dict)]
+    minimums = dict(manifest.get("minimums", {}) or DEPARTMENT_HEAVY_MINIMUMS)
+    missing: list[dict] = []
+    department_results: list[dict] = []
+    total_required = 0
+    total_matched = 0
+
+    for department in departments:
+        department_name = str(department.get("name", "")).strip()
+        object_counts: dict[str, int] = {}
+        object_missing: dict[str, int] = {}
+        for object_type in DEPARTMENT_COVERAGE_OBJECT_TYPES:
+            required = max(int(minimums.get(object_type, 0) or 0), 0)
+            if required <= 0:
+                continue
+            count = len(
+                [
+                    row
+                    for row in records
+                    if _normalize_object_type(str(row.get("object_type", ""))) == object_type
+                    and _row_matches_department(row, department)
+                ]
+            )
+            object_counts[object_type] = count
+            total_required += required
+            total_matched += min(count, required)
+            if count < required:
+                deficit = required - count
+                object_missing[object_type] = deficit
+                missing.append(
+                    {
+                        "department": department_name,
+                        "object_type": object_type,
+                        "required": required,
+                        "found": count,
+                        "missing": deficit,
+                    }
+                )
+        department_results.append(
+            {
+                "department": department_name,
+                "status": "warning" if object_missing else "passed",
+                "counts": object_counts,
+                "missing": object_missing,
+                "tag": department.get("tag"),
+                "form_title": department.get("form_title"),
+                "topic": department.get("topic"),
+            }
+        )
+
+    shared_counts = {
+        "ticket_fields": len(
+            [row for row in records if _normalize_object_type(str(row.get("object_type", ""))) == "ticket_fields"]
+        ),
+        "categories": len(
+            [row for row in records if _normalize_object_type(str(row.get("object_type", ""))) == "categories"]
+        ),
+        "sections": len(
+            [row for row in records if _normalize_object_type(str(row.get("object_type", ""))) == "sections"]
+        ),
+    }
+    shared_required = {
+        "ticket_fields": len(list(manifest.get("ticket_fields", []) or [])),
+        "categories": len(list(manifest.get("help_center_topics", []) or [])),
+        "sections": len(list(manifest.get("help_center_topics", []) or [])),
+    }
+    shared_missing: dict[str, int] = {}
+    for object_type, required in shared_required.items():
+        if shared_counts.get(object_type, 0) < required:
+            shared_missing[object_type] = required - shared_counts.get(object_type, 0)
+            missing.append(
+                {
+                    "department": "shared",
+                    "object_type": object_type,
+                    "required": required,
+                    "found": shared_counts.get(object_type, 0),
+                    "missing": shared_missing[object_type],
+                }
+            )
+
+    generated_type_counts = Counter(
+        _normalize_object_type(str(row.get("object_type", "")))
+        for row in records
+    )
+    global_missing: dict[str, int] = {}
+    for object_type, required_value in dict(manifest.get("target_counts", {}) or {}).items():
+        normalized_type = _normalize_object_type(str(object_type))
+        if normalized_type in shared_required:
+            continue
+        required = max(int(required_value or 0), 0)
+        found = int(generated_type_counts.get(normalized_type, 0) or 0)
+        if found >= required:
+            continue
+        deficit = required - found
+        global_missing[normalized_type] = deficit
+        missing.append(
+            {
+                "department": "global",
+                "object_type": normalized_type,
+                "required": required,
+                "found": found,
+                "missing": deficit,
+            }
+        )
+
+    status = "warning" if missing else "passed"
+    return {
+        "enabled": True,
+        "profile": manifest.get("profile", "heavy"),
+        "coverage_mode": manifest.get("coverage_mode", "preview_with_warnings"),
+        "status": status,
+        "departments": department_results,
+        "missing": missing,
+        "missing_count": len(missing),
+        "shared": {
+            "counts": shared_counts,
+            "required": shared_required,
+            "missing": shared_missing,
+        },
+        "global": {
+            "counts": dict(generated_type_counts),
+            "required": dict(manifest.get("target_counts", {}) or {}),
+            "missing": global_missing,
+        },
+        "totals": {
+            "required": total_required + sum(shared_required.values()),
+            "matched": total_matched + sum(min(shared_counts.get(key, 0), value) for key, value in shared_required.items()),
+            "generated": len(records),
+        },
+    }
+
+
+def _apply_coverage_gate_to_preview(records: list[dict], coverage_gate: dict) -> list[dict]:
+    if not coverage_gate.get("enabled") or coverage_gate.get("status") != "warning" or not records:
+        return records
+    missing = list(coverage_gate.get("missing", []) or [])
+    if not missing:
+        return records
+    samples = [
+        f"{item.get('department')}: {item.get('object_type')} missing {item.get('missing')}"
+        for item in missing[:6]
+        if isinstance(item, dict)
+    ]
+    summary = "Coverage gate warning: " + "; ".join(samples)
+    patched = [dict(row) for row in records]
+    first = patched[0]
+    warnings = list(first.get("warnings", []) or [])
+    if summary not in warnings:
+        warnings.append(summary)
+    first["warnings"] = warnings
+    if first.get("validation_status") == "passed":
+        first["validation_status"] = "warning"
+    return patched
 
 
 CATALOG_OBJECT_NORMALIZATION = {
@@ -4274,6 +5609,39 @@ def _canonicalize_generated_rows(
         for value in existing_field_map.values()
         if str(value).strip()
     }
+    generated_section_lookup: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if _normalize_object_type(str(row.get("object_type", ""))) != "sections":
+            continue
+        section_title = str(row.get("title", "")).strip()
+        if not section_title:
+            continue
+        section_aliases = [
+            section_title,
+            *[
+                str(item).strip()
+                for item in list(row.get("_supervisor_title_aliases", []) or [])
+                if str(item).strip()
+            ],
+        ]
+        for action in list(row.get("actions", []) or []):
+            if not isinstance(action, dict):
+                continue
+            if str(action.get("field", "")).strip().lower() != "category_name":
+                continue
+            category_name = str(action.get("value", "")).strip()
+            if not category_name:
+                continue
+            section_aliases.append(category_name)
+            topic_alias = re.sub(r"\s+support\s*$", "", category_name, flags=re.IGNORECASE).strip()
+            if topic_alias:
+                section_aliases.append(topic_alias)
+        for alias in section_aliases:
+            alias_key = _normalize_lookup_name(alias)
+            if alias_key:
+                generated_section_lookup[alias_key] = section_title
 
     generated_field_titles: set[str] = set()
     for row in rows:
@@ -4307,6 +5675,7 @@ def _canonicalize_generated_rows(
                 reference_catalog=reference_catalog,
                 related_lookup=related_lookup,
                 catalog_lookup=catalog_lookup,
+                generated_section_lookup=generated_section_lookup,
             )
             trigger_article_summary["articles_processed"] += 1
             trigger_article_summary["alias_mappings"] += len(info.get("alias_mappings", []))
@@ -4957,6 +6326,7 @@ async def generate_import_assistant_batch(
     chunk_estimate: dict = {"estimated_count": 1, "sources": ["default"], "numeric_matches": [], "enumerated_items": 0}
     estimated_requested_records = 1
     pre_planner_object_targets: dict[str, int] = {}
+    pre_planner_coverage_manifest: dict = {}
     force_wave_chunk_path = False
     force_wave_chunk_reason = "standard_prompt"
     planner_bypassed = False
@@ -4972,11 +6342,52 @@ async def generate_import_assistant_batch(
         },
         "assumptions_applied": [],
     }
+    supervisor = GeminiSupervisor()
+    supervisor_metadata: dict = {
+        "enabled": bool(settings.gemini_supervisor_enabled),
+        "available": bool(supervisor.enabled),
+        "availability_reason": (
+            "ok"
+            if supervisor.enabled
+            else (
+                "missing_api_key"
+                if settings.gemini_supervisor_enabled
+                else "disabled"
+            )
+        ),
+        "model": settings.gemini_supervisor_model,
+        "auto_apply_patches": bool(settings.gemini_supervisor_auto_apply_patches),
+        "max_concurrency": int(settings.gemini_supervisor_max_concurrency),
+        "approval_threshold": float(settings.gemini_supervisor_approval_threshold),
+        "max_regeneration_retries": int(settings.gemini_supervisor_max_regeneration_retries),
+        "review_grouping": settings.gemini_supervisor_review_grouping,
+        "reviews": [],
+        "memory": [],
+        "verified_memory": [],
+        "review_units": [],
+        "blocked_chunk_ids": [],
+        "remaining_manifest_coverage": {},
+        "call_counts": {"consolidated": 0, "retry": 0, "fallback": 0, "total": 0},
+        "auto_applied_patches": [],
+        "patch_counts": {"applied": 0, "rejected": 0, "skipped": 0},
+        "failures": [],
+    }
+    supervisor_semaphore = asyncio.Semaphore(settings.gemini_supervisor_max_concurrency)
+    supervisor_tasks: list[asyncio.Task] = []
+    supervisor_pending_chunks: list[dict] = []
+    supervisor_review_unit_runtime: dict[str, dict] = {}
 
     def _append_control_status(message: str) -> None:
         current = store.get_batch(batch_id) or {}
         current_status = str(current.get("status") or "generating").strip() or "generating"
         store.append_status(batch_id, current_status, message)
+
+    def _append_supervisor_status(message: str) -> None:
+        append_event = getattr(store, "append_status_event", None)
+        if callable(append_event):
+            append_event(batch_id, "supervisor_review", message)
+            return
+        _append_control_status(f"Gemini supervisor: {message}")
 
     def _merge_control_metadata(payload: dict) -> dict:
         current_metadata = _metadata_dict(store.get_batch(batch_id))
@@ -4990,6 +6401,844 @@ async def generate_import_assistant_batch(
                 else {}
             ),
         }
+
+    def _sync_supervisor_memory_to_context() -> None:
+        memory = [
+            str(item).strip()
+            for item in supervisor_metadata.get("memory", [])
+            if str(item).strip()
+        ][-20:]
+        if not memory:
+            return
+        memory_line = "Gemini supervisor memory: " + " | ".join(memory)
+        try:
+            bundles = (generator_context_bundle, llm_context_aggressive)
+        except NameError:
+            return
+        for bundle in bundles:
+            current = str(bundle.get("context_notes", "") or "").strip()
+            if memory_line in current:
+                continue
+            bundle["context_notes"] = _truncate_text(
+                " ".join(part for part in [current, memory_line] if part),
+                settings.llm_context_max_notes_chars,
+            )
+
+    def _supervisor_allowed_references(extra_rows: list[dict] | None = None) -> dict[str, list[str]]:
+        output: dict[str, list[str]] = {"groups": [], "ticket_forms": [], "ticket_fields": []}
+        for object_type in output:
+            for item in reference_catalog.get(object_type, []) or []:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or item.get("title") or "").strip()
+                if name and name not in output[object_type]:
+                    output[object_type].append(name)
+        for row in [*generated_data, *(extra_rows or [])]:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("_supervisor_state", "")).strip() == "blocked":
+                continue
+            object_type = _normalize_object_type(str(row.get("object_type", "")))
+            if object_type not in output:
+                continue
+            title = str(row.get("title", "")).strip()
+            if title and title not in output[object_type]:
+                output[object_type].append(title)
+        return output
+
+    def _compact_supervisor_records(extra_rows: list[dict] | None = None) -> list[dict]:
+        def compact_entries(raw_entries: object) -> list[dict]:
+            entries = raw_entries if isinstance(raw_entries, list) else []
+            compacted: list[dict] = []
+            for item in entries[:12]:
+                if not isinstance(item, dict):
+                    continue
+                field = str(item.get("field", "")).strip()
+                if not field:
+                    continue
+                value = item.get("value")
+                entry = {"field": field}
+                operator = str(item.get("operator", "")).strip()
+                if operator:
+                    entry["operator"] = operator
+                if field.lower() in {"body", "comment_value", "comment_value_html"}:
+                    text = str(value or "")
+                    entry["value"] = {
+                        "chars": len(text),
+                        "excerpt": _truncate_text(text, 160),
+                    }
+                elif isinstance(value, list):
+                    compact_values: list[object] = []
+                    for child in value[:30]:
+                        if isinstance(child, dict):
+                            compact_values.append(
+                                {
+                                    key: _truncate_text(child.get(key), 100)
+                                    for key in ("name", "value")
+                                    if child.get(key) not in (None, "")
+                                }
+                            )
+                        else:
+                            compact_values.append(_truncate_text(child, 100))
+                    entry["value"] = compact_values
+                    if len(value) > len(compact_values):
+                        entry["value_count"] = len(value)
+                elif isinstance(value, dict):
+                    entry["value"] = {
+                        str(key): _truncate_text(child, 100)
+                        for key, child in list(value.items())[:12]
+                    }
+                else:
+                    entry["value"] = _truncate_text(value, 180)
+                compacted.append(entry)
+            return compacted
+
+        pending_ids = {
+            str(item.get("chunk_id", ""))
+            for item in supervisor_pending_chunks
+            if str(item.get("chunk_id", ""))
+        }
+        output: list[dict] = []
+        seen: set[str] = set()
+        for row in [*generated_data, *(extra_rows or [])]:
+            if not isinstance(row, dict):
+                continue
+            record_key = str(row.get("_supervisor_record_key") or "").strip()
+            fallback_key = (
+                f"{_normalize_object_type(str(row.get('object_type', '')))}:"
+                f"{_normalize_title_for_dedupe(str(row.get('title', '')))}"
+            )
+            key = record_key or fallback_key
+            if key in seen:
+                continue
+            seen.add(key)
+            chunk_id = str(row.get("_supervisor_chunk_id") or "").strip()
+            state = "pending" if chunk_id in pending_ids else "approved"
+            if str(row.get("_supervisor_state") or "").strip():
+                state = str(row.get("_supervisor_state"))
+            output.append(
+                {
+                    "record_key": key,
+                    "chunk_id": chunk_id,
+                    "state": state,
+                    "object_type": _normalize_object_type(str(row.get("object_type", ""))),
+                    "title": str(row.get("title", ""))[:180],
+                    "conditions": compact_entries(row.get("conditions", [])),
+                    "actions": compact_entries(row.get("actions", [])),
+                    "dependency_notes": [
+                        _truncate_text(item, 180)
+                        for item in list(row.get("dependency_notes", []) or [])[:6]
+                        if str(item).strip()
+                    ],
+                }
+            )
+        return output
+
+    def _remaining_supervisor_coverage() -> dict:
+        approved_rows = [
+            row
+            for row in generated_data
+            if str(row.get("_supervisor_state", "approved")).strip() == "approved"
+        ]
+        pending_rows = [
+            row
+            for row in generated_data
+            if str(row.get("_supervisor_state", "")).strip() == "pending"
+        ]
+        try:
+            coverage = _evaluate_department_coverage(
+                manifest=coverage_manifest,
+                records=approved_rows,
+            )
+        except Exception:  # noqa: BLE001
+            return {}
+        return {
+            "status": coverage.get("status"),
+            "totals": coverage.get("totals", {}),
+            "missing": list(coverage.get("missing", []) or [])[:80],
+            "pending_counts": _count_generated(pending_rows),
+        }
+
+    def _department_review_bundle_key(chunk: dict) -> str:
+        wave = int(chunk.get("wave", 0) or 0)
+        department = str(chunk.get("department_name", "")).strip()
+        topic = str(chunk.get("topic", "")).strip()
+        object_type = str(chunk.get("object_type", "")).strip()
+        coverage_kind = str(chunk.get("coverage_kind", "")).strip()
+        if wave == 1:
+            return f"topic:{_coverage_key(topic or chunk.get('title_hint') or object_type)}"
+        if wave == 2 and coverage_kind == "shared_ticket_fields":
+            return "shared:ticket_fields"
+        if department:
+            return f"department:{_coverage_key(department)}"
+        return f"type:{object_type}"
+
+    def _build_department_review_units(chunks: list[dict], *, wave: int) -> list[dict]:
+        grouped: dict[str, list[dict]] = {}
+        for chunk in chunks:
+            grouped.setdefault(_department_review_bundle_key(chunk), []).append(chunk)
+        units: list[dict] = []
+        for bundle_key, members in grouped.items():
+            rows = [row for member in members for row in member.get("rows", []) if isinstance(row, dict)]
+            units.append(
+                {
+                    "review_unit_id": f"wave-{wave}:{bundle_key}",
+                    "bundle_key": bundle_key,
+                    "wave": wave,
+                    "rows": rows,
+                    "chunks": members,
+                    "chunk_specs": [dict(member.get("gate_spec", {})) for member in members],
+                    "object_types": sorted(
+                        {str(member.get("object_type", "")) for member in members if str(member.get("object_type", ""))}
+                    ),
+                    "department_name": next(
+                        (str(member.get("department_name", "")) for member in members if str(member.get("department_name", ""))),
+                        "",
+                    ),
+                    "topic": next(
+                        (str(member.get("topic", "")) for member in members if str(member.get("topic", ""))),
+                        "",
+                    ),
+                }
+            )
+        return sorted(units, key=lambda item: item["review_unit_id"])
+
+    def _commit_verified_supervisor_memory(rows: list[dict], *, chunk_id: str) -> None:
+        verified = supervisor_metadata.setdefault("verified_memory", [])
+        memory = supervisor_metadata.setdefault("memory", [])
+        for row in rows:
+            title = str(row.get("title", "")).strip()
+            object_type = _normalize_object_type(str(row.get("object_type", "")))
+            if not title or not object_type:
+                continue
+            fact = {
+                "chunk_id": chunk_id,
+                "object_type": object_type,
+                "title": title,
+                "dependencies": [str(item) for item in list(row.get("dependency_notes", []) or [])[:6]],
+            }
+            key = (chunk_id, object_type, _normalize_title_for_dedupe(title))
+            if any(
+                (
+                    str(item.get("chunk_id", "")),
+                    str(item.get("object_type", "")),
+                    _normalize_title_for_dedupe(str(item.get("title", ""))),
+                )
+                == key
+                for item in verified
+                if isinstance(item, dict)
+            ):
+                continue
+            verified.append(fact)
+            memory_line = f"Verified {object_type}: {title}."
+            if memory_line not in memory:
+                memory.append(memory_line)
+        supervisor_metadata["verified_memory"] = verified[-200:]
+        supervisor_metadata["memory"] = memory[-60:]
+
+    def _record_supervisor_result(
+        *,
+        result: dict,
+        context: dict,
+    ) -> None:
+        review = result.get("review", {}) if isinstance(result.get("review", {}), dict) else {}
+        patch_summary = (
+            result.get("patch_summary", {})
+            if isinstance(result.get("patch_summary", {}), dict)
+            else {}
+        )
+        patch_results = list(patch_summary.get("patch_results", []) or [])
+        applied = int(patch_summary.get("applied", 0) or 0)
+        rejected = int(patch_summary.get("rejected", 0) or 0)
+        skipped = len([item for item in patch_results if item.get("status") == "skipped"])
+        counts = supervisor_metadata.setdefault(
+            "patch_counts",
+            {"applied": 0, "rejected": 0, "skipped": 0},
+        )
+        counts["applied"] = int(counts.get("applied", 0) or 0) + applied
+        counts["rejected"] = int(counts.get("rejected", 0) or 0) + rejected
+        counts["skipped"] = int(counts.get("skipped", 0) or 0) + skipped
+
+        for patch_result in patch_results:
+            if patch_result.get("status") == "applied":
+                supervisor_metadata.setdefault("auto_applied_patches", []).append(
+                    {
+                        **context,
+                        "operation": patch_result.get("operation"),
+                        "target_index": patch_result.get("target_index"),
+                        "target_title": patch_result.get("target_title"),
+                        "reason": patch_result.get("reason"),
+                    }
+                )
+        if len(supervisor_metadata.get("auto_applied_patches", [])) > 100:
+            supervisor_metadata["auto_applied_patches"] = supervisor_metadata["auto_applied_patches"][-100:]
+
+        review_entry = {
+            **context,
+            "status": result.get("status", "reviewed"),
+            "model": settings.gemini_supervisor_model,
+            "approved": bool(review.get("approved", False)),
+            "quality_score": review.get("quality_score"),
+            "raw_quality_score": result.get("gate", {}).get(
+                "raw_quality_score", review.get("quality_score")
+            ),
+            "effective_quality_score": result.get("gate", {}).get("effective_quality_score"),
+            "effective_approved": result.get("gate", {}).get("effective_approved"),
+            "approval_gate_reasons": list(result.get("gate", {}).get("approval_gate_reasons", []) or [])[:12],
+            "chunk_assessments": list(result.get("gate", {}).get("chunk_assessments", []) or [])[:20],
+            "context_gaps": list(review.get("context_gaps", []) or [])[:6],
+            "dependency_issues": list(review.get("dependency_issues", []) or [])[:6],
+            "requires_regeneration": bool(review.get("requires_regeneration", False)),
+            "public_reasoning_summary": _truncate_text(
+                str(review.get("public_reasoning_summary", "")),
+                500,
+            ),
+            "patches_requested": len(review.get("patches", []) or []),
+            "patches_applied": applied,
+            "patches_rejected": rejected,
+            "patch_results": patch_results[:12],
+            "latency_ms": result.get("latency_ms", 0),
+            "reason": result.get("reason", ""),
+            "memory_suggestions": list(review.get("memory_delta", []) or [])[:8],
+        }
+        supervisor_metadata.setdefault("reviews", []).append(review_entry)
+        if len(supervisor_metadata["reviews"]) > 100:
+            supervisor_metadata["reviews"] = supervisor_metadata["reviews"][-100:]
+
+    async def _run_supervisor_review(
+        *,
+        rows: list[dict],
+        context: dict,
+        object_type: str,
+        wave: int | None,
+        wave_position: int | None,
+        chunk_index: int,
+        chunk_total: int,
+        blueprint: dict | None,
+        chunk_specs: list[dict] | None = None,
+        review_scope: dict | None = None,
+        call_kind: str = "consolidated",
+    ) -> dict:
+        chunk_specs = list(chunk_specs or [])
+        allowed_references = _supervisor_allowed_references(rows)
+        current_row_ids = {id(row) for row in rows}
+        reserved_titles: dict[str, list[str]] = {}
+        for generated_row in generated_data:
+            if not isinstance(generated_row, dict) or id(generated_row) in current_row_ids:
+                continue
+            generated_object_type = _normalize_object_type(
+                str(generated_row.get("object_type", ""))
+            )
+            generated_title = str(generated_row.get("title", "")).strip()
+            if generated_object_type and generated_title:
+                reserved_titles.setdefault(generated_object_type, []).append(generated_title)
+        cumulative_records = _compact_supervisor_records(rows)
+        remaining_coverage = _remaining_supervisor_coverage()
+        if not settings.gemini_supervisor_enabled:
+            result = {
+                "status": "skipped",
+                "reason": "disabled",
+                "records": rows,
+                "review": {},
+                "patch_summary": {"applied": 0, "rejected": 0, "patch_results": []},
+                "latency_ms": 0,
+            }
+            _record_supervisor_result(result=result, context=context)
+            return result
+        if not supervisor.configured:
+            result = {
+                "status": "skipped",
+                "reason": "missing_api_key",
+                "records": rows,
+                "review": {},
+                "patch_summary": {"applied": 0, "rejected": 0, "patch_results": []},
+                "latency_ms": 0,
+            }
+            _record_supervisor_result(result=result, context=context)
+            return result
+        async with supervisor_semaphore:
+            supervisor_metadata.setdefault("call_counts", {}).setdefault(call_kind, 0)
+            supervisor_metadata["call_counts"][call_kind] += 1
+            supervisor_metadata["call_counts"]["total"] = sum(
+                int(supervisor_metadata["call_counts"].get(kind, 0) or 0)
+                for kind in ("consolidated", "retry", "fallback")
+            )
+            _append_supervisor_status(
+                (
+                    f"Gemini reviewing {object_type} chunk "
+                    f"{chunk_index}/{chunk_total} for safe patches."
+                )
+            )
+            try:
+                result = await supervisor.review_and_patch_chunk(
+                    prompt=request.prompt,
+                    records=rows,
+                    object_type=object_type,
+                    wave=wave,
+                    wave_position=wave_position,
+                    chunk_index=chunk_index,
+                    chunk_total=chunk_total,
+                    blueprint=blueprint,
+                    supervisor_memory=list(supervisor_metadata.get("memory", []) or []),
+                    reference_catalog=reference_catalog,
+                    review_scope=review_scope,
+                    cumulative_records=cumulative_records,
+                    remaining_manifest_coverage=remaining_coverage,
+                    allowed_references=allowed_references,
+                    reserved_titles=reserved_titles,
+                )
+            except Exception as exc:  # noqa: BLE001
+                failure = {
+                    **context,
+                    "error": _truncate_text(str(exc), 500),
+                    "strict": bool(settings.gemini_supervisor_strict_mode),
+                }
+                supervisor_metadata.setdefault("failures", []).append(failure)
+                if len(supervisor_metadata["failures"]) > 50:
+                    supervisor_metadata["failures"] = supervisor_metadata["failures"][-50:]
+                _append_supervisor_status(
+                    f"Gemini review skipped after error: {_truncate_text(str(exc), 220)}"
+                )
+                if settings.gemini_supervisor_strict_mode:
+                    return {"status": "failed", "failure": failure}
+                fallback_review = {
+                    "approved": True,
+                    "quality_score": 1.0,
+                    "requires_regeneration": False,
+                    "chunk_assessments": [
+                        {
+                            "chunk_id": str(spec.get("chunk_id", "")),
+                            "approved": True,
+                            "quality_score": 1.0,
+                            "blocking_issues": [],
+                            "requires_regeneration": False,
+                        }
+                        for spec in chunk_specs
+                    ],
+                }
+                gate = evaluate_supervisor_bundle(
+                    rows=rows,
+                    chunk_specs=chunk_specs,
+                    review=fallback_review,
+                    approval_threshold=settings.gemini_supervisor_approval_threshold,
+                    allowed_references=allowed_references,
+                )
+                error_result = {
+                    "status": "error",
+                    "reason": str(exc),
+                    "records": rows,
+                    "review": fallback_review,
+                    "gate": {**gate, "supervisor_unavailable": True},
+                    "patch_summary": {"applied": 0, "rejected": 0, "patch_results": []},
+                    "latency_ms": 0,
+                    "_review_unit_id": str((review_scope or {}).get("review_unit_id", "")),
+                }
+                _record_supervisor_result(result=error_result, context=context)
+                return error_result
+
+            patched_rows = result.get("records", rows)
+            if isinstance(patched_rows, list) and len(patched_rows) == len(rows):
+                for index, patched_row in enumerate(patched_rows):
+                    if isinstance(patched_row, dict):
+                        patched_snapshot = dict(patched_row)
+                        rows[index].clear()
+                        rows[index].update(patched_snapshot)
+            gate = evaluate_supervisor_bundle(
+                rows=rows,
+                chunk_specs=chunk_specs,
+                review=result.get("review", {}),
+                approval_threshold=settings.gemini_supervisor_approval_threshold,
+                allowed_references=allowed_references,
+            )
+            gate["approval_gate_reasons"] = list(
+                dict.fromkeys(
+                    reason
+                    for item in gate.get("chunk_assessments", [])
+                    for reason in item.get("approval_gate_reasons", [])
+                )
+            )
+            result["gate"] = gate
+            result["_review_unit_id"] = str((review_scope or {}).get("review_unit_id", ""))
+            _record_supervisor_result(result=result, context=context)
+            patch_summary = result.get("patch_summary", {})
+            applied_count = (
+                int(patch_summary.get("applied", 0) or 0)
+                if isinstance(patch_summary, dict)
+                else 0
+            )
+            _append_supervisor_status(
+                (
+                    f"Gemini review completed for {object_type} chunk "
+                    f"{chunk_index}/{chunk_total}; applied={applied_count}."
+                )
+            )
+            return result
+
+    def _schedule_supervisor_review(
+        *,
+        rows: list[dict],
+        object_type: str,
+        wave: int | None,
+        wave_position: int | None,
+        chunk_index: int,
+        chunk_total: int,
+        backlog_id: str = "",
+        chunk_specs: list[dict] | None = None,
+        review_scope: dict | None = None,
+        call_kind: str = "consolidated",
+    ) -> None:
+        if not settings.gemini_supervisor_enabled:
+            return
+        context = {
+            "wave": wave,
+            "wave_position": wave_position,
+            "chunk_index": chunk_index,
+            "chunk_total": chunk_total,
+            "object_type": object_type,
+            "backlog_id": backlog_id,
+            "review_unit_id": str((review_scope or {}).get("review_unit_id", "")),
+            "bundle_key": str((review_scope or {}).get("bundle_key", "")),
+            "call_kind": call_kind,
+        }
+        normalized_specs = list(chunk_specs or [])
+        if not normalized_specs:
+            fallback_chunk_id = f"{backlog_id or object_type}:{chunk_index}"
+            for index, row in enumerate(rows):
+                row.setdefault("_supervisor_chunk_id", fallback_chunk_id)
+                row.setdefault("_supervisor_record_key", f"{fallback_chunk_id}:{index}")
+            normalized_specs = [
+                {
+                    "chunk_id": fallback_chunk_id,
+                    "object_type": object_type,
+                    "target_count": len(rows) or 1,
+                }
+            ]
+        task = asyncio.create_task(
+            _run_supervisor_review(
+                rows=rows,
+                context=context,
+                object_type=object_type,
+                wave=wave,
+                wave_position=wave_position,
+                chunk_index=chunk_index,
+                chunk_total=chunk_total,
+                blueprint=blueprint_payload,
+                chunk_specs=normalized_specs,
+                review_scope=review_scope,
+                call_kind=call_kind,
+            )
+        )
+        supervisor_tasks.append(task)
+
+    def _queue_department_supervisor_chunk(
+        *,
+        rows: list[dict],
+        item: dict,
+        object_type: str,
+        wave: int,
+        chunk_index: int,
+        target_count: int,
+        retry_callback=None,
+        fallback_callback=None,
+    ) -> None:
+        backlog_id = str(item.get("backlog_id", "")).strip() or f"wave-{wave}-{object_type}"
+        chunk_id = f"{backlog_id}:{chunk_index}"
+        for row_index, row in enumerate(rows):
+            row["_supervisor_chunk_id"] = chunk_id
+            row["_supervisor_record_key"] = f"{chunk_id}:{row_index}"
+            row["_supervisor_state"] = "pending"
+        expected_titles: list[str] = []
+        if object_type == "groups" and item.get("department_name"):
+            expected_titles = [str(item.get("department_name"))]
+        elif object_type == "ticket_forms" and item.get("form_title"):
+            expected_titles = [str(item.get("form_title"))]
+        gate_spec = {
+            "chunk_id": chunk_id,
+            "object_type": object_type,
+            "target_count": max(int(target_count or 1), 1),
+            "department_name": str(item.get("department_name", "")),
+            "topic": str(item.get("topic", "")),
+            "coverage_kind": str(item.get("coverage_kind", "")),
+            "fields": list(item.get("fields", []) or []),
+            "expected_titles": expected_titles,
+        }
+        supervisor_pending_chunks.append(
+            {
+                "chunk_id": chunk_id,
+                "rows": rows,
+                "gate_spec": gate_spec,
+                "object_type": object_type,
+                "wave": wave,
+                "backlog_id": backlog_id,
+                "department_name": str(item.get("department_name", "")),
+                "topic": str(item.get("topic", "")),
+                "title_hint": str(item.get("title_hint", "")),
+                "coverage_kind": str(item.get("coverage_kind", "")),
+                "retry_callback": retry_callback,
+                "fallback_callback": fallback_callback,
+                "regeneration_attempts": 0,
+                "fallback_after_supervisor_failure": False,
+            }
+        )
+
+    def _schedule_department_wave_reviews(wave: int) -> None:
+        chunks = [
+            chunk
+            for chunk in supervisor_pending_chunks
+            if int(chunk.get("wave", 0) or 0) == int(wave)
+            and not chunk.get("review_scheduled")
+        ]
+        for unit in _build_department_review_units(chunks, wave=int(wave)):
+            unit_id = unit["review_unit_id"]
+            for chunk in unit["chunks"]:
+                chunk["review_scheduled"] = True
+                chunk["review_unit_id"] = unit_id
+            supervisor_review_unit_runtime[unit_id] = unit
+            supervisor_metadata.setdefault("review_units", []).append(
+                {
+                    "review_unit_id": unit_id,
+                    "bundle_key": unit["bundle_key"],
+                    "wave": unit["wave"],
+                    "department_name": unit["department_name"],
+                    "topic": unit["topic"],
+                    "object_types": unit["object_types"],
+                    "chunk_ids": [chunk["chunk_id"] for chunk in unit["chunks"]],
+                    "status": "scheduled",
+                }
+            )
+            _schedule_supervisor_review(
+                rows=unit["rows"],
+                object_type="department_bundle",
+                wave=int(wave),
+                wave_position=None,
+                chunk_index=1,
+                chunk_total=1,
+                backlog_id=unit_id,
+                chunk_specs=unit["chunk_specs"],
+                review_scope={
+                    "review_unit_id": unit_id,
+                    "bundle_key": unit["bundle_key"],
+                    "wave": unit["wave"],
+                    "department_name": unit["department_name"],
+                    "topic": unit["topic"],
+                    "object_types": unit["object_types"],
+                    "chunk_requirements": unit["chunk_specs"],
+                },
+                call_kind="consolidated",
+            )
+
+    async def _await_supervisor_reviews(stage: str) -> None:
+        nonlocal generated_data, total_duplicates_dropped, chunked_titles, chunked_title_set
+        if not supervisor_tasks:
+            return
+        pending = list(supervisor_tasks)
+        supervisor_tasks.clear()
+        _append_supervisor_status(
+            f"Waiting for {len(pending)} Gemini supervisor review(s) before {stage}."
+        )
+        results = await asyncio.gather(*pending, return_exceptions=True)
+        strict_failure = None
+        for result in results:
+            if isinstance(result, Exception):
+                strict_failure = result
+                supervisor_metadata.setdefault("failures", []).append(
+                    {"stage": stage, "error": _truncate_text(str(result), 500)}
+                )
+                continue
+            if isinstance(result, dict) and result.get("status") == "failed":
+                strict_failure = GeminiSupervisorError(
+                    str(result.get("failure", {}).get("error") or "Supervisor review failed.")
+                )
+        if strict_failure and settings.gemini_supervisor_strict_mode:
+            raise GenerateFailureError(
+                code="supervisor_review_failed",
+                reason=f"Gemini supervisor review failed before {stage}: {strict_failure}",
+                next_step="Fix Gemini supervisor configuration or disable strict supervisor mode and retry.",
+            ) from strict_failure
+
+        def replace_chunk_rows(chunk: dict, replacement_rows: list[dict]) -> None:
+            nonlocal generated_data
+            chunk_id = str(chunk.get("chunk_id", ""))
+            first_index = next(
+                (
+                    index
+                    for index, row in enumerate(generated_data)
+                    if str(row.get("_supervisor_chunk_id", "")) == chunk_id
+                ),
+                len(generated_data),
+            )
+            generated_data = [
+                row
+                for row in generated_data
+                if str(row.get("_supervisor_chunk_id", "")) != chunk_id
+            ]
+            for row_index, row in enumerate(replacement_rows):
+                row["_supervisor_chunk_id"] = chunk_id
+                row["_supervisor_record_key"] = f"{chunk_id}:{row_index}"
+                row["_supervisor_state"] = "pending"
+            generated_data[first_index:first_index] = replacement_rows
+            chunk["rows"] = replacement_rows
+
+        async def review_replacement(chunk: dict, *, call_kind: str) -> dict:
+            rows = list(chunk.get("rows", []) or [])
+            return await _run_supervisor_review(
+                rows=rows,
+                context={
+                    "wave": chunk.get("wave"),
+                    "wave_position": None,
+                    "chunk_index": 1,
+                    "chunk_total": 1,
+                    "object_type": chunk.get("object_type"),
+                    "backlog_id": chunk.get("backlog_id"),
+                    "review_unit_id": f"{chunk.get('chunk_id')}:{call_kind}",
+                    "bundle_key": chunk.get("chunk_id"),
+                    "call_kind": call_kind,
+                },
+                object_type=str(chunk.get("object_type", "")),
+                wave=int(chunk.get("wave", 0) or 0),
+                wave_position=None,
+                chunk_index=1,
+                chunk_total=1,
+                blueprint=blueprint_payload,
+                chunk_specs=[dict(chunk.get("gate_spec", {}))],
+                review_scope={
+                    "review_unit_id": f"{chunk.get('chunk_id')}:{call_kind}",
+                    "bundle_key": chunk.get("chunk_id"),
+                    "wave": chunk.get("wave"),
+                    "department_name": chunk.get("department_name"),
+                    "topic": chunk.get("topic"),
+                    "object_types": [chunk.get("object_type")],
+                    "chunk_requirements": [dict(chunk.get("gate_spec", {}))],
+                    "repair_attempt": call_kind,
+                },
+                call_kind=call_kind,
+            )
+
+        async def resolve_failed_chunk(chunk: dict, assessment: dict) -> bool:
+            gate_reasons = list(assessment.get("approval_gate_reasons", []) or [])
+            retry_callback = chunk.get("retry_callback")
+            max_retries = int(settings.gemini_supervisor_max_regeneration_retries)
+            if callable(retry_callback) and max_retries > 0:
+                chunk["regeneration_attempts"] = int(chunk.get("regeneration_attempts", 0) or 0) + 1
+                supervisor_metadata.setdefault("regeneration_attempts", []).append(
+                    {
+                        "chunk_id": chunk.get("chunk_id"),
+                        "attempt": chunk["regeneration_attempts"],
+                        "reasons": gate_reasons[:10],
+                    }
+                )
+                _append_supervisor_status(
+                    f"Regenerating failed chunk {chunk.get('chunk_id')} only."
+                )
+                try:
+                    regenerated = await retry_callback(gate_reasons)
+                except Exception as exc:  # noqa: BLE001
+                    regenerated = []
+                    gate_reasons.append(f"Targeted regeneration failed: {_truncate_text(str(exc), 240)}")
+                if regenerated:
+                    replace_chunk_rows(chunk, regenerated)
+                    retry_result = await review_replacement(chunk, call_kind="retry")
+                    retry_assessments = list(retry_result.get("gate", {}).get("chunk_assessments", []) or [])
+                    if retry_assessments and retry_assessments[0].get("effective_approved"):
+                        for row in chunk.get("rows", []):
+                            row["_supervisor_state"] = "approved"
+                        _commit_verified_supervisor_memory(
+                            chunk.get("rows", []),
+                            chunk_id=str(chunk.get("chunk_id", "")),
+                        )
+                        return True
+                    if retry_assessments:
+                        gate_reasons = list(retry_assessments[0].get("approval_gate_reasons", []) or [])
+
+            fallback_callback = chunk.get("fallback_callback")
+            if callable(fallback_callback):
+                chunk["fallback_after_supervisor_failure"] = True
+                try:
+                    fallback_rows = fallback_callback(gate_reasons)
+                except Exception as exc:  # noqa: BLE001
+                    fallback_rows = []
+                    gate_reasons.append(f"Deterministic fallback failed: {_truncate_text(str(exc), 240)}")
+                if fallback_rows:
+                    replace_chunk_rows(chunk, fallback_rows)
+                    fallback_result = await review_replacement(chunk, call_kind="fallback")
+                    fallback_assessments = list(
+                        fallback_result.get("gate", {}).get("chunk_assessments", []) or []
+                    )
+                    if fallback_assessments and fallback_assessments[0].get("effective_approved"):
+                        for row in chunk.get("rows", []):
+                            row["_supervisor_state"] = "approved"
+                        _commit_verified_supervisor_memory(
+                            chunk.get("rows", []),
+                            chunk_id=str(chunk.get("chunk_id", "")),
+                        )
+                        return True
+                    if fallback_assessments:
+                        gate_reasons = list(
+                            fallback_assessments[0].get("approval_gate_reasons", []) or []
+                        )
+
+            blocked_reason = "Gemini supervisor quality gate failed after targeted retry and fallback."
+            if gate_reasons:
+                blocked_reason += " " + " | ".join(gate_reasons[:5])
+            for row in chunk.get("rows", []):
+                row["_supervisor_state"] = "blocked"
+                row.setdefault("validation_overrides", {})["blocked_reason"] = blocked_reason
+            blocked_ids = supervisor_metadata.setdefault("blocked_chunk_ids", [])
+            if chunk.get("chunk_id") not in blocked_ids:
+                blocked_ids.append(chunk.get("chunk_id"))
+            return False
+
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            unit_id = str(result.get("_review_unit_id", ""))
+            unit = supervisor_review_unit_runtime.get(unit_id)
+            if not unit:
+                continue
+            assessments = {
+                str(item.get("chunk_id", "")): item
+                for item in result.get("gate", {}).get("chunk_assessments", []) or []
+                if isinstance(item, dict)
+            }
+            unit_approved = True
+            for chunk in unit.get("chunks", []):
+                assessment = assessments.get(str(chunk.get("chunk_id", "")), {})
+                if assessment.get("effective_approved"):
+                    for row in chunk.get("rows", []):
+                        row["_supervisor_state"] = "approved"
+                    _commit_verified_supervisor_memory(
+                        chunk.get("rows", []),
+                        chunk_id=str(chunk.get("chunk_id", "")),
+                    )
+                else:
+                    unit_approved = bool(await resolve_failed_chunk(chunk, assessment)) and unit_approved
+            for entry in supervisor_metadata.get("review_units", []):
+                if entry.get("review_unit_id") == unit_id:
+                    entry["status"] = "approved" if unit_approved else "blocked"
+                    break
+        before = len(generated_data)
+        generated_data, dropped = _dedupe_generated_rows(generated_data)
+        total_duplicates_dropped += dropped
+        chunked_titles = []
+        chunked_title_set = set()
+        for row in generated_data:
+            title = str(row.get("title", "")).strip()
+            title_key = _normalize_title_for_dedupe(title)
+            if not title or not title_key or title_key in chunked_title_set:
+                continue
+            chunked_title_set.add(title_key)
+            chunked_titles.append(title)
+        _sync_supervisor_memory_to_context()
+        supervisor_metadata["remaining_manifest_coverage"] = _remaining_supervisor_coverage()
+        supervisor_metadata["total_duplicates_dropped_after_patch"] = int(
+            supervisor_metadata.get("total_duplicates_dropped_after_patch", 0) or 0
+        ) + dropped
+        _append_supervisor_status(
+            (
+                f"Gemini supervisor reviews settled before {stage}; "
+                f"records={len(generated_data)} dropped_after_patch={max(before - len(generated_data), 0)}."
+            )
+        )
 
     async def _honor_run_control(*, checkpoint: str, wave_checkpoint: bool = False) -> None:
         nonlocal pause_notified
@@ -5079,16 +7328,23 @@ async def generate_import_assistant_batch(
             estimated_count=estimated_requested_records,
             chunk_estimate=chunk_estimate,
         )
+        pre_planner_coverage_manifest = _build_department_coverage_manifest(
+            prompt=request.prompt,
+            focus_object_types=focus_object_types,
+        )
         force_wave_chunk_path, force_wave_chunk_reason = _should_force_wave_chunk_path(
             prompt=request.prompt,
             estimated_count=estimated_requested_records,
             object_targets=pre_planner_object_targets,
             chunk_estimate=chunk_estimate,
         )
-        planner_bypassed = (
-            estimated_requested_records == 1
-            and prompt_explicit_for_bypass
-            and not force_wave_chunk_path
+        planner_bypassed = bool(
+            pre_planner_coverage_manifest.get("enabled")
+            or (
+                estimated_requested_records == 1
+                and prompt_explicit_for_bypass
+                and not force_wave_chunk_path
+            )
         )
         store.append_status(batch_id, "request_validated", "Incoming request validated.")
         await _honor_run_control(checkpoint="planning start")
@@ -5098,6 +7354,7 @@ async def generate_import_assistant_batch(
         failure_metadata = _merge_control_metadata({
             "benchmark": {"enabled": benchmark_mode},
             "llm_routes": llm_routes_metadata,
+            "supervisor": supervisor_metadata,
             "failure": {
                 "failure_stage": "generate",
                 "failure_code": "generate_runtime_error",
@@ -5172,16 +7429,22 @@ async def generate_import_assistant_batch(
         )
 
     if planner_bypassed:
+        planner_bypass_reason = (
+            "department_coverage_manifest"
+            if pre_planner_coverage_manifest.get("enabled")
+            else "single_item_explicit_prompt"
+        )
         store.append_status(
             batch_id,
             "planning",
-            "Planner bypassed for explicit single-item prompt; using deterministic inference.",
+            f"Planner bypassed for {planner_bypass_reason}; using deterministic inference.",
         )
         plan = _build_deterministic_planner_plan(
             prompt=request.prompt,
             dependency_mode=request.dependency_mode,
             focus_object_types=focus_object_types,
             estimated_count=estimated_requested_records,
+            bypass_reason=planner_bypass_reason,
         )
     else:
         store.append_status(batch_id, "planning", "Planner call in progress.")
@@ -5250,6 +7513,20 @@ async def generate_import_assistant_batch(
         estimated_count=estimated_requested_records,
         chunk_estimate=chunk_estimate,
     )
+    coverage_manifest = pre_planner_coverage_manifest or _build_department_coverage_manifest(
+        prompt=request.prompt,
+        focus_object_types=focus_object_types,
+    )
+    department_coverage_metadata: dict = {
+        "enabled": bool(coverage_manifest.get("enabled")),
+        "status": "pending" if coverage_manifest.get("enabled") else "skipped",
+        "reason": coverage_manifest.get("reason", ""),
+        "departments": [],
+        "missing": [],
+    }
+    quality_gates_metadata: dict = {
+        "coverage": department_coverage_metadata,
+    }
     use_business_blueprint, business_reason = _is_business_blueprint_prompt(
         prompt=request.prompt,
         focus_object_types=focus_object_types,
@@ -5257,13 +7534,19 @@ async def generate_import_assistant_batch(
         prompt_explicit=prompt_explicit,
         object_targets=object_targets,
     )
+    if coverage_manifest.get("enabled"):
+        use_business_blueprint = True
+        if business_reason == "standard_record_prompt":
+            business_reason = "department_coverage_manifest"
     if force_wave_chunk_path:
         use_business_blueprint = True
         business_reason = force_wave_chunk_reason
     blueprint_payload: dict = {}
     orchestration_backlog: list[dict] = []
     try:
-        if use_business_blueprint and not planner_bypassed:
+        if use_business_blueprint and (
+            not planner_bypassed or coverage_manifest.get("enabled")
+        ):
             orchestration_mode = "business_blueprint"
             store.append_status(
                 batch_id,
@@ -5280,6 +7563,16 @@ async def generate_import_assistant_batch(
                 )
                 if not planner_telemetry and isinstance(blueprint_telemetry, dict):
                     planner_telemetry = blueprint_telemetry
+                if isinstance(blueprint_payload.get("coverage_manifest"), dict):
+                    coverage_manifest = blueprint_payload["coverage_manifest"]
+                    department_coverage_metadata = {
+                        "enabled": bool(coverage_manifest.get("enabled")),
+                        "status": "pending" if coverage_manifest.get("enabled") else "skipped",
+                        "reason": coverage_manifest.get("reason", ""),
+                        "departments": [],
+                        "missing": [],
+                    }
+                    quality_gates_metadata["coverage"] = department_coverage_metadata
             except LLMRequestError as exc:
                 if str(exc.error_class or "").strip().lower() == "rate_limited":
                     raise GenerateFailureError(
@@ -5315,6 +7608,13 @@ async def generate_import_assistant_batch(
                     code="backlog_build_failed",
                     reason="Business blueprint produced no executable backlog items.",
                     next_step="Refine the business request with object scope or provide object focus selections.",
+                )
+            if settings.gemini_supervisor_review_grouping == "department":
+                supervisor_metadata["review_unit_plan"] = _build_department_supervisor_review_manifest(
+                    orchestration_backlog
+                )
+                supervisor_metadata["planned_consolidated_calls"] = len(
+                    supervisor_metadata["review_unit_plan"]
                 )
             estimated_requested_records = max(
                 1,
@@ -5372,7 +7672,11 @@ async def generate_import_assistant_batch(
                         "force_wave_chunk_path": force_wave_chunk_path,
                         "force_wave_chunk_reason": force_wave_chunk_reason,
                     },
+                    "coverage_manifest": coverage_manifest,
+                    "department_coverage": department_coverage_metadata,
+                    "quality_gates": quality_gates_metadata,
                     "orchestration": orchestration_metadata,
+                    "supervisor": supervisor_metadata,
                     "llm_routes": llm_routes_metadata,
                     "llm_runtime": {
                         "planner": planner_telemetry,
@@ -5473,8 +7777,12 @@ async def generate_import_assistant_batch(
                     "inference_assumptions": inference_assumptions,
                     "base_object_match": base_object_match,
                     "inference_confidence": inference_confidence,
+                    "coverage_manifest": coverage_manifest,
+                    "department_coverage": department_coverage_metadata,
+                    "quality_gates": quality_gates_metadata,
                     "orchestration": orchestration_metadata,
                     "chunking": chunking_metadata,
+                    "supervisor": supervisor_metadata,
                     "llm_routes": llm_routes_metadata,
                     "llm_runtime": {
                         "planner": planner_telemetry,
@@ -5689,18 +7997,40 @@ async def generate_import_assistant_batch(
                     )
 
                     for local_chunk_index, item_chunk_target in enumerate(item_chunk_targets, start=1):
+                        chunk_backlog_item = dict(item)
+                        if isinstance(item.get("fields"), list):
+                            field_offset = sum(
+                                int(value or 0)
+                                for value in item_chunk_targets[: local_chunk_index - 1]
+                            )
+                            chunk_backlog_item["fields"] = list(item.get("fields", []))[
+                                field_offset : field_offset + int(item_chunk_target)
+                            ]
+                        template_first_for_chunk = _should_use_department_template_first(
+                            chunk_backlog_item,
+                            object_type,
+                        )
+                        chunk_item_plan = dict(item_plan)
+                        chunk_item_plan["intent"] = _build_wave_prompt(
+                            prompt=request.prompt,
+                            item=chunk_backlog_item,
+                            reconciliation=reconciliation,
+                        )
                         await _honor_run_control(
                             checkpoint=(
                                 f"wave {wave_position}/{total_wave_count} "
                                 f"{object_type} chunk {local_chunk_index}/{len(item_chunk_targets)}"
                             )
                         )
-                        model_hint = (
-                            f", model={item_generator_model}"
-                            if item_generator_model and item_generator_model != primary_generator_model
-                            else ""
-                        )
-                        if chunk_targets_manifest:
+                        if template_first_for_chunk:
+                            model_hint = ", template=department"
+                        else:
+                            model_hint = (
+                                f", model={item_generator_model}"
+                                if item_generator_model and item_generator_model != primary_generator_model
+                                else ""
+                            )
+                        if chunk_targets_manifest and not template_first_for_chunk:
                             wait_seconds = max(settings.llm_auto_chunk_pacing_seconds, 0.0)
                             if settings.llm_auto_chunk_pacing_jitter_seconds > 0:
                                 wait_seconds += random.uniform(0.0, settings.llm_auto_chunk_pacing_jitter_seconds)
@@ -5739,7 +8069,7 @@ async def generate_import_assistant_batch(
                             settings=settings,
                             wave=int(wave),
                         )
-                        if not wave_routes:
+                        if not wave_routes and not template_first_for_chunk:
                             raise GenerateFailureError(
                                 code="wave_generation_failed",
                                 reason=(
@@ -5750,7 +8080,15 @@ async def generate_import_assistant_batch(
                                     "Configure at least one generator model/API key route for this wave and retry."
                                 ),
                             )
-                        active_route = dict(wave_routes[0])
+                        active_route = (
+                            dict(wave_routes[(local_chunk_index - 1) % len(wave_routes)])
+                            if wave_routes
+                            else {
+                                "model": "deterministic_template",
+                                "api_key": None,
+                                "profile": "department_template",
+                            }
+                        )
                         selected_model_for_chunk = active_route.get("model")
                         selected_api_key_for_chunk = active_route.get("api_key")
                         selected_api_key_profile = str(active_route.get("profile", "primary")).strip() or "primary"
@@ -5760,7 +8098,45 @@ async def generate_import_assistant_batch(
                         chunk_rows: list[dict] = []
                         chunk_runtime_metrics: dict = {}
                         context_profile = "standard"
-                        if object_type in forced_deterministic_object_types:
+                        if template_first_for_chunk:
+                            forced_deterministic_for_chunk = True
+                            forced_reason = (
+                                f"Department coverage uses template-first generation for {object_type}."
+                            )
+                            chunk_rows = _build_deterministic_chunk_rows(
+                                object_type=object_type,
+                                target_count=int(item_chunk_target),
+                                prompt=request.prompt,
+                                reference_catalog=reference_catalog,
+                                existing_titles=chunked_titles[-200:],
+                                generated_rows=generated_data,
+                                reason=forced_reason,
+                                backlog_item=chunk_backlog_item,
+                            )
+                            if not chunk_rows:
+                                raise GenerateFailureError(
+                                    code="wave_generation_failed",
+                                    reason=(
+                                        f"Department template could not build valid {object_type} rows for "
+                                        f"wave {wave_position}/{total_wave_count} chunk "
+                                        f"{local_chunk_index}/{len(item_chunk_targets)}."
+                                    ),
+                                    next_step=(
+                                        "Retry with explicit department, group, form, and routing hints for this "
+                                        "object type."
+                                    ),
+                                )
+                            used_deterministic_fallback = True
+                            fallback_reason = forced_reason
+                            context_profile = "department_template"
+                            chunk_runtime_metrics = {
+                                "pre_request_wait_ms": 0.0,
+                                "retry_count": 0,
+                                "final_status": "template_first",
+                                "http_status": None,
+                                "model": "deterministic_template",
+                            }
+                        elif object_type in forced_deterministic_object_types:
                             forced_deterministic_for_chunk = True
                             forced_count = int(failure_count_by_object_type.get(object_type, 0) or 0)
                             forced_reason = (
@@ -5775,6 +8151,7 @@ async def generate_import_assistant_batch(
                                 existing_titles=chunked_titles[-200:],
                                 generated_rows=generated_data,
                                 reason=forced_reason,
+                                backlog_item=chunk_backlog_item,
                             )
                             if not chunk_rows:
                                 raise GenerateFailureError(
@@ -5802,7 +8179,7 @@ async def generate_import_assistant_batch(
                         else:
                             try:
                                 chunk_rows, chunk_runtime_metrics, context_profile = await _run_generator_with_context_fallback(
-                                    plan=item_plan,
+                                    plan=chunk_item_plan,
                                     request=generator_request,
                                     focus_object_types=focus_object_types,
                                     standard_context_bundle=generator_context_bundle,
@@ -5857,7 +8234,7 @@ async def generate_import_assistant_batch(
                                 selected_api_key_profile = fallback_profile
                                 try:
                                     chunk_rows, chunk_runtime_metrics, context_profile = await _run_generator_with_context_fallback(
-                                        plan=item_plan,
+                                        plan=chunk_item_plan,
                                         request=generator_request,
                                         focus_object_types=focus_object_types,
                                         standard_context_bundle=generator_context_bundle,
@@ -5905,6 +8282,7 @@ async def generate_import_assistant_batch(
                                     existing_titles=chunked_titles[-200:],
                                     generated_rows=generated_data,
                                     reason=str(chunk_error),
+                                    backlog_item=chunk_backlog_item,
                                 )
                                 if not chunk_rows:
                                     raise GenerateFailureError(
@@ -5962,6 +8340,7 @@ async def generate_import_assistant_batch(
                             existing_titles=chunked_titles[-200:],
                             generated_rows=generated_data,
                             reason=topup_reason,
+                            backlog_item=chunk_backlog_item,
                         )
                         if deterministic_topup_count > 0:
                             used_deterministic_fallback = True
@@ -6005,6 +8384,7 @@ async def generate_import_assistant_batch(
                                 existing_titles=chunked_titles[-200:],
                                 generated_rows=generated_data,
                                 reason=mismatch_reason,
+                                backlog_item=chunk_backlog_item,
                             )
                             if alignment_topup_count > 0:
                                 used_deterministic_fallback = True
@@ -6013,6 +8393,138 @@ async def generate_import_assistant_batch(
                                     fallback_reason = f"{fallback_reason} | {mismatch_reason}"
                                 else:
                                     fallback_reason = mismatch_reason
+
+                        is_department_supervisor_chunk = bool(
+                            settings.gemini_supervisor_review_grouping == "department"
+                            and str(item.get("source", "")).strip() == DEPARTMENT_COVERAGE_SOURCE
+                        )
+                        if is_department_supervisor_chunk:
+                            retry_plan = dict(chunk_item_plan)
+                            retry_item = dict(chunk_backlog_item)
+                            retry_target = int(item_chunk_target)
+                            retry_chunk_index = int(local_chunk_index)
+                            retry_chunk_total = len(item_chunk_targets)
+                            retry_model = selected_model_for_chunk
+                            retry_api_key = selected_api_key_for_chunk
+                            retry_compatibility_first = compatibility_first_for_item
+                            retry_compatibility_only = compatibility_only_for_item
+                            retry_template_first = template_first_for_chunk
+
+                            async def retry_callback(
+                                gate_reasons,
+                                *,
+                                _plan=retry_plan,
+                                _item=retry_item,
+                                _target=retry_target,
+                                _chunk_index=retry_chunk_index,
+                                _chunk_total=retry_chunk_total,
+                                _model=retry_model,
+                                _api_key=retry_api_key,
+                                _compatibility_first=retry_compatibility_first,
+                                _compatibility_only=retry_compatibility_only,
+                                _template_first=retry_template_first,
+                                _object_type=object_type,
+                            ):
+                                repair_reason = (
+                                    "Supervisor repair required for this chunk only: "
+                                    + " | ".join(str(reason) for reason in gate_reasons[:8])
+                                )
+                                if _template_first:
+                                    return _build_deterministic_chunk_rows(
+                                        object_type=_object_type,
+                                        target_count=_target,
+                                        prompt=request.prompt,
+                                        reference_catalog=reference_catalog,
+                                        existing_titles=chunked_titles[-200:],
+                                        generated_rows=generated_data,
+                                        reason=repair_reason,
+                                        backlog_item=_item,
+                                    )
+                                repair_instruction = (
+                                    _build_chunk_instruction(
+                                        chunk_index=_chunk_index,
+                                        chunk_total=_chunk_total,
+                                        target_count=_target,
+                                    )
+                                    + "\n"
+                                    + repair_reason
+                                    + " Return only the repaired source chunk; preserve object_type and target count."
+                                )
+                                repaired_rows, _, _ = await _run_generator_with_context_fallback(
+                                    plan=_plan,
+                                    request=generator_request,
+                                    focus_object_types=focus_object_types,
+                                    standard_context_bundle=generator_context_bundle,
+                                    aggressive_context_bundle=llm_context_aggressive,
+                                    chunk_instruction=repair_instruction,
+                                    chunk_target_count=_target,
+                                    chunk_index=_chunk_index,
+                                    chunk_total=_chunk_total,
+                                    existing_titles=chunked_titles[-200:],
+                                    compatibility_first=_compatibility_first,
+                                    compatibility_only=_compatibility_only,
+                                    model_override=_model,
+                                    api_key_override=_api_key,
+                                )
+                                repaired_rows, _ = _enforce_expected_object_type(
+                                    rows=repaired_rows,
+                                    expected_object_type=_object_type,
+                                )
+                                repaired_rows, _ = _supplement_chunk_rows_to_target(
+                                    object_type=_object_type,
+                                    target_count=_target,
+                                    chunk_rows=repaired_rows,
+                                    prompt=request.prompt,
+                                    reference_catalog=reference_catalog,
+                                    existing_titles=chunked_titles[-200:],
+                                    generated_rows=generated_data,
+                                    reason=repair_reason,
+                                    backlog_item=_item,
+                                )
+                                return repaired_rows
+
+                            def fallback_callback(
+                                gate_reasons,
+                                *,
+                                _item=retry_item,
+                                _target=retry_target,
+                                _object_type=object_type,
+                            ):
+                                reason = (
+                                    "Supervisor retry exhausted; deterministic fallback applied: "
+                                    + " | ".join(str(value) for value in gate_reasons[:8])
+                                )
+                                return _build_deterministic_chunk_rows(
+                                    object_type=_object_type,
+                                    target_count=_target,
+                                    prompt=request.prompt,
+                                    reference_catalog=reference_catalog,
+                                    existing_titles=chunked_titles[-200:],
+                                    generated_rows=generated_data,
+                                    reason=reason,
+                                    backlog_item=_item,
+                                )
+
+                            _queue_department_supervisor_chunk(
+                                rows=chunk_rows,
+                                item=chunk_backlog_item,
+                                object_type=object_type,
+                                wave=int(wave),
+                                chunk_index=local_chunk_index,
+                                target_count=int(item_chunk_target),
+                                retry_callback=retry_callback,
+                                fallback_callback=fallback_callback,
+                            )
+                        else:
+                            _schedule_supervisor_review(
+                                rows=chunk_rows,
+                                object_type=object_type,
+                                wave=int(wave),
+                                wave_position=wave_position,
+                                chunk_index=local_chunk_index,
+                                chunk_total=len(item_chunk_targets),
+                                backlog_id=item_meta["backlog_id"],
+                            )
 
                         before_chunk_dedupe_count = len(generated_data)
                         raw_chunk_count = len(chunk_rows)
@@ -6065,6 +8577,7 @@ async def generate_import_assistant_batch(
                             "reconcile_mode": reconcile_mode,
                             "deterministic_fallback": used_deterministic_fallback,
                             "forced_deterministic": forced_deterministic_for_chunk,
+                            "template_first": template_first_for_chunk,
                             "object_failure_count_in_run": object_failure_count_for_chunk,
                             "forced_reason": forced_reason,
                             "fallback_reason": fallback_reason,
@@ -6073,6 +8586,11 @@ async def generate_import_assistant_batch(
                         }
                         generator_chunk_telemetry.append(chunk_entry)
                     item_meta["status"] = "completed"
+                if settings.gemini_supervisor_review_grouping == "department":
+                    _schedule_department_wave_reviews(int(wave))
+                await _await_supervisor_reviews(
+                    f"wave {wave_position}/{total_wave_count} checkpoint"
+                )
                 wave_meta["status"] = "completed"
                 _append_control_status(
                     (
@@ -6124,10 +8642,32 @@ async def generate_import_assistant_batch(
                         await asyncio.sleep(wait_seconds)
                         total_pacing_wait_ms += wait_seconds * 1000.0
 
+                current_object_type = _normalize_object_type(str(plan.get("object_type", "")))
+                current_wave = _resolve_wave_for_object_type(current_object_type)
+                chunk_routes = _build_wave_generator_routes(
+                    settings=settings,
+                    wave=current_wave,
+                )
+                active_route = (
+                    dict(chunk_routes[(index - 1) % len(chunk_routes)])
+                    if chunk_routes
+                    else {}
+                )
+                selected_model_for_chunk = active_route.get("model")
+                selected_api_key_for_chunk = active_route.get("api_key")
+                selected_api_key_profile = (
+                    str(active_route.get("profile", "primary")).strip() or "primary"
+                )
+                chunk_route_failovers: list[dict[str, str]] = []
+                route_hint = (
+                    f", lane={selected_api_key_profile}, model={selected_model_for_chunk}"
+                    if selected_model_for_chunk
+                    else ""
+                )
                 store.append_status(
                     batch_id,
                     "generating",
-                    f"Generating chunk {index}/{len(chunk_targets)} (target={target_count}).",
+                    f"Generating chunk {index}/{len(chunk_targets)} (target={target_count}{route_hint}).",
                 )
                 chunk_instruction = _build_chunk_instruction(
                     chunk_index=index,
@@ -6138,7 +8678,6 @@ async def generate_import_assistant_batch(
                 forced_deterministic_for_chunk = False
                 forced_reason: str | None = None
                 fallback_reason: str | None = None
-                current_object_type = _normalize_object_type(str(plan.get("object_type", "")))
                 chunk_rows: list[dict] = []
                 chunk_runtime_metrics: dict = {}
                 context_profile = "standard"
@@ -6195,6 +8734,8 @@ async def generate_import_assistant_batch(
                             existing_titles=chunked_titles[-200:],
                             compatibility_first=chunked_form_field_compatibility_first,
                             compatibility_only=chunked_ticket_fields_compatibility_only,
+                            model_override=selected_model_for_chunk,
+                            api_key_override=selected_api_key_for_chunk,
                         )
                         failure_count_by_object_type[current_object_type] = 0
                     except RuntimeError as chunk_exc:
@@ -6294,6 +8835,15 @@ async def generate_import_assistant_batch(
                         ),
                     )
 
+                _schedule_supervisor_review(
+                    rows=chunk_rows,
+                    object_type=current_object_type,
+                    wave=_resolve_wave_for_object_type(current_object_type),
+                    wave_position=None,
+                    chunk_index=index,
+                    chunk_total=len(chunk_targets),
+                )
+
                 before_chunk_dedupe_count = len(generated_data)
                 raw_chunk_count = len(chunk_rows)
                 total_generated_before_dedupe += raw_chunk_count
@@ -6326,6 +8876,9 @@ async def generate_import_assistant_batch(
                     "final_status": chunk_runtime_metrics.get("final_status"),
                     "http_status": chunk_runtime_metrics.get("http_status"),
                     "model": chunk_runtime_metrics.get("model"),
+                    "model_requested": selected_model_for_chunk,
+                    "api_key_profile": selected_api_key_profile,
+                    "key_route_failovers": chunk_route_failovers,
                     "mode_order": generator_mode_order,
                     "deterministic_fallback": used_deterministic_fallback,
                     "forced_deterministic": forced_deterministic_for_chunk,
@@ -6333,10 +8886,11 @@ async def generate_import_assistant_batch(
                     "forced_reason": forced_reason,
                     "fallback_reason": fallback_reason,
                     "deterministic_topup_records": deterministic_topup_count,
-                    "object_type": _normalize_object_type(str(plan.get("object_type", ""))),
-                    "wave": _resolve_wave_for_object_type(str(plan.get("object_type", ""))),
+                    "object_type": current_object_type,
+                    "wave": current_wave,
                 }
                 generator_chunk_telemetry.append(chunk_entry)
+            await _await_supervisor_reviews("chunked generation finalization")
         else:
             generated_data, generator_telemetry, context_profile = await _run_generator_with_context_fallback(
                 plan=plan,
@@ -6358,6 +8912,16 @@ async def generate_import_assistant_batch(
                     "generating",
                     "Generator used compact context profile to stay within limits.",
                 )
+            single_object_type = _normalize_object_type(str(plan.get("object_type", "")))
+            _schedule_supervisor_review(
+                rows=generated_data,
+                object_type=single_object_type,
+                wave=_resolve_wave_for_object_type(single_object_type),
+                wave_position=None,
+                chunk_index=1,
+                chunk_total=1,
+            )
+            await _await_supervisor_reviews("single generation finalization")
             generator_chunk_telemetry.append(
                 {
                     "chunk_index": 1,
@@ -6377,6 +8941,16 @@ async def generate_import_assistant_batch(
             )
             total_generated_before_dedupe = len(generated_data)
     except RuntimeError as exc:
+        if supervisor_tasks:
+            try:
+                await _await_supervisor_reviews("failure handling")
+            except Exception as supervisor_exc:  # noqa: BLE001
+                supervisor_metadata.setdefault("failures", []).append(
+                    {
+                        "stage": "failure handling",
+                        "error": _truncate_text(str(supervisor_exc), 500),
+                    }
+                )
         chunking_metadata["chunks"] = generator_chunk_telemetry
         chunking_metadata["total_generated_before_dedupe"] = total_generated_before_dedupe
         chunking_metadata["total_generated_after_dedupe"] = len(generated_data)
@@ -6487,8 +9061,12 @@ async def generate_import_assistant_batch(
                     "inference_assumptions": inference_assumptions,
                     "base_object_match": base_object_match,
                     "inference_confidence": inference_confidence,
+                    "coverage_manifest": coverage_manifest,
+                    "department_coverage": department_coverage_metadata,
+                    "quality_gates": quality_gates_metadata,
                     "orchestration": orchestration_metadata,
                     "chunking": chunking_metadata,
+                    "supervisor": supervisor_metadata,
                     "llm_routes": llm_routes_metadata,
                     "llm_runtime": {
                         "planner": planner_telemetry,
@@ -6573,6 +9151,10 @@ async def generate_import_assistant_batch(
             },
             "orchestration": orchestration_metadata,
             "chunking": chunking_metadata,
+            "coverage_manifest": coverage_manifest,
+            "department_coverage": department_coverage_metadata,
+            "quality_gates": quality_gates_metadata,
+            "supervisor": supervisor_metadata,
             "llm_routes": llm_routes_metadata,
             "llm_runtime": {
                 "planner": planner_telemetry,
@@ -6714,6 +9296,15 @@ async def generate_import_assistant_batch(
         preview_records, validation_summary = _build_preview_records(plan, generated_data)
         preview_records = _apply_generation_safety_to_preview(preview_records, generation_safety)
         preview_records = _apply_inference_assumptions_to_preview(preview_records, inference_assumptions)
+        department_coverage_metadata = _evaluate_department_coverage(
+            manifest=coverage_manifest,
+            records=preview_records,
+        )
+        quality_gates_metadata["coverage"] = department_coverage_metadata
+        preview_records = _apply_coverage_gate_to_preview(
+            preview_records,
+            department_coverage_metadata,
+        )
         validation_summary = _recompute_validation_summary(preview_records)
         generated_counts = _count_generated(preview_records)
 
@@ -6931,6 +9522,7 @@ async def generate_import_assistant_batch(
                     "http_status": appscript_preview.get("http_status"),
                 }
 
+        validation_summary = _recompute_validation_summary(preview_records)
         if validation_summary.blocked > 0:
             store.append_status(batch_id, "validated_failed", "Validation produced blocked records.")
             final_status = "validated_failed"

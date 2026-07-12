@@ -38,6 +38,28 @@ export default function IntegrationPanel({
   const llmRoutes = generateMetadata?.llm_routes || {};
   const plannerRoute = llmRoutes?.planner || null;
   const generatorRoute = llmRoutes?.generator || null;
+  const geminiRoute = llmRoutes?.gemini_supervisor || null;
+  const supervisorState = generateMetadata?.supervisor || {};
+  const supervisorReviews = Array.isArray(supervisorState?.reviews) ? supervisorState.reviews : [];
+  const latestSupervisorReview = supervisorReviews.at(-1) || null;
+  const supervisorCallCounts = supervisorState?.call_counts || {};
+  const supervisorBlockedChunks = Array.isArray(supervisorState?.blocked_chunk_ids)
+    ? supervisorState.blocked_chunk_ids
+    : [];
+  const supervisorRetryAttempts = Array.isArray(supervisorState?.regeneration_attempts)
+    ? supervisorState.regeneration_attempts
+    : [];
+  const coverageState = generateMetadata?.department_coverage || generateMetadata?.quality_gates?.coverage || {};
+  const coverageDepartments = Array.isArray(coverageState?.departments) ? coverageState.departments : [];
+  const coverageMissing = Array.isArray(coverageState?.missing) ? coverageState.missing : [];
+  const chunkRows = Array.isArray(generateMetadata?.chunking?.chunks) ? generateMetadata.chunking.chunks : [];
+  const fallbackCounts = chunkRows.reduce((acc, chunk) => {
+    if (!chunk?.deterministic_fallback && !chunk?.forced_deterministic && !chunk?.template_first) return acc;
+    const type = chunk?.object_type || "unknown";
+    acc[type] = (acc[type] || 0) + 1;
+    return acc;
+  }, {});
+  const fallbackEntries = Object.entries(fallbackCounts);
 
   // Theme-aware class sets
   const panel = darkMode
@@ -155,7 +177,7 @@ export default function IntegrationPanel({
             </div>
           ) : null}
 
-          {plannerRoute || generatorRoute ? (
+          {plannerRoute || generatorRoute || geminiRoute ? (
             <div className={divider}>
               <p className={`mb-1 font-semibold ${headingText}`}>LLM orchestration</p>
               {plannerRoute ? (
@@ -168,6 +190,37 @@ export default function IntegrationPanel({
                 <p className={mutedText}>
                   generator: <span className={monoText}>{generatorRoute.model}</span> | strict schema:{" "}
                   {String(generatorRoute.strict_schema)}
+                </p>
+              ) : null}
+              {geminiRoute ? (
+                <p className={mutedText}>
+                  Gemini supervisor: <span className={monoText}>{geminiRoute.model || supervisorState.model}</span>{" "}
+                  | status:{" "}
+                  {supervisorState.available || geminiRoute.api_key_configured
+                    ? "active"
+                    : (supervisorState.availability_reason || "missing key")}
+                  {" "} | auto patches:{" "}
+                  {String(geminiRoute.auto_apply_patches ?? supervisorState.auto_apply_patches)}
+                </p>
+              ) : null}
+              {supervisorState?.patch_counts ? (
+                <p className={`mt-1 ${mutedText}`}>
+                  Gemini patches: applied={Number(supervisorState.patch_counts.applied || 0)}, rejected={Number(supervisorState.patch_counts.rejected || 0)}
+                </p>
+              ) : null}
+              {latestSupervisorReview ? (
+                <p className={`mt-1 ${mutedText}`}>
+                  Latest gate: raw={Number(latestSupervisorReview.raw_quality_score || 0).toFixed(2)} | effective={Number(latestSupervisorReview.effective_quality_score || 0).toFixed(2)} | {latestSupervisorReview.effective_approved ? "approved" : "rejected"}
+                </p>
+              ) : null}
+              {Number(supervisorCallCounts.consolidated || 0) > 0 ? (
+                <p className={`mt-1 ${mutedText}`}>
+                  Reviews: consolidated={Number(supervisorCallCounts.consolidated || 0)}, retries={Number(supervisorCallCounts.retry || 0)}, fallbacks={Number(supervisorCallCounts.fallback || 0)}
+                </p>
+              ) : null}
+              {supervisorRetryAttempts.length > 0 || supervisorBlockedChunks.length > 0 ? (
+                <p className={`mt-1 ${supervisorBlockedChunks.length > 0 ? warningText : mutedText}`}>
+                  Quality recovery: retries={supervisorRetryAttempts.length}, blocked chunks={supervisorBlockedChunks.length}
                 </p>
               ) : null}
               {generateMetadata?.ambiguity_score !== undefined ? (
@@ -274,6 +327,74 @@ export default function IntegrationPanel({
               <p className={`mt-1 ${warningText}`}>{contextStatus.warnings[0]}</p>
             ) : null}
           </div>
+        </div>
+
+        {/* Quality gates card */}
+        <div className={`${card} ${bodyText}`}>
+          <p className={`mb-2 font-semibold ${headingText}`}>Quality Gates</p>
+          <p className="mb-1">
+            Department coverage:{" "}
+            {coverageState?.enabled ? (
+              coverageState.status === "passed" ? (
+                <Badge variant="success">passed</Badge>
+              ) : (
+                <Badge variant="warning">{coverageState.status || "pending"}</Badge>
+              )
+            ) : (
+              <Badge variant="neutral">not active</Badge>
+            )}
+          </p>
+          {coverageState?.totals ? (
+            <p className={mutedText}>
+              matched={Number(coverageState.totals.matched || 0)} / required={Number(coverageState.totals.required || 0)}
+            </p>
+          ) : null}
+          {coverageDepartments.length > 0 ? (
+            <div className="mt-2 max-h-40 overflow-auto">
+              <table className="w-full text-left text-[11px]">
+                <thead className={mutedText}>
+                  <tr>
+                    <th className="py-1 pr-2 font-medium">Department</th>
+                    <th className="py-1 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {coverageDepartments.slice(0, 10).map((department) => (
+                    <tr key={department.department}>
+                      <td className="py-1 pr-2">{department.department}</td>
+                      <td className="py-1">
+                        {department.status === "passed" ? (
+                          <Badge variant="success">passed</Badge>
+                        ) : (
+                          <Badge variant="warning">missing</Badge>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {coverageMissing.length > 0 ? (
+            <div className={divider}>
+              <p className={warningText}>Missing coverage: {coverageMissing.length}</p>
+              <ul className="mt-1 space-y-1">
+                {coverageMissing.slice(0, 5).map((item, index) => (
+                  <li key={`${item.department}-${item.object_type}-${index}`} className={mutedText}>
+                    {item.department}: {item.object_type} missing {Number(item.missing || 0)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {fallbackEntries.length > 0 ? (
+            <div className={divider}>
+              <p className={mutedText}>
+                Deterministic/template chunks:{" "}
+                {fallbackEntries.map(([type, count]) => `${type}=${count}`).join(", ")}
+              </p>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

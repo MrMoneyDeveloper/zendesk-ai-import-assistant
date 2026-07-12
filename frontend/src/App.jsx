@@ -134,6 +134,7 @@ const STATUS_STEP_LABELS = {
   wave_execution: "Executing orchestration waves.",
   schemas_selected: "Selecting schema constraints.",
   generating: "Generating structured records.",
+  supervisor_review: "Gemini supervisor reviewing and patching output.",
   generated: "Generation completed.",
   staging: "Writing staged records to Apps Script/Sheets.",
   staged: "Staging completed.",
@@ -1004,9 +1005,8 @@ function App() {
   const historyItems = jobsQuery.data?.jobs || [];
   const contextCatalog = zendeskContextQuery.data?.catalogs || null;
   const selectedExistingItems = selectedRelatedObjects;
-  const selectedExistingItemKeySet = useMemo(
-    () => new Set(selectedExistingItems.map((item) => `${item.object_type}:${item.id}`)),
-    [selectedExistingItems]
+  const selectedExistingItemKeySet = new Set(
+    selectedExistingItems.map((item) => `${item.object_type}:${item.id}`)
   );
   const allowedCatalogKeys = new Set(
     focusObjectTypes.flatMap((focus) => FOCUS_TO_CATALOG_KEYS[focus] || [])
@@ -1296,6 +1296,7 @@ function App() {
   const processingLines = useMemo(() => {
     const runtimeMetadata = generatedData?.metadata || jobQuery.data?.metadata || {};
     const orchestration = runtimeMetadata?.orchestration || {};
+    const supervisor = runtimeMetadata?.supervisor || {};
     const waveRows = Array.isArray(orchestration?.waves) ? orchestration.waves : [];
     const history = [...(jobQuery.data?.status_history || [])];
     const lines = history
@@ -1328,6 +1329,39 @@ function App() {
           text: waveProgress.slice(0, 2).join(" | "),
         });
       }
+    }
+
+    if (supervisor?.enabled) {
+      const reviews = Array.isArray(supervisor?.reviews) ? supervisor.reviews : [];
+      const patchCounts = supervisor?.patch_counts || {};
+      const latestReview = reviews.length > 0 ? reviews[reviews.length - 1] : null;
+      let supervisorText;
+      if (supervisor?.availability_reason === "missing_api_key") {
+        supervisorText = "Gemini supervisor is enabled and waiting for GEMINI_API_KEY.";
+      } else if (latestReview) {
+        const summary = String(
+          latestReview.public_reasoning_summary
+          || latestReview.reason
+          || latestReview.status
+          || "review completed"
+        ).trim();
+        const effectiveApproved = latestReview.effective_approved;
+        const rawScore = Number(latestReview.raw_quality_score ?? latestReview.quality_score ?? 0).toFixed(2);
+        const effectiveScore = Number(latestReview.effective_quality_score ?? latestReview.quality_score ?? 0).toFixed(2);
+        const regen = latestReview.requires_regeneration || effectiveApproved === false
+          ? " Targeted recovery is required for the affected chunk."
+          : "";
+        supervisorText = `Gemini supervisor: ${summary} (raw=${rawScore}, effective=${effectiveScore}, gate=${effectiveApproved === false ? "rejected" : "approved"}, patches applied=${Number(patchCounts.applied || 0)}, rejected=${Number(patchCounts.rejected || 0)}).${regen}`;
+      } else if (supervisor?.available) {
+        supervisorText = "Gemini supervisor lane is ready for review and safe patching.";
+      } else {
+        supervisorText = `Gemini supervisor unavailable: ${supervisor?.availability_reason || "not configured"}.`;
+      }
+      lines.unshift({
+        at: new Date().toISOString(),
+        stage: "supervisor_review",
+        text: supervisorText,
+      });
     }
 
     if (attachmentExtractMutation.isPending) {
@@ -1701,38 +1735,38 @@ function App() {
                       <span>Checkpoints: {pendingCheckpointCount}</span>
                     ) : null}
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => sendRunControl("pause")}
-                      disabled={!canControlRun || runControlMutation.isPending || runControlState.pause_requested}
-                    >
-                      Visual Pause
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => sendRunControl("resume")}
-                      disabled={!canControlRun || runControlMutation.isPending || !runControlState.pause_requested}
-                    >
-                      Resume
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => sendRunControl("cancel")}
-                      disabled={!canControlRun || runControlMutation.isPending || runControlState.cancel_requested}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
                 </div>
                 <span className={`text-xs ${textSoft}`}>{showProcessingDetails ? "Hide" : "Show"}</span>
               </button>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => sendRunControl("pause")}
+                  disabled={!canControlRun || runControlMutation.isPending || runControlState.pause_requested}
+                >
+                  Visual Pause
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => sendRunControl("resume")}
+                  disabled={!canControlRun || runControlMutation.isPending || !runControlState.pause_requested}
+                >
+                  Resume
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => sendRunControl("cancel")}
+                  disabled={!canControlRun || runControlMutation.isPending || runControlState.cancel_requested}
+                >
+                  Cancel
+                </Button>
+              </div>
               {showProcessingDetails ? (
                 <div className={processingDetailLines}>
                   {processingSnapshot.lines.map((line, idx) => (
