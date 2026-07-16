@@ -1,0 +1,3 @@
+variant,status,batch_id,wall_time_seconds,record_count,passed,warnings,blocked,coverage_status,supervisor_calls,generator_calls,total_model_calls,input_tokens,output_tokens,thought_tokens,total_tokens,retries,template_first_chunks,model_routed_chunks,fallback_chunks,avg_quality_score,avg_article_body_chars,avg_macro_body_chars,patches_applied,blocked_chunks
+template,preview_ready,BATCH-20260715-232509-1FA0EE,163.97,119,0,119,0,passed,35,0,35,589672,16550,0,606222,1,64,0,64,0.98,838.93,398.38,45,0
+hybrid,error,,900.0,0,0,0,0,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

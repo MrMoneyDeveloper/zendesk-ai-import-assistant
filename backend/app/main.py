@@ -88,4 +88,13 @@ app.include_router(import_assistant.router, prefix="/api")
 
 @app.get("/")
 def root():
-    return {"message": "Backend is running locally with Grok integration enabled."}
+    return {
+        "message": "Backend is running locally.",
+        "default_llm_provider": settings.llm_default_provider,
+        "default_llm_model": (
+            settings.gemini_default_model
+            if settings.llm_default_provider == "gemini"
+            else settings.llm_model_generator
+        ),
+        "fallback_provider": "groq" if settings.llm_default_provider == "gemini" else None,
+    }

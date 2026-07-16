@@ -1,0 +1,29 @@
+Build a Zendesk support operating model for Apex Mobility Finance, a company that finances electric scooters, delivery e-bikes, and small EV fleets for gig workers and small businesses.
+
+Business context:
+Apex has these departments:
+- Customer Support: first-line support for account questions, payment issues, login problems, and general requests.
+- Claims & Incidents: handles damaged vehicles, theft reports, accident claims, insurance evidence, and urgent safety incidents.
+- Finance Operations: handles failed payments, settlement disputes, refunds, payoff quotes, and billing corrections.
+- Fleet Onboarding: helps business customers onboard multiple riders, verify documents, activate vehicles, and schedule handover.
+- Technical Support: handles app bugs, GPS/device issues, charger problems, battery diagnostics, and telematics troubleshooting.
+- Compliance: handles KYC document review, suspicious activity, regulatory complaints, and data/privacy requests.
+- VIP / Enterprise Success: handles high-value fleet accounts, partner escalations, and white-glove support.
+
+Create a complete Zendesk configuration in dependency order:
+- Groups for the departments above, reusing existing matching groups if selected.
+- Ticket fields for Department, Customer Segment, Vehicle Type, Issue Category, Incident Severity, Payment Status, KYC Status, Fleet Size, and Requested Outcome.
+- Ticket forms for General Support, Claims & Incidents, Finance Operations, Fleet Onboarding, Technical Support, Compliance Review, and VIP Enterprise Support.
+- Triggers to route tickets to the correct department based on form, issue category, customer segment, severity, and payment/KYC signals.
+- Automations for stale urgent incidents, unresolved failed payments, pending KYC reviews, and enterprise escalations.
+- Macros for first response, missing information request, payment dispute acknowledgement, incident claim acknowledgement, KYC document request, technical troubleshooting steps, and VIP escalation acknowledgement.
+- Views for each department showing useful columns like requester, priority, status, vehicle type, issue category, severity, payment status, KYC status, assignee, and updated date.
+- Help center categories, sections, and articles for payments, claims, onboarding, technical troubleshooting, compliance/KYC, and enterprise fleet support.
+
+Operational rules:
+- Use existing selected Zendesk context where appropriate, but create missing dependencies when needed.
+- Keep every record deploy-safe and incremental.
+- Add dependency notes when an object depends on a field, group, category, or section.
+- Use clear Apex-specific tags.
+- Do not invent external Zendesk IDs. Reference dependencies by clear names and notes.
+- Make the setup practical for a real support team, not a demo.

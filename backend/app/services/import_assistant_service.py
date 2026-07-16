@@ -1,6 +1,7 @@
 import asyncio
 from collections import Counter
 from datetime import UTC, datetime
+import json
 import math
 from pathlib import Path
 import random
@@ -35,9 +36,23 @@ from app.services.gemini_supervisor import (
 )
 from app.services.generator import GeneratorStructuredOutputError, run_generator
 from app.services.planner import run_planner
+from app.services.progress_narrator import (
+    ProgressNarrator,
+    build_chunk_message,
+    build_wave_complete_message,
+    build_wave_start_message,
+)
 from app.services.appscript_bridge import AppScriptBridgeService
 from app.services.sheets_service import SheetsService
-from app.services.zendesk import deploy_records_to_zendesk
+from app.services.usage_telemetry import (
+    build_usage_report,
+    reset_usage_session,
+    start_usage_session,
+)
+from app.services.zendesk import (
+    check_zendesk_help_center_readiness,
+    deploy_records_to_zendesk,
+)
 
 TAB_OBJECT_TYPES = {
     "brand": "brands",
@@ -485,6 +500,24 @@ def _build_llm_routes_metadata(
     settings,
 ) -> dict:
     return {
+        "default_provider": str(
+            getattr(settings, "llm_default_provider", "groq") or "groq"
+        ).strip(),
+        "default_model": str(
+            getattr(settings, "gemini_default_model", "") or generator_route.model
+        ).strip(),
+        "fallback_policy": {
+            "provider": "groq",
+            "gemini_max_retries": int(
+                getattr(settings, "gemini_default_max_retries", 0) or 0
+            ),
+            "gemini_failure_threshold": int(
+                getattr(settings, "gemini_default_failure_threshold", 1) or 1
+            ),
+            "gemini_cooldown_seconds": int(
+                getattr(settings, "gemini_default_cooldown_seconds", 0) or 0
+            ),
+        },
         "planner": planner_route.__dict__,
         "clarifier": clarifier_route.__dict__,
         "generator": generator_route.__dict__,
@@ -512,6 +545,17 @@ def _build_llm_routes_metadata(
             ),
             "rate_limit_retries": int(
                 getattr(settings, "gemini_supervisor_rate_limit_retries", 0) or 0
+            ),
+        },
+        "progress_narrator": {
+            "enabled": bool(getattr(settings, "progress_narrator_enabled", False)),
+            "provider": str(
+                getattr(settings, "progress_narrator_provider", "groq") or "groq"
+            ).strip(),
+            "model": str(getattr(settings, "progress_narrator_model", "") or "").strip()
+            or None,
+            "max_calls_per_batch": int(
+                getattr(settings, "progress_narrator_max_calls_per_batch", 0) or 0
             ),
         },
         "generator_wave3_api_key_configured": bool(
@@ -645,6 +689,20 @@ def _build_wave_generator_routes(
     return routes
 
 
+def _select_wave_generator_route(
+    routes: list[dict],
+    cursor: int,
+) -> tuple[dict, int]:
+    if not routes:
+        return {
+            "model": "deterministic_template",
+            "api_key": None,
+            "profile": "department_template",
+        }, max(int(cursor), 0)
+    safe_cursor = max(int(cursor), 0)
+    return dict(routes[safe_cursor % len(routes)]), safe_cursor + 1
+
+
 def _should_retry_chunk_on_primary_model(exc: Exception) -> bool:
     terminal_error = _extract_terminal_error_class(exc=exc)
     return terminal_error in {
@@ -691,6 +749,81 @@ def _utc_now() -> str:
 
 def _new_batch_id() -> str:
     return f"BATCH-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:6].upper()}"
+
+
+def _build_received_batch(
+    request: ImportAssistantGenerateRequest,
+    *,
+    batch_id: str,
+) -> dict:
+    created_at = _utc_now()
+    return {
+        "batch_id": batch_id,
+        "status": "received",
+        "prompt": request.prompt,
+        "requester": request.requester,
+        "target_environment": request.target_environment,
+        "mode": request.mode,
+        "created_at": created_at,
+        "updated_at": created_at,
+        "status_history": [
+            {
+                "status": "received",
+                "message": (
+                    "Batch accepted. Preparing the department manifest, dependency order, "
+                    "and model lanes."
+                ),
+                "at": created_at,
+                "source": "pipeline",
+            }
+        ],
+        "records": [],
+        "generated_counts": {},
+        "validation_summary": {"passed": 0, "warnings": 0, "blocked": 0},
+        "planning_summary": {},
+        "metadata": {
+            "run_control": _normalize_run_control({}),
+            "checkpoints": [],
+            "rollback": {},
+        },
+    }
+
+
+def reserve_import_assistant_batch(
+    request: ImportAssistantGenerateRequest,
+    *,
+    batch_id: str | None = None,
+) -> JobStatusResponse:
+    """Persist a pollable job before long-running generation begins."""
+    resolved_batch_id = str(batch_id or "").strip() or _new_batch_id()
+    batch = _build_received_batch(request, batch_id=resolved_batch_id)
+    get_batch_store().save_batch(batch)
+    return JobStatusResponse(**batch)
+
+
+def mark_import_assistant_batch_failed(
+    batch_id: str,
+    *,
+    stage: str,
+    code: str,
+    reason: str,
+    next_step: str,
+) -> None:
+    """Best-effort terminal state for failures outside the generation service."""
+    store = get_batch_store()
+    batch = store.get_batch(batch_id)
+    if not batch:
+        return
+    metadata = _metadata_dict(batch)
+    metadata["failure"] = {
+        "failure_stage": stage,
+        "failure_code": code,
+        "failure_reason": reason,
+        "next_step": next_step,
+    }
+    if str(batch.get("status") or "").strip().lower() != "failed":
+        store.append_status(batch_id, "failed", reason)
+    store.update_batch(batch_id, {"status": "failed", "metadata": metadata})
 
 
 def _summarize_validation_errors(
@@ -2624,11 +2757,20 @@ def _can_use_deterministic_chunk_fallback(object_type: str) -> bool:
     }
 
 
-def _should_use_department_template_first(backlog_item: dict, object_type: str) -> bool:
-    return bool(
-        str((backlog_item or {}).get("source", "")).strip() == DEPARTMENT_COVERAGE_SOURCE
-        and _normalize_object_type(object_type) in DEPARTMENT_TEMPLATE_FIRST_OBJECT_TYPES
-    )
+def _should_use_department_template_first(
+    backlog_item: dict,
+    object_type: str,
+    *,
+    strategy: str = "template",
+) -> bool:
+    if str((backlog_item or {}).get("source", "")).strip() != DEPARTMENT_COVERAGE_SOURCE:
+        return False
+    normalized_object_type = _normalize_object_type(object_type)
+    if normalized_object_type not in DEPARTMENT_TEMPLATE_FIRST_OBJECT_TYPES:
+        return False
+    if str(strategy or "template").strip().lower() == "hybrid":
+        return normalized_object_type not in {"macros", "articles"}
+    return True
 
 
 def _field_options_for_department_manifest(field_title: str, departments: list[str]) -> list[str]:
@@ -3117,7 +3259,12 @@ def _build_deterministic_chunk_rows(
             suffix += 1
 
     rows: list[dict] = []
-    if "template-first" in str(reason or "").lower() or "template-first generation" in str(reason or "").lower():
+    normalized_reason = str(reason or "").lower()
+    if "hybrid deterministic structure prepared" in normalized_reason:
+        fallback_note = (
+            f"Deterministic {normalized_object_type} structure prepared for model content drafting."
+        )
+    elif "template-first" in normalized_reason or "template-first generation" in normalized_reason:
         fallback_note = (
             f"Deterministic {normalized_object_type} template used for department coverage. "
             f"Reason: {reason}"
@@ -3419,6 +3566,189 @@ def _build_deterministic_chunk_rows(
         return rows
 
     return rows
+
+
+def _replace_content_action(row: dict, fields: set[str], value: str) -> None:
+    actions = row.get("actions", [])
+    actions = [dict(item) for item in actions if isinstance(item, dict)]
+    normalized_fields = {str(item).strip().lower() for item in fields}
+    selected_field = next(
+        (
+            str(action.get("field", "")).strip().lower()
+            for action in actions
+            if str(action.get("field", "")).strip().lower() in normalized_fields
+        ),
+        sorted(normalized_fields)[0],
+    )
+    row["actions"] = [
+        action
+        for action in actions
+        if str(action.get("field", "")).strip().lower() not in normalized_fields
+    ]
+    row["actions"].append({"field": selected_field, "value": value})
+
+
+async def _draft_department_content_rows(
+    *,
+    object_type: str,
+    target_count: int,
+    prompt: str,
+    reference_catalog: dict[str, list[dict]],
+    existing_titles: list[str],
+    generated_rows: list[dict],
+    backlog_item: dict,
+    model: str,
+    api_key: str,
+    repair_reasons: list[str] | None = None,
+) -> tuple[list[dict], int]:
+    normalized_object_type = _normalize_object_type(object_type)
+    if normalized_object_type not in {"macros", "articles"}:
+        raise ValueError(f"Hybrid content drafting does not support {normalized_object_type}.")
+
+    baseline_rows = _build_deterministic_chunk_rows(
+        object_type=normalized_object_type,
+        target_count=target_count,
+        prompt=prompt,
+        reference_catalog=reference_catalog,
+        existing_titles=existing_titles,
+        generated_rows=generated_rows,
+        reason=f"Hybrid deterministic structure prepared for {normalized_object_type} content drafting.",
+        backlog_item=backlog_item,
+    )
+    if not baseline_rows:
+        return [], 0
+
+    department = str(backlog_item.get("department_name") or "Support").strip() or "Support"
+    topic = str(backlog_item.get("topic") or department).strip() or department
+    requirements = (
+        "For each macro, write a concise customer-facing response of 90-150 words with specific "
+        "evidence requests, next steps, expected outcome, and an urgent escalation instruction when relevant."
+        if normalized_object_type == "macros"
+        else (
+            "For each article, write a practical body of 160-240 words covering preparation, required "
+            "evidence, process, escalation, safety/privacy cautions, and expected outcome."
+        )
+    )
+    if repair_reasons:
+        requirements += " Correct these failed quality gates: " + " | ".join(
+            str(reason).strip() for reason in repair_reasons[:8] if str(reason).strip()
+        )
+    draft_targets = [
+        {
+            "title": str(row.get("title", "")).strip(),
+            "current_body": _action_text_for_content_draft(row, normalized_object_type),
+        }
+        for row in baseline_rows
+    ]
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You draft human-facing Zendesk content. Return exactly one JSON object with key 'drafts'. "
+                "Each draft must contain only 'title' and 'body'. Preserve every supplied title exactly."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "business": "Apex Mobility Finance",
+                    "department": department,
+                    "topic": topic,
+                    "object_type": normalized_object_type,
+                    "requirements": requirements,
+                    "draft_targets": draft_targets,
+                },
+                ensure_ascii=False,
+            ),
+        },
+    ]
+    normalized_model = str(model).strip().lower()
+    reasoning_effort = None
+    if normalized_model == "qwen/qwen3-32b":
+        reasoning_effort = "none"
+    elif "gpt-oss" in normalized_model:
+        reasoning_effort = "low"
+    client = GrokClient()
+    raw = await client.chat(
+        messages,
+        temperature=0.2,
+        model=model,
+        max_output_tokens=get_settings().department_content_draft_max_output_tokens,
+        response_schema=None,
+        strict_schema=False,
+        task="generator",
+        response_format_override="json_object",
+        api_key_override=api_key,
+        reasoning_effort=reasoning_effort,
+        reasoning_format="hidden",
+    )
+    metrics_getter = getattr(GrokClient, "get_last_call_metrics", None)
+    draft_metrics = metrics_getter("generator") if callable(metrics_getter) else {}
+    draft_provider = str(draft_metrics.get("provider") or "Primary model").strip()
+    payload = extract_json_payload(raw)
+    raw_drafts = payload.get("drafts", []) if isinstance(payload, dict) else []
+    drafts = [item for item in raw_drafts if isinstance(item, dict)]
+    drafts_by_title = {
+        _normalize_title_for_dedupe(str(item.get("title", ""))): item
+        for item in drafts
+        if str(item.get("title", "")).strip()
+    }
+
+    applied = 0
+    minimum_chars = 220 if normalized_object_type == "macros" else 500
+    content_fields = (
+        {"comment_value", "comment_value_html", "body"}
+        if normalized_object_type == "macros"
+        else {"body", "article_body"}
+    )
+    for index, row in enumerate(baseline_rows):
+        title_key = _normalize_title_for_dedupe(str(row.get("title", "")))
+        draft = drafts_by_title.get(title_key)
+        if draft is None and index < len(drafts):
+            draft = drafts[index]
+        body = str((draft or {}).get("body") or "").strip()
+        if len(body) < minimum_chars:
+            continue
+        _replace_content_action(row, content_fields, body)
+        hybrid_structure_marker = (
+            f"Hybrid deterministic structure prepared for {normalized_object_type} content drafting."
+        )
+        warnings = row.get("warnings", [])
+        warnings = list(warnings) if isinstance(warnings, list) else [str(warnings)]
+        row["warnings"] = [
+            str(warning).strip()
+            for warning in warnings
+            if str(warning).strip() and hybrid_structure_marker not in str(warning)
+        ]
+        notes = row.get("dependency_notes", [])
+        notes = list(notes) if isinstance(notes, list) else [str(notes)]
+        notes = [
+            str(note).strip()
+            for note in notes
+            if str(note).strip() and hybrid_structure_marker not in str(note)
+        ]
+        notes.append(
+            f"{draft_provider} content draft applied for {department}; "
+            "deploy-safe structure retained by backend."
+        )
+        row["dependency_notes"] = list(dict.fromkeys(str(item).strip() for item in notes if str(item).strip()))
+        applied += 1
+    return baseline_rows, applied
+
+
+def _action_text_for_content_draft(row: dict, object_type: str) -> str:
+    fields = (
+        {"comment_value", "comment_value_html", "body"}
+        if object_type == "macros"
+        else {"body", "article_body"}
+    )
+    for action in list(row.get("actions", []) or []):
+        if not isinstance(action, dict):
+            continue
+        if str(action.get("field", "")).strip().lower() in fields:
+            return _truncate_text(str(action.get("value") or ""), 1200)
+    return ""
 
 
 def _supplement_chunk_rows_to_target(
@@ -6266,8 +6596,10 @@ def _normalize_appscript_action_result(result: object, *, action: str) -> dict:
     }
 
 
-async def generate_import_assistant_batch(
+async def _generate_import_assistant_batch_impl(
     request: ImportAssistantGenerateRequest,
+    *,
+    reserved_batch_id: str | None = None,
 ) -> ImportAssistantGenerateResponse:
     store = get_batch_store()
     sheets = SheetsService()
@@ -6297,29 +6629,12 @@ async def generate_import_assistant_batch(
     catalog_lookup = _build_catalog_lookup(reference_catalog)
     existing_object_index = _build_existing_object_index(reference_catalog)
 
-    batch_id = _new_batch_id()
-    created_at = _utc_now()
-    batch = {
-        "batch_id": batch_id,
-        "status": "received",
-        "prompt": request.prompt,
-        "requester": request.requester,
-        "target_environment": request.target_environment,
-        "mode": request.mode,
-        "created_at": created_at,
-        "updated_at": created_at,
-        "status_history": [{"status": "received", "message": "Batch accepted.", "at": created_at}],
-        "records": [],
-        "generated_counts": {},
-        "validation_summary": {"passed": 0, "warnings": 0, "blocked": 0},
-        "planning_summary": {},
-        "metadata": {
-            "run_control": _normalize_run_control({}),
-            "checkpoints": [],
-            "rollback": {},
-        },
-    }
-    store.save_batch(batch)
+    batch_id = str(reserved_batch_id or "").strip() or _new_batch_id()
+    batch = store.get_batch(batch_id) if reserved_batch_id else None
+    if not batch:
+        batch = _build_received_batch(request, batch_id=batch_id)
+        store.save_batch(batch)
+    created_at = str(batch.get("created_at") or _utc_now())
     planner_telemetry: dict = {}
     generator_telemetry: dict = {}
     pause_notified = False
@@ -6333,6 +6648,10 @@ async def generate_import_assistant_batch(
     orchestration_mode = "explicit_fast_path"
     orchestration_metadata: dict = {
         "mode": orchestration_mode,
+        "department_generation_strategy": settings.department_generation_strategy,
+        "department_content_draft_max_output_tokens": (
+            settings.department_content_draft_max_output_tokens
+        ),
         "waves": [],
         "reconciliation_summary": {
             "create": 0,
@@ -6370,12 +6689,147 @@ async def generate_import_assistant_batch(
         "call_counts": {"consolidated": 0, "retry": 0, "fallback": 0, "total": 0},
         "auto_applied_patches": [],
         "patch_counts": {"applied": 0, "rejected": 0, "skipped": 0},
+        "usage": {
+            "calls": 0,
+            "retries": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "thought_tokens": 0,
+            "total_tokens": 0,
+            "elapsed_ms_sum": 0.0,
+        },
         "failures": [],
     }
     supervisor_semaphore = asyncio.Semaphore(settings.gemini_supervisor_max_concurrency)
     supervisor_tasks: list[asyncio.Task] = []
     supervisor_pending_chunks: list[dict] = []
     supervisor_review_unit_runtime: dict[str, dict] = {}
+    progress_narrator = ProgressNarrator()
+    progress_narration_tasks: list[asyncio.Task] = []
+    progress_narration_calls_scheduled = 0
+    progress_metadata: dict = {
+        "enabled": bool(progress_narrator.enabled),
+        "mode": "deterministic_events_plus_wave_narration",
+        "provider": settings.progress_narrator_provider,
+        "model": settings.progress_narrator_model,
+        "scheduled_calls": 0,
+        "completed_calls": 0,
+        "fallback_count": 0,
+        "appscript_flushes": 0,
+        "appscript_flush_failures": 0,
+        "events": [],
+    }
+
+    def _append_progress_event(
+        message: str,
+        *,
+        source: str,
+        wave: int | None = None,
+        department: str | None = None,
+        object_type: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> dict:
+        event = {
+            "event_id": f"EVT-{uuid4().hex[:12].upper()}",
+            "status": "wave_execution",
+            "message": str(message or "").strip(),
+            "at": _utc_now(),
+            "source": source,
+            "provider": provider,
+            "model": model,
+            "wave": wave,
+            "department": department,
+            "object_type": object_type,
+        }
+        append_event = getattr(store, "append_status_event", None)
+        if callable(append_event):
+            append_event(
+                batch_id,
+                "wave_execution",
+                event["message"],
+                context=event,
+            )
+        else:
+            _append_control_status(event["message"])
+        progress_metadata.setdefault("events", []).append(event)
+        progress_metadata["events"] = progress_metadata["events"][-80:]
+        return event
+
+    def _schedule_progress_narration(
+        *,
+        deterministic_message: str,
+        event_context: dict,
+    ) -> None:
+        nonlocal progress_narration_calls_scheduled
+        max_calls = max(int(settings.progress_narrator_max_calls_per_batch), 0)
+        if not progress_narrator.enabled or progress_narration_calls_scheduled >= max_calls:
+            return
+        progress_narration_calls_scheduled += 1
+        progress_metadata["scheduled_calls"] = progress_narration_calls_scheduled
+
+        async def run_narration() -> None:
+            result = await progress_narrator.narrate(
+                deterministic_message=deterministic_message,
+                event_context=event_context,
+            )
+            progress_metadata["completed_calls"] = int(
+                progress_metadata.get("completed_calls", 0) or 0
+            ) + 1
+            if result.fallback_used:
+                progress_metadata["fallback_count"] = int(
+                    progress_metadata.get("fallback_count", 0) or 0
+                ) + 1
+            event = _append_progress_event(
+                result.message,
+                source=result.source,
+                wave=event_context.get("wave"),
+                department=event_context.get("department"),
+                object_type=event_context.get("object_type"),
+                provider=result.provider,
+                model=result.model,
+            )
+            if appscript.enabled:
+                sync_result = await appscript.invoke(
+                    action="append_progress_events",
+                    payload={"batch_id": batch_id, "events": [event]},
+                    timeout_seconds=min(settings.appscript_timeout_seconds, 8.0),
+                )
+                if str(sync_result.get("status", "")).strip().lower() == "ok":
+                    progress_metadata["appscript_flushes"] = int(
+                        progress_metadata.get("appscript_flushes", 0) or 0
+                    ) + 1
+                else:
+                    progress_metadata["appscript_flush_failures"] = int(
+                        progress_metadata.get("appscript_flush_failures", 0) or 0
+                    ) + 1
+
+        progress_narration_tasks.append(asyncio.create_task(run_narration()))
+
+    async def _await_progress_narrations(timeout_seconds: float = 8.0) -> None:
+        if not progress_narration_tasks:
+            return
+        tasks = list(progress_narration_tasks)
+        pending_tasks = [task for task in tasks if not task.done()]
+        pending: set[asyncio.Task] = set()
+        if pending_tasks:
+            _, pending = await asyncio.wait(
+                pending_tasks,
+                timeout=max(float(timeout_seconds), 0.1),
+            )
+        for task in pending:
+            task.cancel()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        failures = [result for result in results if isinstance(result, Exception)]
+        if failures:
+            progress_metadata["task_failures"] = int(
+                progress_metadata.get("task_failures", 0) or 0
+            ) + len(failures)
+        if pending:
+            progress_metadata["cancelled_calls"] = int(
+                progress_metadata.get("cancelled_calls", 0) or 0
+            ) + len(pending)
+        progress_narration_tasks.clear()
 
     def _append_control_status(message: str) -> None:
         current = store.get_batch(batch_id) or {}
@@ -6648,6 +7102,22 @@ async def generate_import_assistant_batch(
             else {}
         )
         patch_results = list(patch_summary.get("patch_results", []) or [])
+        telemetry = result.get("telemetry", {}) if isinstance(result.get("telemetry", {}), dict) else {}
+        if telemetry:
+            usage = supervisor_metadata.setdefault("usage", {})
+            usage["calls"] = int(usage.get("calls", 0) or 0) + 1
+            usage["retries"] = int(usage.get("retries", 0) or 0) + int(
+                telemetry.get("retry_count", 0) or 0
+            )
+            for token_key in ("input_tokens", "output_tokens", "thought_tokens", "total_tokens"):
+                usage[token_key] = int(usage.get(token_key, 0) or 0) + int(
+                    telemetry.get(token_key, 0) or 0
+                )
+            usage["elapsed_ms_sum"] = round(
+                float(usage.get("elapsed_ms_sum", 0.0) or 0.0)
+                + float(telemetry.get("elapsed_ms", 0.0) or 0.0),
+                2,
+            )
         applied = int(patch_summary.get("applied", 0) or 0)
         rejected = int(patch_summary.get("rejected", 0) or 0)
         skipped = len([item for item in patch_results if item.get("status") == "skipped"])
@@ -6698,6 +7168,12 @@ async def generate_import_assistant_batch(
             "patches_rejected": rejected,
             "patch_results": patch_results[:12],
             "latency_ms": result.get("latency_ms", 0),
+            "attempt_count": telemetry.get("attempt_count", 0),
+            "retry_count": telemetry.get("retry_count", 0),
+            "input_tokens": telemetry.get("input_tokens", 0),
+            "output_tokens": telemetry.get("output_tokens", 0),
+            "thought_tokens": telemetry.get("thought_tokens", 0),
+            "total_tokens": telemetry.get("total_tokens", 0),
             "reason": result.get("reason", ""),
             "memory_suggestions": list(review.get("memory_delta", []) or [])[:8],
         }
@@ -6830,7 +7306,8 @@ async def generate_import_assistant_batch(
                     "review": fallback_review,
                     "gate": {**gate, "supervisor_unavailable": True},
                     "patch_summary": {"applied": 0, "rejected": 0, "patch_results": []},
-                    "latency_ms": 0,
+                    "telemetry": getattr(exc, "telemetry", {}),
+                    "latency_ms": float(getattr(exc, "telemetry", {}).get("elapsed_ms", 0.0) or 0.0),
                     "_review_unit_id": str((review_scope or {}).get("review_unit_id", "")),
                 }
                 _record_supervisor_result(result=error_result, context=context)
@@ -7883,6 +8360,17 @@ async def generate_import_assistant_batch(
                     "deduped_records_added": 0,
                 }
                 orchestration_metadata.setdefault("waves", []).append(wave_meta)
+                wave_route_cursor = 0
+                _append_progress_event(
+                    build_wave_start_message(
+                        wave=int(wave),
+                        wave_position=wave_position,
+                        total_waves=total_wave_count,
+                        items=wave_items,
+                    ),
+                    source="deterministic",
+                    wave=int(wave),
+                )
 
                 for item in wave_items:
                     object_type = _normalize_object_type(str(item.get("object_type", "triggers")))
@@ -8009,6 +8497,7 @@ async def generate_import_assistant_batch(
                         template_first_for_chunk = _should_use_department_template_first(
                             chunk_backlog_item,
                             object_type,
+                            strategy=settings.department_generation_strategy,
                         )
                         chunk_item_plan = dict(item_plan)
                         chunk_item_plan["intent"] = _build_wave_prompt(
@@ -8047,14 +8536,34 @@ async def generate_import_assistant_batch(
                                 await asyncio.sleep(wait_seconds)
                                 total_pacing_wait_ms += wait_seconds * 1000.0
 
-                        store.append_status(
-                            batch_id,
-                            "generating",
-                            (
-                                f"Wave {wave_position}/{total_wave_count} {object_type} "
-                                f"chunk {local_chunk_index}/{len(item_chunk_targets)} "
-                                f"(target={int(item_chunk_target)}{model_hint})."
+                        _append_progress_event(
+                            build_chunk_message(
+                                wave_position=wave_position,
+                                total_waves=total_wave_count,
+                                item=chunk_backlog_item,
+                                object_type=object_type,
+                                chunk_index=local_chunk_index,
+                                chunk_total=len(item_chunk_targets),
+                                target_count=int(item_chunk_target),
+                                mode=(
+                                    "department_template"
+                                    if template_first_for_chunk
+                                    else (
+                                        "gemini"
+                                        if settings.llm_default_provider == "gemini"
+                                        else "active_route"
+                                    )
+                                ),
                             ),
+                            source="deterministic",
+                            wave=int(wave),
+                            department=str(
+                                chunk_backlog_item.get("department_name")
+                                or chunk_backlog_item.get("topic")
+                                or ""
+                            ).strip()
+                            or None,
+                            object_type=object_type,
                         )
 
                         chunk_instruction = _build_chunk_instruction(
@@ -8080,15 +8589,15 @@ async def generate_import_assistant_batch(
                                     "Configure at least one generator model/API key route for this wave and retry."
                                 ),
                             )
-                        active_route = (
-                            dict(wave_routes[(local_chunk_index - 1) % len(wave_routes)])
-                            if wave_routes
-                            else {
-                                "model": "deterministic_template",
-                                "api_key": None,
-                                "profile": "department_template",
-                            }
-                        )
+                        if wave_routes and not template_first_for_chunk:
+                            active_route, wave_route_cursor = _select_wave_generator_route(
+                                wave_routes,
+                                wave_route_cursor,
+                            )
+                        elif wave_routes:
+                            active_route = dict(wave_routes[0])
+                        else:
+                            active_route, _ = _select_wave_generator_route([], wave_route_cursor)
                         selected_model_for_chunk = active_route.get("model")
                         selected_api_key_for_chunk = active_route.get("api_key")
                         selected_api_key_profile = str(active_route.get("profile", "primary")).strip() or "primary"
@@ -8098,6 +8607,7 @@ async def generate_import_assistant_batch(
                         chunk_rows: list[dict] = []
                         chunk_runtime_metrics: dict = {}
                         context_profile = "standard"
+                        content_drafts_applied = 0
                         if template_first_for_chunk:
                             forced_deterministic_for_chunk = True
                             forced_reason = (
@@ -8136,6 +8646,47 @@ async def generate_import_assistant_batch(
                                 "http_status": None,
                                 "model": "deterministic_template",
                             }
+                        elif (
+                            settings.department_generation_strategy == "hybrid"
+                            and object_type in {"macros", "articles"}
+                            and str(chunk_backlog_item.get("source", "")).strip()
+                            == DEPARTMENT_COVERAGE_SOURCE
+                        ):
+                            try:
+                                chunk_rows, content_drafts_applied = await _draft_department_content_rows(
+                                    object_type=object_type,
+                                    target_count=int(item_chunk_target),
+                                    prompt=request.prompt,
+                                    reference_catalog=reference_catalog,
+                                    existing_titles=chunked_titles[-200:],
+                                    generated_rows=generated_data,
+                                    backlog_item=chunk_backlog_item,
+                                    model=str(selected_model_for_chunk or ""),
+                                    api_key=str(selected_api_key_for_chunk or ""),
+                                )
+                                chunk_runtime_metrics = GrokClient.get_last_call_metrics("generator")
+                                context_profile = "department_hybrid_draft"
+                                if content_drafts_applied < int(item_chunk_target):
+                                    used_deterministic_fallback = True
+                                    fallback_reason = (
+                                        f"Primary model drafted {content_drafts_applied}/{int(item_chunk_target)} "
+                                        f"{object_type}; backend template copy retained for missing drafts."
+                                    )
+                            except (RuntimeError, TypeError, ValueError) as draft_exc:
+                                chunk_runtime_metrics = GrokClient.get_last_call_metrics("generator")
+                                chunk_rows = _build_deterministic_chunk_rows(
+                                    object_type=object_type,
+                                    target_count=int(item_chunk_target),
+                                    prompt=request.prompt,
+                                    reference_catalog=reference_catalog,
+                                    existing_titles=chunked_titles[-200:],
+                                    generated_rows=generated_data,
+                                    reason=f"Hybrid content drafting failed: {draft_exc}",
+                                    backlog_item=chunk_backlog_item,
+                                )
+                                used_deterministic_fallback = True
+                                fallback_reason = str(draft_exc)
+                                context_profile = "department_hybrid_draft_fallback"
                         elif object_type in forced_deterministic_object_types:
                             forced_deterministic_for_chunk = True
                             forced_count = int(failure_count_by_object_type.get(object_type, 0) or 0)
@@ -8198,7 +8749,7 @@ async def generate_import_assistant_batch(
                             except RuntimeError as chunk_exc:
                                 chunk_error = chunk_exc
                         if chunk_error is not None and _is_rate_limited_error(chunk_error):
-                            for fallback_route in wave_routes[1:]:
+                            for fallback_route in wave_routes:
                                 fallback_profile = (
                                     str(fallback_route.get("profile", "")).strip() or "fallback"
                                 )
@@ -8440,6 +8991,25 @@ async def generate_import_assistant_batch(
                                         reason=repair_reason,
                                         backlog_item=_item,
                                     )
+                                if (
+                                    settings.department_generation_strategy == "hybrid"
+                                    and _object_type in {"macros", "articles"}
+                                    and _model
+                                    and _api_key
+                                ):
+                                    repaired_rows, _ = await _draft_department_content_rows(
+                                        object_type=_object_type,
+                                        target_count=_target,
+                                        prompt=request.prompt,
+                                        reference_catalog=reference_catalog,
+                                        existing_titles=chunked_titles[-200:],
+                                        generated_rows=generated_data,
+                                        backlog_item=_item,
+                                        model=str(_model),
+                                        api_key=str(_api_key),
+                                        repair_reasons=list(gate_reasons or []),
+                                    )
+                                    return repaired_rows
                                 repair_instruction = (
                                     _build_chunk_instruction(
                                         chunk_index=_chunk_index,
@@ -8563,9 +9133,23 @@ async def generate_import_assistant_batch(
                             "context_profile": context_profile,
                             "pre_request_wait_ms": chunk_runtime_metrics.get("pre_request_wait_ms"),
                             "retry_count": chunk_runtime_metrics.get("retry_count"),
+                            "attempt_count": chunk_runtime_metrics.get("attempt_count"),
+                            "elapsed_ms": chunk_runtime_metrics.get("elapsed_ms"),
+                            "estimated_tokens": chunk_runtime_metrics.get("estimated_tokens"),
+                            "input_tokens": chunk_runtime_metrics.get("input_tokens"),
+                            "output_tokens": chunk_runtime_metrics.get("output_tokens"),
+                            "total_tokens": chunk_runtime_metrics.get("total_tokens")
+                            or chunk_runtime_metrics.get("used_tokens"),
                             "final_status": chunk_runtime_metrics.get("final_status"),
                             "http_status": chunk_runtime_metrics.get("http_status"),
                             "model": chunk_runtime_metrics.get("model"),
+                            "provider": chunk_runtime_metrics.get("provider"),
+                            "selected_provider": chunk_runtime_metrics.get("selected_provider"),
+                            "provider_chain": chunk_runtime_metrics.get("provider_chain"),
+                            "provider_fallback_used": bool(
+                                chunk_runtime_metrics.get("fallback_used", False)
+                            ),
+                            "provider_fallback_reason": chunk_runtime_metrics.get("fallback_reason"),
                             "model_requested": selected_model_for_chunk,
                             "model_fallback_from": chunk_runtime_metrics.get("model_fallback_from"),
                             "api_key_profile": selected_api_key_profile,
@@ -8582,6 +9166,7 @@ async def generate_import_assistant_batch(
                             "forced_reason": forced_reason,
                             "fallback_reason": fallback_reason,
                             "deterministic_topup_records": deterministic_topup_count,
+                            "content_drafts_applied": content_drafts_applied,
                             "mismatched_object_rows_dropped": mismatched_object_count,
                         }
                         generator_chunk_telemetry.append(chunk_entry)
@@ -8592,15 +9177,46 @@ async def generate_import_assistant_batch(
                     f"wave {wave_position}/{total_wave_count} checkpoint"
                 )
                 wave_meta["status"] = "completed"
-                _append_control_status(
-                    (
-                        f"Wave {wave_position}/{total_wave_count} completed: "
-                        f"chunks={wave_meta['chunks']}, created={wave_meta['created']}, "
-                        f"reused={wave_meta['reused']}, updated={wave_meta['updated']}, "
-                        f"blocked={wave_meta['blocked']}."
-                    )
-                )
                 cumulative_counts = _count_generated(generated_data)
+                latest_review = (
+                    supervisor_metadata.get("reviews", [])[-1]
+                    if supervisor_metadata.get("reviews")
+                    else {}
+                )
+                wave_complete_message = build_wave_complete_message(
+                    wave=int(wave),
+                    wave_position=wave_position,
+                    total_waves=total_wave_count,
+                    wave_meta=wave_meta,
+                    cumulative_counts=cumulative_counts,
+                    supervisor_summary=str(
+                        latest_review.get("public_reasoning_summary")
+                        or latest_review.get("reason")
+                        or ""
+                    ),
+                )
+                _append_progress_event(
+                    wave_complete_message,
+                    source="deterministic",
+                    wave=int(wave),
+                )
+                _schedule_progress_narration(
+                    deterministic_message=wave_complete_message,
+                    event_context={
+                        "wave": int(wave),
+                        "wave_position": wave_position,
+                        "total_waves": total_wave_count,
+                        "generated_records": int(wave_meta.get("generated_records", 0) or 0),
+                        "chunks": int(wave_meta.get("chunks", 0) or 0),
+                        "blocked": int(wave_meta.get("blocked", 0) or 0),
+                        "cumulative_counts": cumulative_counts,
+                        "next_wave_purpose": (
+                            "final validation and staging"
+                            if wave_position >= total_wave_count
+                            else f"wave {wave_position + 1}/{total_wave_count}"
+                        ),
+                    },
+                )
                 checkpoint_item = _append_wave_checkpoint(
                     batch_id=batch_id,
                     wave=int(wave),
@@ -8876,6 +9492,13 @@ async def generate_import_assistant_batch(
                     "final_status": chunk_runtime_metrics.get("final_status"),
                     "http_status": chunk_runtime_metrics.get("http_status"),
                     "model": chunk_runtime_metrics.get("model"),
+                    "provider": chunk_runtime_metrics.get("provider"),
+                    "selected_provider": chunk_runtime_metrics.get("selected_provider"),
+                    "provider_chain": chunk_runtime_metrics.get("provider_chain"),
+                    "provider_fallback_used": bool(
+                        chunk_runtime_metrics.get("fallback_used", False)
+                    ),
+                    "provider_fallback_reason": chunk_runtime_metrics.get("fallback_reason"),
                     "model_requested": selected_model_for_chunk,
                     "api_key_profile": selected_api_key_profile,
                     "key_route_failovers": chunk_route_failovers,
@@ -8951,6 +9574,7 @@ async def generate_import_assistant_batch(
                         "error": _truncate_text(str(supervisor_exc), 500),
                     }
                 )
+        await _await_progress_narrations(timeout_seconds=2.0)
         chunking_metadata["chunks"] = generator_chunk_telemetry
         chunking_metadata["total_generated_before_dedupe"] = total_generated_before_dedupe
         chunking_metadata["total_generated_after_dedupe"] = len(generated_data)
@@ -9067,6 +9691,7 @@ async def generate_import_assistant_batch(
                     "orchestration": orchestration_metadata,
                     "chunking": chunking_metadata,
                     "supervisor": supervisor_metadata,
+                    "progress_narration": progress_metadata,
                     "llm_routes": llm_routes_metadata,
                     "llm_runtime": {
                         "planner": planner_telemetry,
@@ -9120,6 +9745,7 @@ async def generate_import_assistant_batch(
     if orchestration_mode == "business_blueprint":
         orchestration_metadata["final_status"] = "ok"
         orchestration_metadata["generated_records"] = len(generated_data)
+    await _await_progress_narrations()
     generator_telemetry = GrokClient.get_last_call_metrics("generator")
     store.append_status(batch_id, "generated", "Structured records generated.")
     dependency_resolution: dict = {}
@@ -9155,6 +9781,7 @@ async def generate_import_assistant_batch(
             "department_coverage": department_coverage_metadata,
             "quality_gates": quality_gates_metadata,
             "supervisor": supervisor_metadata,
+            "progress_narration": progress_metadata,
             "llm_routes": llm_routes_metadata,
             "llm_runtime": {
                 "planner": planner_telemetry,
@@ -9311,6 +9938,10 @@ async def generate_import_assistant_batch(
         post_generation_stage = "staging"
         await _honor_run_control(checkpoint="staging handoff")
         store.append_status(batch_id, "staging", "Staging batch to Google Sheets.")
+        staging_metadata_snapshot = _build_shared_metadata()
+        current_status_history = list(
+            (store.get_batch(batch_id) or {}).get("status_history", []) or []
+        )
         appscript_payload = {
             "batch_id": batch_id,
             "prompt": request.prompt,
@@ -9320,6 +9951,8 @@ async def generate_import_assistant_batch(
             "created_at": created_at,
             "planning_summary": planning_summary,
             "records": preview_records,
+            "metadata": staging_metadata_snapshot,
+            "progress_events": current_status_history,
         }
         use_legacy_roundtrip = True
         if appscript.enabled:
@@ -9610,6 +10243,103 @@ async def generate_import_assistant_batch(
     )
 
 
+async def generate_import_assistant_batch(
+    request: ImportAssistantGenerateRequest,
+    *,
+    reserved_batch_id: str | None = None,
+) -> ImportAssistantGenerateResponse:
+    session, session_token = start_usage_session(
+        f"import_assistant:{str(request.requester or 'local-user').strip() or 'local-user'}"
+    )
+    started = time.perf_counter()
+    try:
+        response = await _generate_import_assistant_batch_impl(
+            request,
+            reserved_batch_id=reserved_batch_id,
+        )
+        store = get_batch_store()
+        batch = store.get_batch(response.batch_id) or {}
+        metadata = _metadata_dict(batch)
+        preliminary_elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
+        preliminary_usage_report = build_usage_report(
+            session,
+            status_history=list(batch.get("status_history", []) or []),
+            total_elapsed_ms=preliminary_elapsed_ms,
+        )
+        appscript_metadata_sync: dict = {"status": "skipped", "detail": "not_configured"}
+        appscript = AppScriptBridgeService()
+        if appscript.enabled:
+            sync_raw = await appscript.invoke(
+                action="write_batch_metadata",
+                payload={
+                    "batch_id": response.batch_id,
+                    "status": str(batch.get("status") or response.status),
+                    "metadata": {
+                        **metadata,
+                        "usage_report": preliminary_usage_report,
+                    },
+                },
+                timeout_seconds=min(get_settings().appscript_timeout_seconds, 10.0),
+            )
+            appscript_metadata_sync = _normalize_appscript_action_result(
+                sync_raw,
+                action="write_batch_metadata",
+            )
+        elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
+        usage_report = build_usage_report(
+            session,
+            status_history=list(batch.get("status_history", []) or []),
+            total_elapsed_ms=elapsed_ms,
+        )
+        updated_batch = store.update_batch(
+            response.batch_id,
+            {
+                "metadata": {
+                    **metadata,
+                    "usage_report": usage_report,
+                    "appscript_metadata_sync": appscript_metadata_sync,
+                }
+            },
+        )
+        return response.model_copy(update={"metadata": updated_batch.get("metadata", {})})
+    except BaseException:
+        elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
+        store = get_batch_store()
+        reserved_batch = store.get_batch(reserved_batch_id) if reserved_batch_id else None
+        candidates = (
+            [reserved_batch]
+            if reserved_batch
+            else [
+                batch
+                for batch in store.list_batches()
+                if str(batch.get("requester", "")).strip() == str(request.requester or "").strip()
+            ]
+        )
+        if candidates:
+            batch = max(candidates, key=lambda item: str(item.get("created_at", "")))
+            batch_id = str(batch.get("batch_id", "")).strip()
+            if batch_id:
+                metadata = _metadata_dict(batch)
+                usage_report = build_usage_report(
+                    session,
+                    status_history=list(batch.get("status_history", []) or []),
+                    total_elapsed_ms=elapsed_ms,
+                )
+                usage_report["incomplete"] = True
+                store.update_batch(
+                    batch_id,
+                    {
+                        "metadata": {
+                            **metadata,
+                            "usage_report": usage_report,
+                        }
+                    },
+                )
+        raise
+    finally:
+        reset_usage_session(session_token)
+
+
 def get_job_status(batch_id: str) -> JobStatusResponse:
     store = get_batch_store()
     batch = store.get_batch(batch_id)
@@ -9748,12 +10478,20 @@ async def apply_approval(batch_id: str, approved_by: str, decisions: list[dict])
 
     decision_map = {item["record_id"]: item["import_decision"] for item in decisions}
     updated_records = []
+    effective_decisions = []
     counts = {"approved": 0, "skipped": 0, "edit_later": 0}
     for record in batch.get("records", []):
         decision = decision_map.get(record["record_id"], record.get("import_decision", "pending_review"))
         if record.get("validation_status") == "failed":
             decision = "blocked"
         record["import_decision"] = decision
+        if record["record_id"] in decision_map:
+            effective_decisions.append(
+                {
+                    "record_id": record["record_id"],
+                    "import_decision": decision,
+                }
+            )
         if decision in counts:
             counts[decision] += 1
         updated_records.append(record)
@@ -9774,7 +10512,7 @@ async def apply_approval(batch_id: str, approved_by: str, decisions: list[dict])
             payload={
                 "batch_id": batch_id,
                 "approved_by": approved_by,
-                "records": decisions,
+                "records": effective_decisions,
             },
         )
         appscript_result = _normalize_appscript_action_result(
@@ -9789,7 +10527,7 @@ async def apply_approval(batch_id: str, approved_by: str, decisions: list[dict])
             "result": appscript_result.get("data", {}),
         }
         if appscript_result.get("status") != "ok" and sheets.enabled:
-            fallback_rows = sheets.write_approval_log(batch_id, decisions)
+            fallback_rows = sheets.write_approval_log(batch_id, effective_decisions)
             approval_sync_metadata["fallback"] = {
                 "mode": "google_sheets_service_account",
                 "rows_written": fallback_rows,
@@ -9800,7 +10538,7 @@ async def apply_approval(batch_id: str, approved_by: str, decisions: list[dict])
                 or "Approval sync failed: Apps Script unavailable and no backend fallback configured."
             )
     else:
-        rows_written = sheets.write_approval_log(batch_id, decisions)
+        rows_written = sheets.write_approval_log(batch_id, effective_decisions)
         approval_sync_metadata = {
             "mode": "google_sheets_service_account",
             "rows_written": rows_written,
@@ -9826,6 +10564,13 @@ async def deploy_batch_to_zendesk(
     api_token: str,
     dry_run: bool = False,
     on_existing: str = "create_new",
+    deployment_scope: str = "support",
+    help_center_url: str | None = None,
+    brand_id: str | None = None,
+    locale: str | None = None,
+    article_mode: str = "draft",
+    confirm_help_center_deploy: bool = False,
+    confirm_article_publish: bool = False,
 ) -> dict:
     store = get_batch_store()
     appscript = AppScriptBridgeService()
@@ -9833,6 +10578,7 @@ async def deploy_batch_to_zendesk(
     batch = store.get_batch(batch_id)
     if not batch:
         raise KeyError(batch_id)
+    requested_scope_for_failure = str(deployment_scope or "support").strip().lower()
 
     def _parse_iso_timestamp(value: object) -> float:
         text = str(value or "").strip()
@@ -9879,10 +10625,20 @@ async def deploy_batch_to_zendesk(
             "watchdog_seconds": float(settings.deploy_watchdog_seconds),
             "failure": failure_payload,
         }
+        prior_deploy_succeeded = any(
+            str(row.get("deployment_status", "")).strip().lower() == "deployed"
+            for row in list(current.get("records", []) or [])
+            if isinstance(row, dict)
+        )
+        failure_status = (
+            "deployed_partial"
+            if requested_scope_for_failure == "help_center" or prior_deploy_succeeded
+            else "deploy_failed"
+        )
         store.update_batch(
             batch_id,
             {
-                "status": "deploy_failed",
+                "status": failure_status,
                 "metadata": {
                     **metadata,
                     "zendesk_deploy": deploy_metadata,
@@ -9890,7 +10646,7 @@ async def deploy_batch_to_zendesk(
                 },
             },
         )
-        store.append_status(batch_id, "deploy_failed", reason)
+        store.append_status(batch_id, failure_status, reason)
         return failure_payload
 
     stale_seconds = max(float(getattr(settings, "deploy_stale_recovery_seconds", 300.0)), 30.0)
@@ -9919,9 +10675,140 @@ async def deploy_batch_to_zendesk(
                 "Batch is already deploying. Wait for completion or retry after watchdog timeout window."
             )
 
-    records = batch.get("records", [])
+    normalized_scope = str(deployment_scope or "support").strip().lower()
+    if normalized_scope not in {"support", "help_center", "all"}:
+        raise ValueError("deployment_scope must be support, help_center, or all.")
+    normalized_article_mode = str(article_mode or "draft").strip().lower()
+    if normalized_article_mode not in {"draft", "publish"}:
+        raise ValueError("article_mode must be draft or publish.")
+
+    help_center_types = {"categories", "sections", "articles"}
+
+    def _normalized_record_type(row: dict) -> str:
+        raw_type = str(row.get("object_type", "")).strip().lower()
+        return TAB_OBJECT_TYPES.get(raw_type, raw_type)
+
+    all_records = list(batch.get("records", []) or [])
+    approved_help_center_records = [
+        row
+        for row in all_records
+        if _normalized_record_type(row) in help_center_types
+        and str(row.get("import_decision", "")).strip().lower() == "approved"
+        and bool(row.get("deployable", False))
+    ]
+    includes_help_center = normalized_scope in {"help_center", "all"} and bool(
+        approved_help_center_records
+    )
+    if includes_help_center and not confirm_help_center_deploy:
+        raise ValueError(
+            "Help Center deployment requires explicit confirmation. Verify the target brand first, "
+            "then set confirm_help_center_deploy=true."
+        )
+    if (
+        includes_help_center
+        and normalized_article_mode == "publish"
+        and not confirm_article_publish
+    ):
+        raise ValueError(
+            "Publishing articles requires a separate explicit confirmation. "
+            "Use article_mode=draft or set confirm_article_publish=true."
+        )
+
+    help_center_readiness: dict = {}
+    if includes_help_center:
+        help_center_readiness = await check_zendesk_help_center_readiness(
+            subdomain=subdomain,
+            email=email,
+            api_token=api_token,
+            help_center_url=help_center_url,
+            brand_id=brand_id,
+            locale=locale,
+        )
+        if not bool(help_center_readiness.get("ready", False)):
+            current_metadata = (
+                batch.get("metadata", {})
+                if isinstance(batch.get("metadata", {}), dict)
+                else {}
+            )
+            existing_deploy_metadata = (
+                current_metadata.get("zendesk_deploy", {})
+                if isinstance(current_metadata.get("zendesk_deploy", {}), dict)
+                else {}
+            )
+            phase_payload = {
+                "scope": normalized_scope,
+                "state": "waiting_for_help_center",
+                "attempted_at": _utc_now(),
+                "readiness": help_center_readiness,
+                "summary": {"attempted": 0, "deployed": 0, "failed": 0, "skipped": 0},
+                "results": [],
+            }
+            phases = (
+                existing_deploy_metadata.get("phases", {})
+                if isinstance(existing_deploy_metadata.get("phases", {}), dict)
+                else {}
+            )
+            store.update_batch(
+                batch_id,
+                {
+                    "metadata": {
+                        **current_metadata,
+                        "zendesk_deploy": {
+                            **existing_deploy_metadata,
+                            "latest_phase": normalized_scope,
+                            "help_center_readiness": help_center_readiness,
+                            "phases": {**phases, "help_center": phase_payload},
+                        },
+                        "failure": None,
+                    }
+                },
+            )
+            message = str(
+                help_center_readiness.get("detail")
+                or "Help Center is not ready. Complete the manual Zendesk step and verify again."
+            )
+            store.append_status(batch_id, "deployed_partial", message)
+            return {
+                "batch_id": batch_id,
+                "status": "deployed_partial",
+                "summary": {"attempted": 0, "deployed": 0, "failed": 0, "skipped": 0},
+                "results": [],
+                "message": message,
+                "metadata": {
+                    "deployment_scope": normalized_scope,
+                    "help_center_readiness": help_center_readiness,
+                    "resume_available": True,
+                    "failure": None,
+                },
+            }
+
+    scoped_records = [
+        row
+        for row in all_records
+        if (
+            normalized_scope == "all"
+            or (
+                normalized_scope == "help_center"
+                and _normalized_record_type(row) in help_center_types
+            )
+            or (
+                normalized_scope == "support"
+                and _normalized_record_type(row) not in help_center_types
+            )
+        )
+    ]
+    already_completed_record_ids = [
+        str(row.get("record_id", "")).strip()
+        for row in scoped_records
+        if str(row.get("deployment_status", "")).strip().lower() == "deployed"
+    ]
+    phase_candidates = [
+        row
+        for row in scoped_records
+        if str(row.get("deployment_status", "")).strip().lower() != "deployed"
+    ]
     approved_records = [
-        row for row in records
+        row for row in phase_candidates
         if str(row.get("import_decision", "")).strip().lower() == "approved"
     ]
     deployable_approved_records = [
@@ -9945,9 +10832,14 @@ async def deploy_batch_to_zendesk(
             " Regenerate batch output before deploying."
             + extra_reason
         )
+    records = deployable_approved_records
 
     store.append_status(batch_id, "deploying", "Deploying approved records to Zendesk.")
-    store.append_status(batch_id, "deploying", "Deploy phase start: validating approved records and dependencies.")
+    store.append_status(
+        batch_id,
+        "deploying",
+        f"Deploy phase start ({normalized_scope}): validating approved records and dependencies.",
+    )
 
     watchdog_seconds = max(float(getattr(settings, "deploy_watchdog_seconds", 240.0)), 30.0)
     deployment: dict = {}
@@ -9968,6 +10860,12 @@ async def deploy_batch_to_zendesk(
                 records=records,
                 dry_run=dry_run,
                 on_existing=on_existing,
+                article_mode=normalized_article_mode,
+                help_center_base_url=(
+                    str(help_center_readiness.get("help_center_api_base_url") or "").strip()
+                    if includes_help_center
+                    else None
+                ),
             ),
             timeout=watchdog_seconds,
         )
@@ -10045,12 +10943,17 @@ async def deploy_batch_to_zendesk(
             for item in results
             if isinstance(item, dict)
         }
-        for row in records:
+        for row in all_records:
             record_id = row.get("record_id")
-            result = result_by_record.get(record_id, {})
-            row["deployment_status"] = result.get("deployment_status", row.get("deployment_status", "pending"))
-            row["zendesk_object_id"] = result.get("zendesk_object_id")
-            row["execution_message"] = result.get("execution_message", "")
+            result = result_by_record.get(record_id)
+            if isinstance(result, dict):
+                row["deployment_status"] = result.get(
+                    "deployment_status",
+                    row.get("deployment_status", "pending"),
+                )
+                if result.get("zendesk_object_id") is not None:
+                    row["zendesk_object_id"] = result.get("zendesk_object_id")
+                row["execution_message"] = result.get("execution_message", "")
             updated_records.append(row)
 
         if appscript.enabled:
@@ -10102,9 +11005,41 @@ async def deploy_batch_to_zendesk(
         deployed = int(summary.get("deployed", 0))
         failed = int(summary.get("failed", 0))
         attempted = int(summary.get("attempted", 0))
-        if attempted == 0:
+        terminal_deployment_states = {"deployed", "skipped"}
+        pending_help_center_count = sum(
+            1
+            for row in updated_records
+            if _normalized_record_type(row) in help_center_types
+            and str(row.get("import_decision", "")).strip().lower() == "approved"
+            and bool(row.get("deployable", False))
+            and str(row.get("deployment_status", "")).strip().lower()
+            not in terminal_deployment_states
+        )
+        pending_all_count = sum(
+            1
+            for row in updated_records
+            if str(row.get("import_decision", "")).strip().lower() == "approved"
+            and bool(row.get("deployable", False))
+            and str(row.get("deployment_status", "")).strip().lower()
+            not in terminal_deployment_states
+        )
+        any_successful_record = any(
+            str(row.get("deployment_status", "")).strip().lower() == "deployed"
+            for row in updated_records
+        )
+
+        if attempted == 0 and already_completed_record_ids and pending_all_count == 0:
+            final_status = "deployed"
+            final_message = "This deployment phase was already completed; no duplicate writes were attempted."
+        elif attempted == 0 and normalized_scope == "support" and pending_help_center_count > 0:
             final_status = "deployed_partial"
-            final_message = "No approved deployable records were found for deployment."
+            final_message = (
+                "No approved Support objects required deployment. Help Center content is waiting for "
+                "separate verification and confirmation."
+            )
+        elif attempted == 0:
+            final_status = "deployed_partial"
+            final_message = f"No approved deployable records were found in the {normalized_scope} phase."
         elif deployed == 0 and failed == 0:
             final_status = "deployed_partial"
             final_message = "No objects were created or updated. All approved items were skipped."
@@ -10112,13 +11047,67 @@ async def deploy_batch_to_zendesk(
             final_status = "deployed_partial"
             final_message = "Deployment completed with partial failures."
         elif failed > 0 and deployed == 0:
-            final_status = "deploy_failed"
-            final_message = "Deployment failed."
+            final_status = "deployed_partial" if any_successful_record else "deploy_failed"
+            final_message = (
+                f"The {normalized_scope} deployment phase failed; previously deployed records were preserved."
+                if any_successful_record
+                else "Deployment failed."
+            )
+        elif normalized_scope == "support" and pending_help_center_count > 0:
+            final_status = "deployed_partial"
+            final_message = (
+                "Support objects deployed successfully. Help Center content is waiting for separate "
+                "verification and confirmation."
+            )
+        elif pending_all_count > 0:
+            final_status = "deployed_partial"
+            final_message = "Deployment phase completed, with approved records still waiting in another phase."
         else:
             final_status = "deployed"
             final_message = "Deployment completed successfully."
 
-        metadata = batch.get("metadata", {}) if isinstance(batch.get("metadata", {}), dict) else {}
+        current_batch = store.get_batch(batch_id) or batch
+        metadata = (
+            current_batch.get("metadata", {})
+            if isinstance(current_batch.get("metadata", {}), dict)
+            else {}
+        )
+        existing_zendesk_deploy = (
+            metadata.get("zendesk_deploy", {})
+            if isinstance(metadata.get("zendesk_deploy", {}), dict)
+            else {}
+        )
+        existing_phases = (
+            existing_zendesk_deploy.get("phases", {})
+            if isinstance(existing_zendesk_deploy.get("phases", {}), dict)
+            else {}
+        )
+        phase_key = "help_center" if normalized_scope == "help_center" else normalized_scope
+        phase_metadata = {
+            "scope": normalized_scope,
+            "state": final_status,
+            "completed_at": _utc_now(),
+            "summary": summary,
+            "results": results,
+            "already_completed_record_ids": already_completed_record_ids,
+            "pending_help_center_count": pending_help_center_count,
+            "article_mode": normalized_article_mode if includes_help_center else None,
+            "readiness": help_center_readiness if includes_help_center else None,
+        }
+        prior_results = (
+            existing_zendesk_deploy.get("results", [])
+            if isinstance(existing_zendesk_deploy.get("results", []), list)
+            else []
+        )
+        cumulative_results_by_id = {
+            str(item.get("record_id", "")): item
+            for item in prior_results
+            if isinstance(item, dict) and str(item.get("record_id", "")).strip()
+        }
+        for item in results:
+            if isinstance(item, dict) and str(item.get("record_id", "")).strip():
+                cumulative_results_by_id[str(item.get("record_id"))] = item
+        cumulative_results = list(cumulative_results_by_id.values())
         failure_metadata = (
             {
                 "failure_stage": "deploy",
@@ -10136,14 +11125,22 @@ async def deploy_batch_to_zendesk(
                 "metadata": {
                     **metadata,
                     "zendesk_deploy": {
+                        **existing_zendesk_deploy,
                         "summary": summary,
-                        "results": results,
+                        "results": cumulative_results,
                         "base_url": deployment.get("base_url"),
                         "execution_log": execution_log_result,
                         "dependency_auto_create": dependency_auto_create,
                         "sanitization_stats": deploy_sanitization_stats,
                         "terminal_error_class": terminal_error_class,
                         "watchdog_seconds": watchdog_seconds,
+                        "latest_phase": normalized_scope,
+                        "phases": {**existing_phases, phase_key: phase_metadata},
+                        "help_center_readiness": (
+                            help_center_readiness
+                            or existing_zendesk_deploy.get("help_center_readiness", {})
+                        ),
+                        "pending_help_center_count": pending_help_center_count,
                     },
                     "failure": failure_metadata,
                 },
@@ -10163,6 +11160,12 @@ async def deploy_batch_to_zendesk(
                 "execution_log": execution_log_result,
                 "dry_run": dry_run,
                 "on_existing": on_existing,
+                "deployment_scope": normalized_scope,
+                "article_mode": normalized_article_mode if includes_help_center else None,
+                "help_center_readiness": help_center_readiness,
+                "resume_available": final_status == "deployed_partial",
+                "already_completed_record_ids": already_completed_record_ids,
+                "pending_help_center_count": pending_help_center_count,
                 "dependency_auto_create": dependency_auto_create,
                 "deploy_sanitization_stats": deploy_sanitization_stats,
                 "terminal_error_class": terminal_error_class,

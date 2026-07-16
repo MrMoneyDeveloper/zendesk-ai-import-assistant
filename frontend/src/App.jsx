@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Activity,
+  ArrowRight,
   BookOpen,
   Boxes,
   CheckCircle2,
@@ -11,12 +13,14 @@ import {
   GitBranch,
   Grid2X2,
   Library,
+  LoaderCircle,
   LogOut,
   MessageSquare,
   Moon,
   PanelRightOpen,
   Plus,
   Settings,
+  ShieldCheck,
   Sparkles,
   Sun,
   Workflow,
@@ -36,6 +40,7 @@ import cxIcon from "./assets/cx-icon.png";
 import cxLogo from "./assets/cx-logo.png";
 import {
   approveBatch,
+  checkZendeskHelpCenterReadiness,
   deployBatch,
   extractAttachment,
   generateBatch,
@@ -159,6 +164,7 @@ function humanizeStatusStep(status, message) {
   const base = STATUS_STEP_LABELS[String(status || "").trim()] || status || "processing";
   const detail = String(message || "").trim();
   if (!detail) return base;
+  if (String(status || "").trim() === "wave_execution") return detail;
   if (detail.toLowerCase() === base.toLowerCase()) return base;
   return `${base} ${detail}`;
 }
@@ -195,20 +201,54 @@ function extractWaveChunkProgress(statusHistory = [], metadata = {}) {
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const row = history[index] || {};
     const message = String(row.message || "");
-    const waveMatch = message.match(/wave\s+(\d+)\/(\d+)\s+([a-z_]+)\s+chunk\s+(\d+)\/(\d+)/i);
+    const waveMatch = message.match(/wave\s+(\d+)\/(\d+)/i);
+    const chunkMatch = message.match(/chunk\s+(\d+)\/(\d+)/i);
     if (waveMatch) {
+      if (String(row.status || "") !== "wave_execution" && !chunkMatch) {
+        continue;
+      }
+      const waveIndex = Number(waveMatch[1]);
+      const waveTotal = Number(waveMatch[2]);
+      const chunkIndex = Number(chunkMatch?.[1] || 0);
+      const chunkTotal = Number(chunkMatch?.[2] || 0);
+      const departmentMatch = message.match(/wave\s+\d+\/\d+\s*,\s*([^:]+):/i);
+      const objectMatch = message.match(/building\s+\d+\s+([a-z_ ]+?)\s+record/i);
+      const department = String(row.department || departmentMatch?.[1] || "").trim();
+      const objectType = String(row.object_type || objectMatch?.[1] || "").trim().replace(/\s+/g, "_");
+      const completed = /\bcompleted\b/i.test(message);
+      const withinWave = completed
+        ? 1
+        : (chunkTotal > 0 ? Math.min(chunkIndex / chunkTotal, 0.95) : 0.15);
+      const progressFraction = waveTotal > 0
+        ? Math.min(Math.max((waveIndex - 1 + withinWave) / waveTotal, 0), 1)
+        : 0;
+      const details = [
+        department,
+        objectType ? objectTypeLabel(objectType) : "",
+        chunkTotal > 0 ? `${chunkIndex}/${chunkTotal}` : "",
+      ].filter(Boolean);
       return {
-        badge: `Wave ${waveMatch[1]} • ${objectTypeLabel(waveMatch[3])} ${waveMatch[4]}/${waveMatch[5]}`,
-        chunkIndex: Number(waveMatch[4]),
-        chunkTotal: Number(waveMatch[5]),
+        badge: `Wave ${waveIndex}/${waveTotal}${details.length ? ` | ${details.join(" | ")}` : ""}`,
+        chunkIndex,
+        chunkTotal,
+        waveIndex,
+        waveTotal,
+        progressFraction,
+        progressPercent: Math.round(progressFraction * 100),
       };
     }
-    const chunkMatch = message.match(/chunk\s+(\d+)\/(\d+)/i);
     if (chunkMatch) {
+      const chunkIndex = Number(chunkMatch[1]);
+      const chunkTotal = Number(chunkMatch[2]);
+      const progressFraction = chunkTotal > 0 ? chunkIndex / chunkTotal : 0;
       return {
         badge: `Chunk ${chunkMatch[1]}/${chunkMatch[2]}`,
-        chunkIndex: Number(chunkMatch[1]),
-        chunkTotal: Number(chunkMatch[2]),
+        chunkIndex,
+        chunkTotal,
+        waveIndex: 0,
+        waveTotal: 0,
+        progressFraction,
+        progressPercent: Math.round(progressFraction * 100),
       };
     }
   }
@@ -221,13 +261,125 @@ function extractWaveChunkProgress(statusHistory = [], metadata = {}) {
       badge: `Chunk ${chunkRows.length}/${totalChunks}`,
       chunkIndex: chunkRows.length,
       chunkTotal: totalChunks,
+      waveIndex: 0,
+      waveTotal: 0,
+      progressFraction: chunkRows.length / totalChunks,
+      progressPercent: Math.round((chunkRows.length / totalChunks) * 100),
     };
   }
   return {
     badge: "Preparing run",
     chunkIndex: 0,
     chunkTotal: 0,
+    waveIndex: 0,
+    waveTotal: 0,
+    progressFraction: 0,
+    progressPercent: 0,
   };
+}
+
+const OPERATIONAL_NARRATIVES = {
+  received: [
+    {
+      why: "The run is being given a stable identity before any model work starts, so every later event can be observed and audited.",
+      next: "Validate the request, map named departments, and choose the dependency-safe generation path.",
+    },
+  ],
+  request_validated: [
+    {
+      why: "Prompt constraints and selected Zendesk context must be fixed before the operating model is expanded.",
+      next: "Build the department coverage manifest and object targets.",
+    },
+  ],
+  planning: [
+    {
+      why: "A complete manifest prevents a multi-department design from becoming broad but shallow.",
+      next: "Turn departments, forms, fields, topics, and rules into an ordered backlog.",
+    },
+    {
+      why: "Dependencies are planned by name now so Zendesk IDs are resolved only when deployment is approved.",
+      next: "Open the first wave only after its required targets are explicit.",
+    },
+  ],
+  business_blueprinting: [
+    {
+      why: "The blueprint converts business language into measurable coverage for every named department.",
+      next: "Expand the blueprint into categories, groups, fields, forms, rules, macros, views, and articles.",
+    },
+  ],
+  backlog_building: [
+    {
+      why: "Dependency ordering keeps later objects from referencing records that have not been created or verified yet.",
+      next: "Start independent work in parallel inside the first available wave.",
+    },
+  ],
+  wave_execution: [
+    {
+      why: "Stable names let forms, views, and routing rules connect without inventing Zendesk IDs.",
+      next: "Finish this bundle, run supervisor and deterministic gates, then commit only verified records.",
+    },
+    {
+      why: "Department-by-department coverage keeps a large operating model detailed instead of merely large.",
+      next: "Compare completed records with the remaining manifest before the next dependency wave opens.",
+    },
+    {
+      why: "Each accepted chunk becomes real context for dependent objects, preserving the moving parts across waves.",
+      next: "Apply safe targeted patches and retry only a source chunk that fails its gate.",
+    },
+  ],
+  generating: [
+    {
+      why: "Independent chunks can run in parallel while shared dependencies remain fixed and traceable.",
+      next: "Validate the structured result and send its department bundle to supervision.",
+    },
+    {
+      why: "The generator is drafting only the current target, which avoids rewriting records that already passed review.",
+      next: "Merge the result into the current wave after structural checks pass.",
+    },
+  ],
+  supervisor_review: [
+    {
+      why: "Gemini can suggest cleanup, but backend rules decide which patches are safe and whether approval is effective.",
+      next: "Merge safe patches, reject unsafe operations, and revalidate the affected records.",
+    },
+    {
+      why: "Only records that exist after patching are allowed into verified memory for later waves.",
+      next: "Retry only a rejected source chunk or close the bundle as approved.",
+    },
+  ],
+  staging: [
+    {
+      why: "Staging creates a reviewable audit trail without writing anything to the Zendesk instance.",
+      next: "Persist records and metadata, then run validation over the staged batch.",
+    },
+  ],
+  validating: [
+    {
+      why: "Validation checks deployability, dependency references, coverage warnings, and blocked decisions before review.",
+      next: "Assemble the preview with clear passed, warning, and blocked counts.",
+    },
+  ],
+  preview_ready: [
+    {
+      why: "The generated operating model is complete enough to inspect while deployment remains under human control.",
+      next: "Review warnings and record decisions before any Zendesk write is allowed.",
+    },
+  ],
+};
+
+function buildOperationalNarrative(status, beat = 0) {
+  const normalized = String(status || "received").trim().toLowerCase();
+  const alias = {
+    planned: "planning",
+    schemas_selected: "planning",
+    generated: "staging",
+    staged: "validating",
+  }[normalized];
+  const rows = OPERATIONAL_NARRATIVES[normalized]
+    || (alias ? OPERATIONAL_NARRATIVES[alias] : null)
+    || (normalized.startsWith("validated") ? OPERATIONAL_NARRATIVES.validating : null)
+    || OPERATIONAL_NARRATIVES.wave_execution;
+  return rows[Math.abs(Number(beat || 0)) % rows.length];
 }
 
 function sectionLabel(key) {
@@ -250,6 +402,7 @@ function sectionLabel(key) {
 
 const TERMINAL_BATCH_STATUSES = new Set([
   "preview_ready",
+  "clarification_required",
   "failed",
   "approved",
   "partially_approved",
@@ -378,10 +531,15 @@ function App() {
   const [focusObjectTypes, setFocusObjectTypes] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [activeRunStartedAtMs, setActiveRunStartedAtMs] = useState(null);
+  const [helpCenterUrl, setHelpCenterUrl] = useState("");
+  const [helpCenterArticleMode, setHelpCenterArticleMode] = useState("draft");
+  const [helpCenterReadiness, setHelpCenterReadiness] = useState(null);
   const [processingClockMs, setProcessingClockMs] = useState(() => Date.now());
+  const [chatSessionId, setChatSessionId] = useState(0);
   const lastContextSyncRef = useRef("");
   const lastContextErrorRef = useRef("");
   const conversationEndRef = useRef(null);
+  const terminalBatchNotifiedRef = useRef(new Set());
   const [zendeskValidated, setZendeskValidated] = useState(false);
   const [bootZendeskSession] = useState(() => readZendeskSessionCredentials());
   const [zendeskCredentials, setZendeskCredentials] = useState(() =>
@@ -423,64 +581,108 @@ function App() {
     ]);
   }, []);
 
+  const notifyGenerationTerminal = useCallback((data) => {
+    const resolvedBatchId = String(data?.batch_id || "").trim();
+    const status = String(data?.status || "").trim();
+    if (!resolvedBatchId || !["preview_ready", "failed", "clarification_required"].includes(status)) {
+      return;
+    }
+    if (terminalBatchNotifiedRef.current.has(resolvedBatchId)) return;
+    terminalBatchNotifiedRef.current.add(resolvedBatchId);
+    setBatchId(resolvedBatchId);
+
+    if (status === "failed") {
+      const failure = data?.metadata?.failure || {};
+      const reason = String(failure.failure_reason || "Generation failed in the background.");
+      const nextStep = String(failure.next_step || "Review the failed stage and retry the prompt.");
+      setLastFailureDetail({
+        stage: failure.failure_stage || "generate",
+        code: failure.failure_code || "generate_runtime_error",
+        reason,
+        nextStep,
+      });
+      appendActivity("error", `${reason} Next: ${nextStep}`);
+      appendTimeline("assistant", `Generation stopped: ${reason} Next: ${nextStep}`);
+      queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
+      return;
+    }
+
+    if (status === "clarification_required") {
+      appendActivity("warning", `Batch ${resolvedBatchId} needs clarification before generation can continue.`);
+      appendTimeline("assistant", "I need a little more detail before opening the generation waves.");
+      queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
+      return;
+    }
+
+    const generationSafety = data?.metadata?.generation_safety;
+    const focusDiagnostics = data?.metadata?.focus_diagnostics;
+    const assumptions = Array.isArray(data?.metadata?.inference_assumptions)
+      ? data.metadata.inference_assumptions
+      : [];
+    const assumptionMessages = assumptions
+      .map((item) => String(item?.message || "").trim())
+      .filter(Boolean);
+    setInferenceAssumptionMessages(assumptionMessages);
+    setChatHistory((prev) => [
+      ...prev,
+      `assistant: batch ${resolvedBatchId} ready (passed=${data.validation_summary?.passed || 0}, warnings=${data.validation_summary?.warnings || 0}, blocked=${data.validation_summary?.blocked || 0})`,
+    ]);
+    appendActivity(
+      "success",
+      `Batch ${resolvedBatchId} ready for review. Validation summary: passed=${data.validation_summary?.passed || 0}, warnings=${data.validation_summary?.warnings || 0}, blocked=${data.validation_summary?.blocked || 0}.`
+    );
+    if (generationSafety?.blocked) {
+      appendTimeline(
+        "assistant",
+        `Batch ${resolvedBatchId} generated, but deployment is blocked by safety checks. ${generationSafety.reasons?.join(" | ") || ""}`
+      );
+    } else {
+      appendTimeline(
+        "assistant",
+        `Batch ${resolvedBatchId} is ready for review (${data.validation_summary?.passed || 0} passed, ${data.validation_summary?.warnings || 0} warnings, ${data.validation_summary?.blocked || 0} blocked).`
+      );
+    }
+    if ((focusDiagnostics?.mismatch_count || 0) > 0) {
+      appendActivity(
+        "warning",
+        `Object focus mismatch: ${focusDiagnostics.mismatch_count} generated records are outside selected focus (${(focusDiagnostics.generated_types || []).join(", ")}).`
+      );
+    }
+    if (assumptionMessages.length > 0) {
+      appendActivity("warning", `Assumptions applied: ${assumptionMessages.join(" | ")}`);
+      appendTimeline("assistant", `Assumptions applied: ${assumptionMessages.join(" | ")}`);
+    }
+    queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
+    queryClient.invalidateQueries({ queryKey: ["job", resolvedBatchId] });
+    queryClient.invalidateQueries({ queryKey: ["checkpoints", resolvedBatchId] });
+    queryClient.invalidateQueries({ queryKey: ["preview", resolvedBatchId] });
+  }, [appendActivity, appendTimeline, queryClient, setBatchId]);
+
   const generateMutation = useMutation({
     mutationFn: generateBatch,
     onMutate: () => {
+      setBatchId(null);
+      setHelpCenterReadiness(null);
+      setHelpCenterArticleMode("draft");
       setActiveRunStartedAtMs(Date.now());
       setLastFailureDetail(null);
+      setShowProcessingDetails(true);
       appendActivity("info", "Started generate -> stage -> validate pipeline.");
-      appendTimeline("assistant", "Processing your request...");
+      appendTimeline("assistant", "I am preparing the operating-model run and will show each verified checkpoint here.");
     },
     onSuccess: (data) => {
       setBatchId(data.batch_id);
-      const generationSafety = data?.metadata?.generation_safety;
-      const focusDiagnostics = data?.metadata?.focus_diagnostics;
-      const assumptions = Array.isArray(data?.metadata?.inference_assumptions)
-        ? data.metadata.inference_assumptions
-        : [];
-      const assumptionMessages = assumptions
-        .map((item) => String(item?.message || "").trim())
-        .filter(Boolean);
-      setInferenceAssumptionMessages(assumptionMessages);
-      setChatHistory((prev) => [
-        ...prev,
-        `assistant: batch ${data.batch_id} ready (passed=${data.validation_summary?.passed || 0}, warnings=${data.validation_summary?.warnings || 0}, blocked=${data.validation_summary?.blocked || 0})`,
-      ]);
-      appendActivity(
-        "success",
-        `Batch ${data.batch_id} ready for review. Validation summary: passed=${data.validation_summary?.passed || 0}, warnings=${data.validation_summary?.warnings || 0}, blocked=${data.validation_summary?.blocked || 0}.`
-      );
-      if (generationSafety?.blocked) {
-        appendTimeline(
-          "assistant",
-          `Batch ${data.batch_id} generated, but deployment is blocked by safety checks. ${generationSafety.reasons?.join(" | ") || ""}`
-        );
+      queryClient.setQueryData(["job", data.batch_id], data);
+      if (["preview_ready", "failed", "clarification_required"].includes(String(data?.status || ""))) {
+        notifyGenerationTerminal(data);
       } else {
+        appendActivity("info", `Batch ${data.batch_id} is live. Progress polling is attached.`);
         appendTimeline(
           "assistant",
-          `Batch ${data.batch_id} is ready for review (${data.validation_summary?.passed || 0} passed, ${data.validation_summary?.warnings || 0} warnings, ${data.validation_summary?.blocked || 0} blocked).`
-        );
-      }
-      if ((focusDiagnostics?.mismatch_count || 0) > 0) {
-        appendActivity(
-          "warning",
-          `Object focus mismatch: ${focusDiagnostics.mismatch_count} generated records are outside selected focus (${(focusDiagnostics.generated_types || []).join(", ")}).`
-        );
-      }
-      if (assumptionMessages.length > 0) {
-        appendActivity(
-          "warning",
-          `Assumptions applied: ${assumptionMessages.join(" | ")}`
-        );
-        appendTimeline(
-          "assistant",
-          `Assumptions applied: ${assumptionMessages.join(" | ")}`
+          `Batch ${data.batch_id} is live. I am mapping the request before the first dependency wave opens.`
         );
       }
       queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
-      queryClient.invalidateQueries({ queryKey: ["job", data.batch_id] });
-      queryClient.invalidateQueries({ queryKey: ["checkpoints", data.batch_id] });
-      queryClient.invalidateQueries({ queryKey: ["preview", data.batch_id] });
     },
     onError: (error) => {
       const detail = parseFailureDetail(error);
@@ -544,7 +746,7 @@ function App() {
     enabled: Boolean(batchId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      if (!status) return 2500;
+      if (!status) return 1_500;
       if (
         [
           "preview_ready",
@@ -558,9 +760,18 @@ function App() {
       ) {
         return false;
       }
-      return 2500;
+      return 1_500;
     },
   });
+
+  useEffect(() => {
+    const status = String(jobQuery.data?.status || "");
+    if (["preview_ready", "failed", "clarification_required"].includes(status)) {
+      const timer = window.setTimeout(() => notifyGenerationTerminal(jobQuery.data), 0);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [jobQuery.data, notifyGenerationTerminal]);
 
   const approveMutation = useMutation({
     mutationFn: approveBatch,
@@ -590,9 +801,10 @@ function App() {
 
   const deployMutation = useMutation({
     mutationFn: deployBatch,
-    onMutate: () => {
-      appendActivity("info", "Deploying approved records to live Zendesk instance.");
-      appendTimeline("assistant", "Deploying approved records to Zendesk...");
+    onMutate: (variables) => {
+      const scope = variables?.deployment_scope === "help_center" ? "Help Center" : "Support";
+      appendActivity("info", `Deploying approved ${scope} records to the live Zendesk instance.`);
+      appendTimeline("assistant", `Deploying approved ${scope} records to Zendesk...`);
     },
     onSuccess: (data) => {
       const firstFailure = (data?.results || []).find((item) => item?.deployment_status === "failed");
@@ -616,6 +828,24 @@ function App() {
       const detail = parseFailureDetail(error);
       appendActivity("error", detail);
       appendTimeline("assistant", `Deploy failed: ${detail}`);
+    },
+  });
+
+  const helpCenterReadinessMutation = useMutation({
+    mutationFn: checkZendeskHelpCenterReadiness,
+    onMutate: () => {
+      appendActivity("info", "Verifying the target brand and Help Center with read-only Zendesk checks.");
+    },
+    onSuccess: (data) => {
+      setHelpCenterReadiness(data);
+      appendActivity(data?.ready ? "success" : "warning", data?.detail || "Help Center check completed.");
+      appendTimeline("assistant", data?.detail || "Help Center check completed.");
+    },
+    onError: (error) => {
+      const detail = parseFailureDetail(error);
+      setHelpCenterReadiness(null);
+      appendActivity("error", detail);
+      appendTimeline("assistant", `Help Center verification failed: ${detail}`);
     },
   });
 
@@ -709,7 +939,15 @@ function App() {
   const previewQuery = useQuery({
     queryKey: ["preview", batchId],
     queryFn: () => getPreview(batchId),
-    enabled: Boolean(batchId),
+    enabled: Boolean(
+      batchId
+      && (
+        PREVIEW_POLL_ACTIVE_STATUSES.has(String(jobQuery.data?.status || ""))
+        || ["approved", "partially_approved", "deployed", "deployed_partial", "deploy_failed"].includes(
+          String(jobQuery.data?.status || "")
+        )
+      )
+    ),
     refetchInterval: () => {
       if (!batchId) return false;
       const current = String(jobQuery.data?.status || "");
@@ -999,9 +1237,16 @@ function App() {
     .filter(Boolean)
     .map((err) => parseFailureDetail(err));
 
-  const generatedData = generateMutation.data;
-  const effectiveGenerateMetadata = generatedData?.metadata || jobQuery.data?.metadata || {};
   const previewData = previewQuery.data;
+  const generatedData = jobQuery.data
+    ? {
+        ...(generateMutation.data || {}),
+        ...jobQuery.data,
+        planning_summary: previewData?.planning_summary || {},
+        preview_url: batchId ? `/api/import-assistant/preview/${batchId}` : null,
+      }
+    : generateMutation.data;
+  const effectiveGenerateMetadata = jobQuery.data?.metadata || generatedData?.metadata || {};
   const historyItems = jobsQuery.data?.jobs || [];
   const contextCatalog = zendeskContextQuery.data?.catalogs || null;
   const selectedExistingItems = selectedRelatedObjects;
@@ -1031,7 +1276,7 @@ function App() {
   const articleFocusSelected = focusObjectTypes.includes("articles");
   const helpCentersLoaded = (contextCatalog?.help_centers || []).length > 0;
   const articleHelpCenterHint = articleFocusSelected && !helpCentersLoaded
-    ? "No help centers were returned from Zendesk context sync. Refresh context in Existing Context."
+    ? "No Help Center was confirmed for this brand. Content can still be generated, but deployment will require brand verification and may require manual Guide enablement."
     : "";
   const normalizedHistorySearch = historySearch.trim().toLowerCase();
   const filteredHistory = historyItems.filter((item) => {
@@ -1065,10 +1310,15 @@ function App() {
     setExistingItemBehavior("relate_or_update");
     setFocusObjectTypes([]);
     setAttachments([]);
+    setHelpCenterUrl("");
+    setHelpCenterArticleMode("draft");
+    setHelpCenterReadiness(null);
     setShowAdvancedCatalog(false);
     setActiveRunStartedAtMs(null);
+    setChatSessionId((value) => value + 1);
     lastContextSyncRef.current = "";
     lastContextErrorRef.current = "";
+    generateMutation.reset();
     resetFlow();
     resetZendeskValidation();
   };
@@ -1086,10 +1336,15 @@ function App() {
     setOnExistingMode("create_new");
     setFocusObjectTypes([]);
     setAttachments([]);
+    setHelpCenterUrl("");
+    setHelpCenterArticleMode("draft");
+    setHelpCenterReadiness(null);
     setShowAdvancedCatalog(false);
     setShowProcessingDetails(false);
     setShowExistingContext(false);
     setActiveRunStartedAtMs(null);
+    setChatSessionId((value) => value + 1);
+    generateMutation.reset();
     resetFlow();
     if (previousBatchId) {
       queryClient.removeQueries({ queryKey: ["job", previousBatchId] });
@@ -1101,6 +1356,8 @@ function App() {
 
   const selectHistoryBatch = (selectedBatchId) => {
     setBatchId(selectedBatchId);
+    setHelpCenterReadiness(null);
+    setHelpCenterArticleMode("draft");
     appendActivity("info", `Loaded batch ${selectedBatchId} from history.`);
     queryClient.invalidateQueries({ queryKey: ["job", selectedBatchId] });
     queryClient.invalidateQueries({ queryKey: ["preview", selectedBatchId] });
@@ -1156,6 +1413,7 @@ function App() {
         api_token: zendeskCredentials.api_token,
         dry_run: false,
         on_existing: onExistingMode,
+        deployment_scope: "support",
       });
     };
 
@@ -1241,6 +1499,7 @@ function App() {
         api_token: zendeskCredentials.api_token,
         dry_run: false,
         on_existing: onExistingMode,
+        deployment_scope: "support",
       });
     } catch (error) {
       appendActivity(
@@ -1250,26 +1509,77 @@ function App() {
     }
   };
 
+  const updateHelpCenterUrl = (value) => {
+    setHelpCenterUrl(value);
+    setHelpCenterReadiness(null);
+  };
+
+  const verifyHelpCenter = () => {
+    if (!zendeskValidated) {
+      appendActivity("error", "Validate the Zendesk session before checking Help Center readiness.");
+      return;
+    }
+    const targetUrl = helpCenterUrl.trim()
+      || `https://${zendeskCredentials.subdomain}.zendesk.com/hc/en-us`;
+    if (!helpCenterUrl.trim()) {
+      setHelpCenterUrl(targetUrl);
+    }
+    helpCenterReadinessMutation.mutate({
+      ...zendeskCredentials,
+      help_center_url: targetUrl,
+      brand_id: helpCenterReadiness?.brand?.id || null,
+    });
+  };
+
+  const deployHelpCenter = () => {
+    if (!batchId || !helpCenterReadiness?.ready) {
+      appendActivity("error", "Verify a ready Help Center before deploying knowledge content.");
+      return;
+    }
+    deployMutation.mutate({
+      batch_id: batchId,
+      subdomain: zendeskCredentials.subdomain,
+      email: zendeskCredentials.email,
+      api_token: zendeskCredentials.api_token,
+      dry_run: false,
+      on_existing: onExistingMode === "create_new" ? "skip_existing" : onExistingMode,
+      deployment_scope: "help_center",
+      help_center_url: helpCenterReadiness.help_center_url || helpCenterUrl,
+      brand_id: helpCenterReadiness.brand?.id || null,
+      locale: helpCenterReadiness.locale || "en-us",
+      article_mode: helpCenterArticleMode,
+      confirm_help_center_deploy: true,
+      confirm_article_publish: helpCenterArticleMode === "publish",
+    });
+  };
+
   const isWorking =
     generateMutation.isPending
     || approveMutation.isPending
     || deployMutation.isPending
-    || jobQuery.isFetching
+    || helpCenterReadinessMutation.isPending
+    || hasActiveBatchRun
     || attachmentExtractMutation.isPending;
 
   const currentPhaseLabel = (() => {
     if (attachmentExtractMutation.isPending) return "Extracting attachment context...";
+    if (helpCenterReadinessMutation.isPending) return "Verifying Help Center readiness...";
     if (deployMutation.isPending) return "Deploying approved records to Zendesk...";
     if (approveMutation.isPending) return "Writing approval decisions to Apps Script...";
     if (generateMutation.isPending) return "Generating and staging records...";
     const status = currentStatus || "";
     const phaseMap = {
+      received: "Preparing the run...",
       request_validated: "Validating request...",
       planning: "Planning configuration...",
       planned: "Plan ready.",
+      business_blueprinting: "Building department coverage blueprint...",
+      backlog_building: "Ordering dependency-safe work...",
+      wave_execution: "Running department generation waves...",
       clarification_required: "Waiting for clarification before generation...",
       schemas_selected: "Selecting schemas...",
       generating: "Generating records...",
+      supervisor_review: "Reviewing quality and applying safe patches...",
       generated: "Generation complete.",
       staging: "Writing to Apps Script/Sheets...",
       staged: "Rows staged.",
@@ -1294,7 +1604,7 @@ function App() {
   );
 
   const processingLines = useMemo(() => {
-    const runtimeMetadata = generatedData?.metadata || jobQuery.data?.metadata || {};
+    const runtimeMetadata = jobQuery.data?.metadata || generatedData?.metadata || {};
     const orchestration = runtimeMetadata?.orchestration || {};
     const supervisor = runtimeMetadata?.supervisor || {};
     const waveRows = Array.isArray(orchestration?.waves) ? orchestration.waves : [];
@@ -1307,6 +1617,12 @@ function App() {
         at: item.at || new Date().toISOString(),
         stage: item.status,
         text: humanizeStatusStep(item.status, item.message),
+        source: item.source || "pipeline",
+        provider: item.provider || null,
+        model: item.model || null,
+        wave: item.wave || null,
+        department: item.department || null,
+        objectType: item.object_type || null,
       }));
 
     if (waveRows.length > 0) {
@@ -1323,10 +1639,11 @@ function App() {
         })
         .filter(Boolean);
       if (waveProgress.length > 0) {
-        lines.unshift({
+        lines.push({
           at: new Date().toISOString(),
           stage: "wave_execution",
           text: waveProgress.slice(0, 2).join(" | "),
+          source: "orchestration_summary",
         });
       }
     }
@@ -1357,10 +1674,11 @@ function App() {
       } else {
         supervisorText = `Gemini supervisor unavailable: ${supervisor?.availability_reason || "not configured"}.`;
       }
-      lines.unshift({
+      lines.push({
         at: new Date().toISOString(),
         stage: "supervisor_review",
         text: supervisorText,
+        source: "supervisor_summary",
       });
     }
 
@@ -1401,26 +1719,78 @@ function App() {
   ]);
 
   const processingSnapshot = useMemo(() => {
-    const runtimeMetadata = generatedData?.metadata || jobQuery.data?.metadata || {};
+    const runtimeMetadata = jobQuery.data?.metadata || generatedData?.metadata || {};
     const progress = extractWaveChunkProgress(jobQuery.data?.status_history || [], runtimeMetadata);
     const fallbackStart = jobQuery.data?.created_at ? Date.parse(jobQuery.data.created_at) : null;
     const startAtMs = activeRunStartedAtMs || fallbackStart || null;
     const elapsedMs = startAtMs ? Math.max(0, processingClockMs - startAtMs) : 0;
     let etaMs = null;
-    if (progress.chunkTotal > 0 && progress.chunkIndex > 0 && progress.chunkTotal > progress.chunkIndex) {
-      const chunkAverage = elapsedMs / progress.chunkIndex;
-      etaMs = Math.max(0, Math.round(chunkAverage * (progress.chunkTotal - progress.chunkIndex)));
+    if (progress.progressFraction > 0.05 && progress.progressFraction < 1) {
+      etaMs = Math.max(
+        0,
+        Math.round((elapsedMs / progress.progressFraction) * (1 - progress.progressFraction))
+      );
     }
     const currentLine = processingLines[0];
+    const beat = Math.floor(elapsedMs / 7_000);
+    const activityStage = String(currentLine?.stage || currentStatus || "received");
+    const narrative = buildOperationalNarrative(activityStage, beat);
+    const lastUpdateAt = currentLine?.at ? Date.parse(currentLine.at) : null;
+    const lastUpdateSeconds = lastUpdateAt
+      ? Math.max(0, Math.floor((processingClockMs - lastUpdateAt) / 1000))
+      : null;
+    const completedRun = [
+      "preview_ready",
+      "approved",
+      "partially_approved",
+      "deployed",
+      "deployed_partial",
+    ].includes(String(currentStatus || ""));
+    const stoppedRun = ["failed", "clarification_required", "deploy_failed"].includes(
+      String(currentStatus || "")
+    );
+    const generationProgress = Math.min(Math.max(progress.progressPercent || 0, 0), 100);
+    const milestoneProgressByStage = {
+      received: 2,
+      request_validated: 5,
+      planning: 10,
+      planned: 15,
+      business_blueprinting: 18,
+      backlog_building: 22,
+      schemas_selected: 25,
+      generated: 76,
+      staging: 82,
+      staged: 89,
+      validating: 94,
+      validated_passed: 98,
+      validated_warning: 98,
+      validated_failed: 98,
+    };
+    let milestoneProgress = milestoneProgressByStage[activityStage];
+    if (["generating", "wave_execution"].includes(activityStage)) {
+      milestoneProgress = 25 + (generationProgress * 0.45);
+    } else if (activityStage === "supervisor_review") {
+      milestoneProgress = 30 + (generationProgress * 0.45);
+    }
+    if (!Number.isFinite(milestoneProgress)) {
+      milestoneProgress = generationProgress;
+    }
     return {
       badge: progress.badge || "Preparing run",
       elapsedLabel: formatDuration(elapsedMs),
-      etaLabel: etaMs === null ? "estimating" : formatDuration(etaMs),
+      etaLabel: completedRun ? "complete" : (stoppedRun ? "stopped" : (etaMs === null ? "estimating" : formatDuration(etaMs))),
       currentDoing: currentLine?.text || currentPhaseLabel,
+      why: narrative.why,
+      next: narrative.next,
+      progressPercent: completedRun ? 100 : Math.min(Math.round(milestoneProgress), 98),
+      lastUpdateLabel: lastUpdateSeconds === null
+        ? "connecting"
+        : (lastUpdateSeconds < 2 ? "just now" : `${lastUpdateSeconds}s ago`),
       lines: processingLines.slice(0, 8),
     };
   }, [
     activeRunStartedAtMs,
+    currentStatus,
     currentPhaseLabel,
     generatedData?.metadata,
     jobQuery.data,
@@ -1445,8 +1815,8 @@ function App() {
   }
 
   const processingPanelBg = darkMode
-    ? "rounded-lg border border-[#7B1FFF]/24 bg-[#120522]/60 p-3"
-    : "rounded-lg border border-slate-200 bg-slate-100 p-3";
+    ? "min-w-0 overflow-hidden rounded-lg border border-[#7B1FFF]/24 bg-[#120522]/60 p-3"
+    : "min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 p-3";
 
   const processingHeading = darkMode ? "text-slate-200" : "text-slate-800";
   const processingSubtext = darkMode ? "text-slate-400" : "text-slate-500";
@@ -1547,9 +1917,9 @@ function App() {
 
       <div className="relative z-10 xl:pl-[260px]">
         <header className="mx-auto flex max-w-[1480px] items-center justify-between gap-3 px-4 py-5 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3 xl:hidden">
+          <div className="flex shrink-0 items-center gap-3 xl:hidden">
             <img src={cxIcon} alt="CX" className="h-10 w-10 rounded-lg" />
-            <div>
+            <div className="hidden sm:block">
               <p className="font-semibold">CX Experts</p>
               <p className={`text-xs ${textSoft}`}>AI Assistant</p>
             </div>
@@ -1558,11 +1928,12 @@ function App() {
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              className={`${darkMode ? "" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"} gap-2`}
+              className={`${darkMode ? "" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"} h-10 w-10 gap-2 p-0 sm:w-auto sm:px-4`}
               onClick={() => setShowExistingContext((prev) => !prev)}
+              aria-label="Context"
             >
               <PanelRightOpen size={16} />
-              Context
+              <span className="hidden sm:inline">Context</span>
             </Button>
             <Button
               variant="outline"
@@ -1574,37 +1945,38 @@ function App() {
             </Button>
             <Button
               variant="primary"
-              className="gap-2 bg-[#7B1FFF] text-white hover:bg-[#9B35FF]"
+              className="h-10 w-10 gap-2 bg-[#7B1FFF] p-0 text-white hover:bg-[#9B35FF] sm:w-auto sm:px-4"
               onClick={startNewChat}
+              aria-label="New Chat"
             >
               <CirclePlus size={16} />
-              New Chat
+              <span className="hidden sm:inline">New Chat</span>
             </Button>
           </div>
         </header>
 
         <main className="mx-auto grid max-w-[1480px] gap-6 px-4 pb-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_330px] lg:px-8">
           <section className="min-w-0">
-            <div className={`relative overflow-hidden rounded-2xl border p-7 ${workspaceCard}`}>
-              <div className="relative z-10 max-w-xl pr-8">
-                <h1 className="text-3xl font-bold tracking-normal text-violet-600">Zendesk AI Import</h1>
+            <div className={`relative overflow-hidden rounded-2xl border p-5 sm:p-7 ${workspaceCard}`}>
+              <div className="relative z-10 max-w-xl pr-0 sm:pr-8">
+                <h1 className="text-2xl font-bold tracking-normal text-violet-600 sm:text-3xl">Zendesk AI Import</h1>
                 <p className={`mt-3 text-xl font-semibold ${sectionTitle}`}>What would you like to build today?</p>
                 <p className={`mt-3 max-w-xl text-sm leading-6 ${textSoft}`}>
                   Generate Zendesk configurations, automate workflows, and create help center content with AI.
                 </p>
               </div>
-              <div className="pointer-events-none absolute inset-y-0 right-0 w-2/3 opacity-70">
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-full opacity-20 sm:w-2/3 sm:opacity-70">
                 <img src={darkMode ? cxHeroBanner : cxHeroLight} alt="" className={`h-full w-full ${
       darkMode
-        ? "object-cover object-right opacity-80"
-        : "object-cover object-center opacity-100"
+        ? "object-cover object-right opacity-40 sm:opacity-80"
+        : "object-cover object-center opacity-30 sm:opacity-100"
     }`} />
               </div>
             </div>
 
             <div className="mt-6">
               <h2 className={`mb-3 text-sm font-semibold ${sectionTitle}`}>Quick Actions</h2>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
                 {QUICK_ACTIONS.map((action) => {
   const Icon = action.icon;
   return (
@@ -1612,7 +1984,7 @@ function App() {
       key={action.label}
       type="button"
       onClick={() => setExternalPrompt(action.prompt)}
-      className={`rounded-lg border p-4 text-left transition ${hoverCard}`}
+      className={`min-h-[142px] rounded-lg border p-4 text-left transition ${hoverCard}`}
     >
       <Icon className={`h-8 w-8 ${action.color}`} />
       <p className={`mt-3 text-sm font-semibold ${sectionTitle}`}>{action.label}</p>
@@ -1625,6 +1997,7 @@ function App() {
 
             <div className="mt-4">
               <PromptComposer
+                key={chatSessionId}
                 embedded
                 compact
                 darkMode={darkMode}
@@ -1690,11 +2063,11 @@ function App() {
                   {timeline.length > 0 ? (
                     timeline.slice(-4).map((entry) => (
                       <div key={entry.id} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
-                        <div>
-                          <p className={sectionTitle}>{entry.text}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className={`${sectionTitle} break-words`}>{entry.text}</p>
                           <p className={`mt-1 text-xs ${textSoft}`}>{entry.role} - {new Date(entry.at).toLocaleTimeString()}</p>
                         </div>
-                        <ChevronRight className={textSoft} size={18} />
+                        <ChevronRight className={`${textSoft} shrink-0`} size={18} />
                       </div>
                     ))
                   ) : (
@@ -1720,24 +2093,90 @@ function App() {
               <button
                 type="button"
                 onClick={() => setShowProcessingDetails((prev) => !prev)}
-                className="flex w-full items-center justify-between text-left"
+                className="flex w-full flex-col items-start justify-between gap-3 text-left sm:flex-row sm:gap-4"
+                aria-expanded={showProcessingDetails}
+                aria-label={showProcessingDetails ? "Hide activity history" : "Show activity history"}
               >
-                <div>
-                  <p className={`text-sm font-semibold ${processingHeading}`}>
-                    {isWorking ? "Processing..." : "Processing details"}
-                  </p>
-                  <p className={`text-xs ${processingSubtext}`}>{currentPhaseLabel}</p>
-                  <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${processingBody}`}>
-                    <span className={badgePill}>{processingSnapshot.badge}</span>
-                    <span>Elapsed: {processingSnapshot.elapsedLabel}</span>
-                    <span>ETA: {processingSnapshot.etaLabel}</span>
-                    {pendingCheckpointCount > 0 ? (
-                      <span>Checkpoints: {pendingCheckpointCount}</span>
-                    ) : null}
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${darkMode ? "bg-[#7B1FFF]/18 text-[#B994FF]" : "bg-violet-100 text-violet-700"}`}>
+                    {isWorking ? (
+                      <LoaderCircle className="animate-spin" size={17} aria-hidden="true" />
+                    ) : (
+                      <Activity size={17} aria-hidden="true" />
+                    )}
+                  </span>
+                  <div className="min-w-0">
+                    <p className={`text-sm font-semibold ${processingHeading}`}>
+                      {isWorking ? "Live build activity" : "Run activity"}
+                    </p>
+                    <p className={`mt-0.5 text-xs ${processingSubtext}`}>{currentPhaseLabel}</p>
                   </div>
                 </div>
-                <span className={`text-xs ${textSoft}`}>{showProcessingDetails ? "Hide" : "Show"}</span>
+                <div className="flex w-full min-w-0 items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
+                  <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${processingBody}`}>
+                    <span className={`${badgePill} max-w-full break-words`}>{processingSnapshot.badge}</span>
+                  </div>
+                  <ChevronRight
+                    className={`mt-2 transition-transform ${showProcessingDetails ? "rotate-90" : ""} ${textSoft}`}
+                    size={17}
+                    aria-hidden="true"
+                  />
+                </div>
               </button>
+
+              {(isWorking || processingSnapshot.progressPercent > 0) ? (
+                <div className="mt-3">
+                  <div className={`flex items-center justify-between text-[11px] ${processingBody}`}>
+                    <span>Elapsed {processingSnapshot.elapsedLabel}</span>
+                    <span>{processingSnapshot.progressPercent}% | ETA {processingSnapshot.etaLabel}</span>
+                  </div>
+                  <div className={`mt-1.5 h-1.5 w-full overflow-hidden rounded-full ${darkMode ? "bg-white/10" : "bg-slate-200"}`}>
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-[width] duration-700 ease-out"
+                      style={{ width: `${Math.max(processingSnapshot.progressPercent, isWorking ? 2 : 0)}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {(batchId || isWorking) ? (
+                <div
+                  className={`mt-3 border-t pt-3 ${darkMode ? "border-[#7B1FFF]/20" : "border-slate-200"}`}
+                  aria-live="polite"
+                >
+                <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:gap-3">
+                  <div className="min-w-0">
+                    <p className={`text-[11px] font-semibold uppercase tracking-normal ${processingSubtext}`}>
+                      Working on now
+                    </p>
+                    <p className={`mt-1 break-words text-sm leading-5 ${processingHeading}`}>
+                      {processingSnapshot.currentDoing}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 text-[11px] ${processingSubtext}`}>
+                    Updated {processingSnapshot.lastUpdateLabel}
+                  </span>
+                </div>
+
+                <div className={`mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2 ${darkMode ? "border-white/8" : "border-slate-200"}`}>
+                  <div className="flex min-w-0 items-start gap-2">
+                    <ShieldCheck className="mt-0.5 shrink-0 text-emerald-500" size={15} aria-hidden="true" />
+                    <div className="min-w-0">
+                      <p className={`text-[11px] font-semibold ${processingHeading}`}>Why this matters</p>
+                      <p className={`mt-1 break-words text-xs leading-5 ${processingBody}`}>{processingSnapshot.why}</p>
+                    </div>
+                  </div>
+                  <div className="flex min-w-0 items-start gap-2">
+                    <ArrowRight className="mt-0.5 shrink-0 text-blue-500" size={15} aria-hidden="true" />
+                    <div className="min-w-0">
+                      <p className={`text-[11px] font-semibold ${processingHeading}`}>Next checkpoint</p>
+                      <p className={`mt-1 break-words text-xs leading-5 ${processingBody}`}>{processingSnapshot.next}</p>
+                    </div>
+                  </div>
+                </div>
+                </div>
+              ) : null}
+
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
@@ -1745,6 +2184,7 @@ function App() {
                   size="sm"
                   onClick={() => sendRunControl("pause")}
                   disabled={!canControlRun || runControlMutation.isPending || runControlState.pause_requested}
+                  className={darkMode ? "" : "text-slate-700 disabled:text-slate-500"}
                 >
                   Visual Pause
                 </Button>
@@ -1754,6 +2194,7 @@ function App() {
                   size="sm"
                   onClick={() => sendRunControl("resume")}
                   disabled={!canControlRun || runControlMutation.isPending || !runControlState.pause_requested}
+                  className={darkMode ? "" : "text-slate-700 disabled:text-slate-500"}
                 >
                   Resume
                 </Button>
@@ -1763,16 +2204,24 @@ function App() {
                   size="sm"
                   onClick={() => sendRunControl("cancel")}
                   disabled={!canControlRun || runControlMutation.isPending || runControlState.cancel_requested}
+                  className={darkMode ? "" : "text-slate-700 disabled:text-slate-500"}
                 >
                   Cancel
                 </Button>
               </div>
               {showProcessingDetails ? (
                 <div className={processingDetailLines}>
+                  <p className={`pb-1 text-[11px] font-semibold uppercase tracking-normal ${processingSubtext}`}>
+                    Verified event history
+                  </p>
                   {processingSnapshot.lines.map((line, idx) => (
-                    <p key={`${idx}-${line.at}-${line.text}`}>
-                      [{new Date(line.at).toLocaleTimeString()}] {line.stage}: {line.text}
-                    </p>
+                    <div key={`${idx}-${line.at}-${line.text}`} className="grid min-w-0 grid-cols-[4.25rem_minmax(0,1fr)] gap-2 py-1">
+                      <span className={processingSubtext}>{new Date(line.at).toLocaleTimeString()}</span>
+                      <p className="min-w-0 break-words">
+                        <span className="font-medium">{line.stage}</span>
+                        {line.provider ? ` | ${line.provider}` : ""}: {line.text}
+                      </p>
+                    </div>
                   ))}
                   {attachments.length > 0 ? (
                     <p className={`text-[11px] ${textSoft}`}>Attachment context: {attachmentSummaryText}</p>
@@ -2064,6 +2513,15 @@ function App() {
               onDeployToZendesk={deployToZendesk}
               isDeploying={deployMutation.isPending}
               deployResult={deployMutation.data}
+              deploymentMetadata={jobQuery.data?.metadata?.zendesk_deploy || null}
+              helpCenterUrl={helpCenterUrl}
+              onHelpCenterUrlChange={updateHelpCenterUrl}
+              helpCenterReadiness={helpCenterReadiness}
+              onVerifyHelpCenter={verifyHelpCenter}
+              isVerifyingHelpCenter={helpCenterReadinessMutation.isPending}
+              helpCenterArticleMode={helpCenterArticleMode}
+              onHelpCenterArticleModeChange={setHelpCenterArticleMode}
+              onDeployHelpCenter={deployHelpCenter}
             />
           </div>
         </main>

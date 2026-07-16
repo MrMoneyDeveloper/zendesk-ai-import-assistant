@@ -27,6 +27,10 @@ function doGet(e) {
       return jsonResponse_(getExecutionSummary({ batch_id: getRequestParam_(e, 'batch_id') }));
     }
 
+    if (action === 'get_batch_operational_state') {
+      return jsonResponse_(getBatchOperationalState({ batch_id: getRequestParam_(e, 'batch_id') }));
+    }
+
     return jsonResponse_({ ok: false, action: action, error: 'Unsupported GET action.' });
   } catch (error) {
     return jsonResponse_({ ok: false, action: 'error', error: String(error.message || error) });
@@ -62,6 +66,14 @@ function doPost(e) {
       return jsonResponse_(writeBatchToSheets(payload));
     }
 
+    if (action === 'write_batch_metadata') {
+      return jsonResponse_(writeBatchMetadata(payload));
+    }
+
+    if (action === 'append_progress_events') {
+      return jsonResponse_(appendProgressEvents(payload));
+    }
+
     if (action === 'validate_batch') {
       return jsonResponse_(validateBatch(payload));
     }
@@ -86,6 +98,10 @@ function doPost(e) {
       return jsonResponse_(getExecutionSummary(payload));
     }
 
+    if (action === 'get_batch_operational_state') {
+      return jsonResponse_(getBatchOperationalState(payload));
+    }
+
     return jsonResponse_({ ok: false, action: action, error: 'Unsupported POST action.' });
   } catch (error) {
     return jsonResponse_({ ok: false, action: 'error', error: String(error.message || error) });
@@ -95,9 +111,16 @@ function doPost(e) {
 function stageValidatePreviewPipeline_(payload) {
   const input = payload || {};
   const batchId = requireBatchId_(input.batch_id);
+  const startedAt = Date.now();
+  const stagingStartedAt = Date.now();
   const staging = writeBatchToSheets(input);
+  const stagingElapsedMs = Date.now() - stagingStartedAt;
+  const validationStartedAt = Date.now();
   const validation = validateBatch({ batch_id: batchId });
+  const validationElapsedMs = Date.now() - validationStartedAt;
+  const previewStartedAt = Date.now();
   const preview = getBatchPreview({ batch_id: batchId });
+  const previewElapsedMs = Date.now() - previewStartedAt;
 
   const previewRecords = Array.isArray(preview && preview.records) ? preview.records : [];
   return {
@@ -110,9 +133,17 @@ function stageValidatePreviewPipeline_(payload) {
       request_rows_written: Number((staging && staging.request_rows_written) || 0),
       planning_rows_written: Number((staging && staging.planning_rows_written) || 0),
       total_records: Number((staging && staging.total_records) || 0),
+      metadata_rows_written: Number((staging && staging.metadata_rows_written) || 0),
+      progress_rows_written: Number((staging && staging.progress_rows_written) || 0),
       validated_rows: Number((validation && validation.validated_rows) || 0),
       preview_records: previewRecords.length,
-      validation_summary: (validation && validation.summary) || {}
+      validation_summary: (validation && validation.summary) || {},
+      timings_ms: {
+        staging: stagingElapsedMs,
+        validation: validationElapsedMs,
+        preview: previewElapsedMs,
+        total: Date.now() - startedAt
+      }
     },
     staging: staging || {},
     validation: validation || {},

@@ -103,6 +103,7 @@ def _build_plan_from_payload(payload: dict, cleaned_prompt: str, route) -> dict:
     confidence = min(max(confidence, 0.0), 1.0)
     ambiguity_score = float(payload.get("ambiguity_score", 0.5))
     ambiguity_score = min(max(ambiguity_score, 0.0), 1.0)
+    telemetry = GrokClient.get_last_call_metrics(route.task)
     return {
         "object_type": _normalize_object_type(str(payload.get("object_type", "triggers"))),
         "intent": str(payload.get("intent", cleaned_prompt)),
@@ -116,9 +117,10 @@ def _build_plan_from_payload(payload: dict, cleaned_prompt: str, route) -> dict:
         "dependency_notes": str(payload.get("dependency_notes", "")),
         "llm": {
             "task": route.task,
-            "model": route.model,
+            "model": str(telemetry.get("model") or route.model),
+            "provider": str(telemetry.get("provider") or ""),
             "strict_schema": route.strict_schema,
-            "telemetry": GrokClient.get_last_call_metrics(route.task),
+            "telemetry": telemetry,
         },
     }
 

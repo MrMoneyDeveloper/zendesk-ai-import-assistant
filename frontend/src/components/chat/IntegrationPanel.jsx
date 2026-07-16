@@ -39,6 +39,11 @@ export default function IntegrationPanel({
   const plannerRoute = llmRoutes?.planner || null;
   const generatorRoute = llmRoutes?.generator || null;
   const geminiRoute = llmRoutes?.gemini_supervisor || null;
+  const defaultProvider = llmRoutes?.default_provider || "groq";
+  const defaultModel = llmRoutes?.default_model || generatorRoute?.model || "unknown";
+  const fallbackPolicy = llmRoutes?.fallback_policy || {};
+  const narratorRoute = llmRoutes?.progress_narrator || {};
+  const narrationState = generateMetadata?.progress_narration || {};
   const supervisorState = generateMetadata?.supervisor || {};
   const supervisorReviews = Array.isArray(supervisorState?.reviews) ? supervisorState.reviews : [];
   const latestSupervisorReview = supervisorReviews.at(-1) || null;
@@ -60,6 +65,7 @@ export default function IntegrationPanel({
     return acc;
   }, {});
   const fallbackEntries = Object.entries(fallbackCounts);
+  const providerFailoverChunks = chunkRows.filter((chunk) => chunk?.provider_fallback_used).length;
 
   // Theme-aware class sets
   const panel = darkMode
@@ -180,15 +186,21 @@ export default function IntegrationPanel({
           {plannerRoute || generatorRoute || geminiRoute ? (
             <div className={divider}>
               <p className={`mb-1 font-semibold ${headingText}`}>LLM orchestration</p>
+              <p className={mutedText}>
+                default: <span className={monoText}>{defaultProvider} / {defaultModel}</span>
+                {defaultProvider === "gemini"
+                  ? ` | Groq after ${Number(fallbackPolicy.gemini_max_retries || 0) + 1} failed attempts`
+                  : ""}
+              </p>
               {plannerRoute ? (
                 <p className={mutedText}>
-                  planner: <span className={monoText}>{plannerRoute.model}</span> | strict schema:{" "}
+                  planner fallback: <span className={monoText}>{plannerRoute.model}</span> | strict schema:{" "}
                   {String(plannerRoute.strict_schema)}
                 </p>
               ) : null}
               {generatorRoute ? (
                 <p className={mutedText}>
-                  generator: <span className={monoText}>{generatorRoute.model}</span> | strict schema:{" "}
+                  generator fallback: <span className={monoText}>{generatorRoute.model}</span> | strict schema:{" "}
                   {String(generatorRoute.strict_schema)}
                 </p>
               ) : null}
@@ -221,6 +233,19 @@ export default function IntegrationPanel({
               {supervisorRetryAttempts.length > 0 || supervisorBlockedChunks.length > 0 ? (
                 <p className={`mt-1 ${supervisorBlockedChunks.length > 0 ? warningText : mutedText}`}>
                   Quality recovery: retries={supervisorRetryAttempts.length}, blocked chunks={supervisorBlockedChunks.length}
+                </p>
+              ) : null}
+              {providerFailoverChunks > 0 ? (
+                <p className={`mt-1 ${warningText}`}>
+                  Provider recovery: {providerFailoverChunks} chunk(s) moved from Gemini to Groq.
+                </p>
+              ) : null}
+              {narratorRoute?.enabled ? (
+                <p className={`mt-1 ${mutedText}`}>
+                  Progress narration: {narratorRoute.provider} / <span className={monoText}>{narratorRoute.model}</span>
+                  {narrationState?.completed_calls !== undefined
+                    ? ` | ${Number(narrationState.completed_calls || 0)} wave summaries`
+                    : ""}
                 </p>
               ) : null}
               {generateMetadata?.ambiguity_score !== undefined ? (

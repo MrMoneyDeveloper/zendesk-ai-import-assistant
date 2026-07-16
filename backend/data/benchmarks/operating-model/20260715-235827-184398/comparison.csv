@@ -1,0 +1,2 @@
+variant,status,batch_id,wall_time_seconds,record_count,passed,warnings,blocked,coverage_status,supervisor_calls,generator_calls,total_model_calls,input_tokens,output_tokens,thought_tokens,total_tokens,retries,template_first_chunks,model_routed_chunks,fallback_chunks,avg_quality_score,avg_article_body_chars,avg_macro_body_chars,patches_applied,blocked_chunks
+hybrid,preview_ready,BATCH-20260715-235827-D82E50,205.95,119,0,119,0,passed,35,15,50,608197,24575,0,632772,0,50,14,0,0.97,986.21,524.52,52,0

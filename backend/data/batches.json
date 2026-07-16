@@ -105925,6 +105925,2565 @@
         },
         "failure": null
       }
+    },
+    "BATCH-20260716-030017-7E5ECD": {
+      "batch_id": "BATCH-20260716-030017-7E5ECD",
+      "status": "preview_ready",
+      "prompt": "Create 6 production-ready triggers for Customer Support and Claims & Incidents. Route new support requests to the Customer Support group and claim or incident requests to the Claims & Incidents group, exclude closed tickets, add clear workflow tags, and include descriptive dependency notes. Generate and stage a preview only; do not deploy.",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-07-16T03:00:17.250518+00:00",
+      "updated_at": "2026-07-16T03:01:32.163892+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted. Preparing the department manifest, dependency order, and model lanes.",
+          "at": "2026-07-16T03:00:17.250518+00:00",
+          "source": "pipeline"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-07-16T03:00:22.650370+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Large multi-item prompt detected; forcing wave/chunk orchestration (multi_object_target_prompt).",
+          "at": "2026-07-16T03:00:22.920573+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-07-16T03:00:23.115225+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-07-16T03:00:26.383202+00:00"
+        },
+        {
+          "status": "business_blueprinting",
+          "message": "Compiling business brief into executable blueprint.",
+          "at": "2026-07-16T03:00:26.631988+00:00"
+        },
+        {
+          "status": "backlog_building",
+          "message": "Building deterministic backlog and dependency order.",
+          "at": "2026-07-16T03:00:29.057991+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-07-16T03:00:29.265058+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-07-16T03:00:29.509032+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "Executing deterministic orchestration waves.",
+          "at": "2026-07-16T03:00:29.724128+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "Wave 1/1 started: building routing triggers, time-based automations, and agent macros. The queue contains 1 triggers work item(s) across triggers; each result is checked before the next dependency wave opens.",
+          "at": "2026-07-16T03:00:29.947675+00:00",
+          "event_id": "EVT-1C0ABC7814D2",
+          "source": "deterministic",
+          "wave": 4
+        },
+        {
+          "status": "wave_execution",
+          "message": "Wave 1/1, triggers: building 3 triggers record(s) in chunk 1/2 using Gemini as the primary drafting model. Names and dependencies stay explicit so Zendesk IDs can be resolved only during deployment.",
+          "at": "2026-07-16T03:00:30.290823+00:00",
+          "event_id": "EVT-2BD9641A3B4B",
+          "source": "deterministic",
+          "wave": 4,
+          "object_type": "triggers"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 1/1 triggers chunk 2/2 (0.20s).",
+          "at": "2026-07-16T03:00:33.715083+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing triggers chunk 1/2 for safe patches.",
+          "at": "2026-07-16T03:00:34.124198+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "Wave 1/1, triggers: building 3 triggers record(s) in chunk 2/2 using Gemini as the primary drafting model. Names and dependencies stay explicit so Zendesk IDs can be resolved only during deployment.",
+          "at": "2026-07-16T03:00:35.024307+00:00",
+          "event_id": "EVT-BC24C3C9CFA4",
+          "source": "deterministic",
+          "wave": 4,
+          "object_type": "triggers"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for triggers chunk 1/2; applied=2.",
+          "at": "2026-07-16T03:00:39.491188+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Waiting for 2 Gemini supervisor review(s) before wave 1/1 checkpoint.",
+          "at": "2026-07-16T03:00:44.371218+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing triggers chunk 2/2 for safe patches.",
+          "at": "2026-07-16T03:00:44.693026+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for triggers chunk 2/2; applied=2.",
+          "at": "2026-07-16T03:00:48.470348+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini supervisor reviews settled before wave 1/1 checkpoint; records=6 dropped_after_patch=0.",
+          "at": "2026-07-16T03:00:48.844960+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "Wave 1/1 completed with 6 record(s) from 2 chunk(s) and 0 blocked item(s); the cumulative operating model now contains 6 record(s). Supervisor result: The requested triggers have been successfully staged across two chunks. Triggers correctly route tickets based on form ID and ticket type, exclude closed status via logic (as requested), and use descriptive tags. All group IDs are correctly linked to a placeholder variable for staging; production deployment will require substituting the placeholder 27445104311324 with the actual department IDs. Next: drafting Help Center articles into the generated topic structure.",
+          "at": "2026-07-16T03:00:49.195589+00:00",
+          "event_id": "EVT-9E2E7F441169",
+          "source": "deterministic",
+          "wave": 4
+        },
+        {
+          "status": "generating",
+          "message": "Checkpoint CHK-04-EDCE5C62 created for wave 1/1. Generation continues while confirmation is pending.",
+          "at": "2026-07-16T03:00:49.886870+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "All 6 triggers have been staged across two chunks, routing tickets by form ID and type, excluding closed status, and tagging descriptively. Group IDs are linked to a placeholder variable; production will replace it with real IDs. Next, we\u2019ll draft Help Center articles for the new topic structure.",
+          "at": "2026-07-16T03:00:51.486661+00:00",
+          "event_id": "EVT-081D83B6C934",
+          "source": "model_narrator",
+          "provider": "Groq",
+          "model": "openai/gpt-oss-20b",
+          "wave": 4
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-07-16T03:00:55.144850+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-07-16T03:00:55.440997+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Combined Apps Script pipeline unavailable; using legacy staging/validation/preview actions.",
+          "at": "2026-07-16T03:00:58.595932+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-07-16T03:01:09.481145+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-07-16T03:01:09.775936+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-07-16T03:01:28.116604+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-07-16T03:01:28.420696+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "triggers",
+          "title": "Route Support Requests to Customer Support Group",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Requires Customer Support group_id mapping; using placeholder 27445104311324",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (multi_object_target_prompt); 1 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "solved",
+              "operator": "less_than"
+            },
+            {
+              "field": "ticket_form_id",
+              "value": "21090782972828",
+              "operator": "is"
+            }
+          ],
+          "actions": [
+            {
+              "field": "group_id",
+              "value": "27445104311324"
+            },
+            {
+              "field": "set_tags",
+              "value": "workflow_customer_support"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0002",
+          "object_type": "triggers",
+          "title": "Route Claims & Incidents to Claims Group",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Requires specific Claims & Incidents group_id; using placeholder 27445104311324",
+            "Gemini supervisor: Dependency: Needs separate mapping for Claims & Incidents group (currently using fallback placeholder).",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (multi_object_target_prompt); 1 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "solved",
+              "operator": "less_than"
+            },
+            {
+              "field": "ticket_form_id",
+              "value": "28398755047708",
+              "operator": "is"
+            }
+          ],
+          "actions": [
+            {
+              "field": "group_id",
+              "value": "27445104311324"
+            },
+            {
+              "field": "set_tags",
+              "value": "workflow_claims_incidents claims_workflow_init"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0003",
+          "object_type": "triggers",
+          "title": "Tag Support Tickets as New",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "General triage tag for support workflows",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (multi_object_target_prompt); 1 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "new",
+              "operator": "is"
+            }
+          ],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "triage_new"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0004",
+          "object_type": "triggers",
+          "title": "Add Support Workflow Tags",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Depends on ticket_form_id 21090782972828; backlog_id=BL-002.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (multi_object_target_prompt); 1 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "new",
+              "operator": "is"
+            },
+            {
+              "field": "ticket_form_id",
+              "value": "21090782972828",
+              "operator": "is"
+            }
+          ],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "support_inbound workflow_standard"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0005",
+          "object_type": "triggers",
+          "title": "Route Incident Requests to Claims & Incidents",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Uses placeholder group_id 27445104311324 for Claims & Incidents; backlog_id=BL-002.",
+            "Gemini supervisor: Warning: Ensure target group_id is updated from placeholder 27445104311324 to the production Claims group ID.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (multi_object_target_prompt); 1 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "new",
+              "operator": "is"
+            },
+            {
+              "field": "ticket_type",
+              "value": "incident",
+              "operator": "is"
+            }
+          ],
+          "actions": [
+            {
+              "field": "group_id",
+              "value": "27445104311324"
+            },
+            {
+              "field": "set_tags",
+              "value": "incident_workflow priority_review"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        },
+        {
+          "record_id": "REC-0006",
+          "object_type": "triggers",
+          "title": "Notify Claims Management on Urgent Issues",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Requires active group_id 27445104311324; ensures priority routing; backlog_id=BL-002.",
+            "Gemini supervisor: Warning: Ensure target group_id is updated from placeholder 27445104311324 to the production Claims group ID.",
+            "Inference assumptions applied: Smart Auto activated business blueprint orchestration (multi_object_target_prompt); 1 backlog items scheduled across waves."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "status",
+              "value": "new",
+              "operator": "is"
+            },
+            {
+              "field": "priority",
+              "value": "high",
+              "operator": "is"
+            },
+            {
+              "field": "group_id",
+              "value": "27445104311324",
+              "operator": "is"
+            }
+          ],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "urgent_claims_review"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        }
+      ],
+      "generated_counts": {
+        "triggers": 6
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 6,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Create 6 production-ready triggers to route tickets into Customer Support and Claims & Incidents groups, including tag-based workflows and status exclusion filters.",
+        "confidence": 0.85,
+        "ambiguity_score": 0.2,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Specific group IDs for 'Customer Support' and 'Claims & Incidents' are missing from the reference catalog.",
+          "Tag naming conventions for the 'clear workflow tags' requirement were not explicitly provided."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [
+          "triggers"
+        ],
+        "dependency_notes": "Triggers will be staged as a preview. They will depend on the existence of groups identified by the specific names provided. If groups do not exist, they must be created prior to deployment. Workflow tags will follow a standard prefix pattern (e.g., 'workflow_support' and 'workflow_claims').",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 2,
+          "ticket_forms": 2,
+          "triggers": 2,
+          "automations": 2
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 10,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "gemini-3.1-flash-lite",
+          "provider": "Gemini",
+          "strict_schema": false,
+          "telemetry": {
+            "task": "planner",
+            "model": "gemini-3.1-flash-lite",
+            "api_key_profile": "gemini_e3931441c2",
+            "final_status": "ok",
+            "http_status": 200,
+            "attempt_count": 1,
+            "retry_count": 0,
+            "estimated_tokens": 719,
+            "input_tokens": 819,
+            "output_tokens": 236,
+            "thought_tokens": 0,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 1055,
+            "elapsed_ms": 3062.43,
+            "pre_request_wait_ms": 0.0,
+            "error_class": "none",
+            "breaker_state": "closed",
+            "http_statuses": [
+              200
+            ],
+            "provider": "Gemini",
+            "selected_provider": "gemini",
+            "fallback_used": false
+          }
+        },
+        "orchestration_mode": "business_blueprint"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "planning": {
+          "planner_bypassed": false,
+          "mode": "llm",
+          "estimated_requested_records": 6,
+          "force_wave_chunk_path": true,
+          "force_wave_chunk_reason": "multi_object_target_prompt"
+        },
+        "orchestration": {
+          "mode": "business_blueprint",
+          "activation_reason": "multi_object_target_prompt",
+          "blueprint": {
+            "mode": "compiler",
+            "capabilities": [],
+            "assumptions": [],
+            "priorities": [],
+            "dependency_hints": [],
+            "coverage_manifest": {
+              "enabled": false,
+              "profile": "none",
+              "reason": "fewer_than_two_named_departments",
+              "departments": [],
+              "explicit_forms": [],
+              "ticket_fields": [],
+              "help_center_topics": [],
+              "tags": []
+            },
+            "target_objects": [
+              {
+                "object_type": "groups",
+                "target_count": 1,
+                "priority": 2,
+                "wave": 2,
+                "source": "fallback"
+              },
+              {
+                "object_type": "triggers",
+                "target_count": 6,
+                "priority": 4,
+                "wave": 4,
+                "source": "fallback"
+              }
+            ]
+          },
+          "backlog_size": 1,
+          "waves": [
+            {
+              "wave": 4,
+              "position": 1,
+              "total_waves": 1,
+              "generator_model": "openai/gpt-oss-20b",
+              "status": "completed",
+              "items": [
+                {
+                  "backlog_id": "BL-002",
+                  "object_type": "triggers",
+                  "target_count": 6,
+                  "generator_model": "openai/gpt-oss-20b",
+                  "reconcile_mode": "create",
+                  "match_score": 0.0,
+                  "match_source": "none",
+                  "base_object": null,
+                  "status": "completed",
+                  "chunks": 2,
+                  "generated_records": 6,
+                  "deduped_records_added": 6
+                }
+              ],
+              "created": 1,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "chunks": 2,
+              "generated_records": 6,
+              "deduped_records_added": 6,
+              "checkpoint_id": "CHK-04-EDCE5C62"
+            }
+          ],
+          "reconciliation_summary": {
+            "create": 1,
+            "reuse": 0,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": [],
+          "final_status": "ok",
+          "generated_records": 6,
+          "template_usage": {
+            "applied_count": 0,
+            "template_keys": []
+          },
+          "taxonomy_resolution": {
+            "resolved_links": 0,
+            "unresolved_links": 0,
+            "unresolved_samples": []
+          }
+        },
+        "chunking": {
+          "activated": true,
+          "estimated_requested_records": 6,
+          "chunk_size": 3,
+          "max_chunks": 12,
+          "trigger_min_records": 3,
+          "total_chunks": 2,
+          "chunk_targets": [
+            3,
+            3
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "numeric_intent"
+          ],
+          "numeric_matches": [
+            {
+              "value": 6,
+              "object_hint": "triggers",
+              "raw": "6 production-ready triggers"
+            }
+          ],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 2,
+              "target_records": 3,
+              "generated_records": 3,
+              "deduped_records_added": 3,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "attempt_count": 1,
+              "elapsed_ms": 3080.76,
+              "estimated_tokens": 1566,
+              "input_tokens": 1732,
+              "output_tokens": 363,
+              "total_tokens": 2095,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "gemini-3.1-flash-lite",
+              "provider": "Gemini",
+              "selected_provider": "gemini",
+              "provider_chain": null,
+              "provider_fallback_used": false,
+              "provider_fallback_reason": null,
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "tertiary",
+              "key_route_failovers": [],
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 4,
+              "object_type": "triggers",
+              "backlog_id": "BL-002",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "template_first": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "content_drafts_applied": 0,
+              "mismatched_object_rows_dropped": 0
+            },
+            {
+              "chunk_index": 2,
+              "chunk_total": 2,
+              "target_records": 3,
+              "generated_records": 3,
+              "deduped_records_added": 3,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 2,
+              "attempt_count": 3,
+              "elapsed_ms": 8962.36,
+              "estimated_tokens": 1598,
+              "input_tokens": 5274,
+              "output_tokens": 1328,
+              "total_tokens": 6602,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "gemini-3.1-flash-lite",
+              "provider": "Gemini",
+              "selected_provider": "gemini",
+              "provider_chain": null,
+              "provider_fallback_used": false,
+              "provider_fallback_reason": null,
+              "model_requested": "openai/gpt-oss-20b",
+              "model_fallback_from": null,
+              "api_key_profile": "secondary",
+              "key_route_failovers": [],
+              "mode_order": [
+                "json_object",
+                "no_response_format"
+              ],
+              "wave": 4,
+              "object_type": "triggers",
+              "backlog_id": "BL-002",
+              "reconcile_mode": "create",
+              "deterministic_fallback": false,
+              "forced_deterministic": false,
+              "template_first": false,
+              "object_failure_count_in_run": 0,
+              "forced_reason": null,
+              "fallback_reason": null,
+              "deterministic_topup_records": 0,
+              "content_drafts_applied": 0,
+              "mismatched_object_rows_dropped": 0
+            }
+          ],
+          "total_generated_before_dedupe": 6,
+          "total_generated_after_dedupe": 6,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 200.23,
+          "final_status": "ok",
+          "abort_reason": null,
+          "forced_wave_chunk_path": true,
+          "forced_wave_chunk_reason": "multi_object_target_prompt",
+          "deterministic_failover_threshold": 3,
+          "forced_deterministic_object_types": [],
+          "object_failure_counts": {
+            "triggers": 0
+          }
+        },
+        "coverage_manifest": {
+          "enabled": false,
+          "profile": "none",
+          "reason": "fewer_than_two_named_departments",
+          "departments": [],
+          "explicit_forms": [],
+          "ticket_fields": [],
+          "help_center_topics": [],
+          "tags": []
+        },
+        "department_coverage": {
+          "enabled": false,
+          "status": "skipped",
+          "reason": "fewer_than_two_named_departments",
+          "departments": [],
+          "missing": [],
+          "totals": {
+            "required": 0,
+            "generated": 6
+          }
+        },
+        "quality_gates": {
+          "coverage": {
+            "enabled": false,
+            "status": "skipped",
+            "reason": "fewer_than_two_named_departments",
+            "departments": [],
+            "missing": [],
+            "totals": {
+              "required": 0,
+              "generated": 6
+            }
+          }
+        },
+        "supervisor": {
+          "enabled": true,
+          "available": true,
+          "availability_reason": "ok",
+          "model": "gemini-3.1-flash-lite",
+          "auto_apply_patches": true,
+          "max_concurrency": 2,
+          "approval_threshold": 0.8,
+          "max_regeneration_retries": 1,
+          "review_grouping": "department",
+          "reviews": [
+            {
+              "wave": 4,
+              "wave_position": 1,
+              "chunk_index": 1,
+              "chunk_total": 2,
+              "object_type": "triggers",
+              "backlog_id": "BL-002",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "status": "reviewed",
+              "model": "gemini-3.1-flash-lite",
+              "approved": true,
+              "quality_score": 0.85,
+              "raw_quality_score": 0.85,
+              "effective_quality_score": 0.49,
+              "effective_approved": false,
+              "approval_gate_reasons": [
+                "Trigger 'Tag Support Tickets as New' is missing a group routing action."
+              ],
+              "chunk_assessments": [
+                {
+                  "chunk_id": "BL-002:1",
+                  "raw_approved": true,
+                  "raw_quality_score": 0.85,
+                  "effective_quality_score": 0.49,
+                  "effective_approved": false,
+                  "requires_regeneration": true,
+                  "approval_gate_reasons": [
+                    "Trigger 'Tag Support Tickets as New' is missing a group routing action."
+                  ],
+                  "record_keys": [
+                    "BL-002:1:0",
+                    "BL-002:1:1",
+                    "BL-002:1:2"
+                  ]
+                }
+              ],
+              "context_gaps": [
+                "Placeholder group ID used for both Customer Support and Claims & Incidents triggers",
+                "Missing triggers for incident escalation priority"
+              ],
+              "dependency_issues": [
+                "Requires mapping to actual production Group IDs for Claims vs Support"
+              ],
+              "requires_regeneration": false,
+              "public_reasoning_summary": "Reviewed existing triggers. Added dependency clarification for the placeholder group ID and enriched tagging for the claims workflow. The current records are structurally sound for a preview, though require actual Group IDs before production deployment.",
+              "patches_requested": 2,
+              "patches_applied": 2,
+              "patches_rejected": 0,
+              "patch_results": [
+                {
+                  "operation": "add_dependency_note",
+                  "target_index": 1,
+                  "target_title": null,
+                  "record_key": "BL-002:1:1",
+                  "reason": "Clarify that the current trigger requires a distinct group ID from the placeholder.",
+                  "status": "applied",
+                  "reject_reason": ""
+                },
+                {
+                  "operation": "add_tag",
+                  "target_index": 1,
+                  "target_title": null,
+                  "record_key": "BL-002:1:1",
+                  "reason": "Improve triage granularity for claims workflow.",
+                  "status": "applied",
+                  "reject_reason": ""
+                }
+              ],
+              "latency_ms": 4946.42,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "input_tokens": 1977,
+              "output_tokens": 458,
+              "thought_tokens": 0,
+              "total_tokens": 2435,
+              "reason": "",
+              "memory_suggestions": [
+                "Confirmed use of generic placeholder 27445104311324",
+                "Staged 3 triggers, need 3 additional triggers in next chunk"
+              ]
+            },
+            {
+              "wave": 4,
+              "wave_position": 1,
+              "chunk_index": 2,
+              "chunk_total": 2,
+              "object_type": "triggers",
+              "backlog_id": "BL-002",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "status": "reviewed",
+              "model": "gemini-3.1-flash-lite",
+              "approved": true,
+              "quality_score": 0.9,
+              "raw_quality_score": 0.9,
+              "effective_quality_score": 0.49,
+              "effective_approved": false,
+              "approval_gate_reasons": [
+                "Trigger 'Add Support Workflow Tags' is missing a group routing action.",
+                "Trigger 'Notify Claims Management on Urgent Issues' is missing a group routing action."
+              ],
+              "chunk_assessments": [
+                {
+                  "chunk_id": "BL-002:2",
+                  "raw_approved": true,
+                  "raw_quality_score": 0.95,
+                  "effective_quality_score": 0.49,
+                  "effective_approved": false,
+                  "requires_regeneration": true,
+                  "approval_gate_reasons": [
+                    "Trigger 'Add Support Workflow Tags' is missing a group routing action.",
+                    "Trigger 'Notify Claims Management on Urgent Issues' is missing a group routing action."
+                  ],
+                  "record_keys": [
+                    "BL-002:2:0",
+                    "BL-002:2:1",
+                    "BL-002:2:2"
+                  ]
+                }
+              ],
+              "context_gaps": [
+                "Placeholder group_id used throughout. Ensure system configuration replaces 27445104311324 with the validated Claims & Incidents group ID."
+              ],
+              "dependency_issues": [
+                "Multiple triggers rely on the placeholder group_id; verified as a staging/preview limitation."
+              ],
+              "requires_regeneration": false,
+              "public_reasoning_summary": "The requested triggers have been successfully staged across two chunks. Triggers correctly route tickets based on form ID and ticket type, exclude closed status via logic (as requested), and use descriptive tags. All group IDs are correctly linked to a placeholder variable for staging; production deployment will require substituting the placeholder 27445104311324 with the actual department IDs.",
+              "patches_requested": 2,
+              "patches_applied": 2,
+              "patches_rejected": 0,
+              "patch_results": [
+                {
+                  "operation": "add_dependency_note",
+                  "target_index": null,
+                  "target_title": null,
+                  "record_key": "BL-002:2:1",
+                  "reason": "Clarify that the group ID is a staging placeholder that must be remapped in production.",
+                  "status": "applied",
+                  "reject_reason": ""
+                },
+                {
+                  "operation": "add_dependency_note",
+                  "target_index": null,
+                  "target_title": null,
+                  "record_key": "BL-002:2:2",
+                  "reason": "Clarify that the group ID is a staging placeholder that must be remapped in production.",
+                  "status": "applied",
+                  "reject_reason": ""
+                }
+              ],
+              "latency_ms": 3358.37,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "input_tokens": 2612,
+              "output_tokens": 544,
+              "thought_tokens": 0,
+              "total_tokens": 3156,
+              "reason": "",
+              "memory_suggestions": [
+                "Flagged placeholder group_id usage for downstream review.",
+                "Verified all 6 requested triggers across chunks 1 and 2."
+              ]
+            }
+          ],
+          "memory": [],
+          "verified_memory": [],
+          "review_units": [],
+          "blocked_chunk_ids": [],
+          "remaining_manifest_coverage": {
+            "status": "skipped",
+            "totals": {
+              "required": 0,
+              "generated": 6
+            },
+            "missing": [],
+            "pending_counts": {}
+          },
+          "call_counts": {
+            "consolidated": 2,
+            "retry": 0,
+            "fallback": 0,
+            "total": 2
+          },
+          "auto_applied_patches": [
+            {
+              "wave": 4,
+              "wave_position": 1,
+              "chunk_index": 1,
+              "chunk_total": 2,
+              "object_type": "triggers",
+              "backlog_id": "BL-002",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "operation": "add_dependency_note",
+              "target_index": 1,
+              "target_title": null,
+              "reason": "Clarify that the current trigger requires a distinct group ID from the placeholder."
+            },
+            {
+              "wave": 4,
+              "wave_position": 1,
+              "chunk_index": 1,
+              "chunk_total": 2,
+              "object_type": "triggers",
+              "backlog_id": "BL-002",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "operation": "add_tag",
+              "target_index": 1,
+              "target_title": null,
+              "reason": "Improve triage granularity for claims workflow."
+            },
+            {
+              "wave": 4,
+              "wave_position": 1,
+              "chunk_index": 2,
+              "chunk_total": 2,
+              "object_type": "triggers",
+              "backlog_id": "BL-002",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "operation": "add_dependency_note",
+              "target_index": null,
+              "target_title": null,
+              "reason": "Clarify that the group ID is a staging placeholder that must be remapped in production."
+            },
+            {
+              "wave": 4,
+              "wave_position": 1,
+              "chunk_index": 2,
+              "chunk_total": 2,
+              "object_type": "triggers",
+              "backlog_id": "BL-002",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "operation": "add_dependency_note",
+              "target_index": null,
+              "target_title": null,
+              "reason": "Clarify that the group ID is a staging placeholder that must be remapped in production."
+            }
+          ],
+          "patch_counts": {
+            "applied": 4,
+            "rejected": 0,
+            "skipped": 0
+          },
+          "usage": {
+            "calls": 2,
+            "retries": 0,
+            "input_tokens": 4589,
+            "output_tokens": 1002,
+            "thought_tokens": 0,
+            "total_tokens": 5591,
+            "elapsed_ms_sum": 8300.97
+          },
+          "failures": [],
+          "review_unit_plan": [],
+          "planned_consolidated_calls": 0,
+          "total_duplicates_dropped_after_patch": 0
+        },
+        "progress_narration": {
+          "enabled": true,
+          "mode": "deterministic_events_plus_wave_narration",
+          "provider": "groq",
+          "model": "openai/gpt-oss-20b",
+          "scheduled_calls": 1,
+          "completed_calls": 1,
+          "fallback_count": 0,
+          "appscript_flushes": 0,
+          "appscript_flush_failures": 1,
+          "events": [
+            {
+              "event_id": "EVT-1C0ABC7814D2",
+              "status": "wave_execution",
+              "message": "Wave 1/1 started: building routing triggers, time-based automations, and agent macros. The queue contains 1 triggers work item(s) across triggers; each result is checked before the next dependency wave opens.",
+              "at": "2026-07-16T03:00:29.914487+00:00",
+              "source": "deterministic",
+              "provider": null,
+              "model": null,
+              "wave": 4,
+              "department": null,
+              "object_type": null
+            },
+            {
+              "event_id": "EVT-2BD9641A3B4B",
+              "status": "wave_execution",
+              "message": "Wave 1/1, triggers: building 3 triggers record(s) in chunk 1/2 using Gemini as the primary drafting model. Names and dependencies stay explicit so Zendesk IDs can be resolved only during deployment.",
+              "at": "2026-07-16T03:00:30.242716+00:00",
+              "source": "deterministic",
+              "provider": null,
+              "model": null,
+              "wave": 4,
+              "department": null,
+              "object_type": "triggers"
+            },
+            {
+              "event_id": "EVT-BC24C3C9CFA4",
+              "status": "wave_execution",
+              "message": "Wave 1/1, triggers: building 3 triggers record(s) in chunk 2/2 using Gemini as the primary drafting model. Names and dependencies stay explicit so Zendesk IDs can be resolved only during deployment.",
+              "at": "2026-07-16T03:00:34.966128+00:00",
+              "source": "deterministic",
+              "provider": null,
+              "model": null,
+              "wave": 4,
+              "department": null,
+              "object_type": "triggers"
+            },
+            {
+              "event_id": "EVT-9E2E7F441169",
+              "status": "wave_execution",
+              "message": "Wave 1/1 completed with 6 record(s) from 2 chunk(s) and 0 blocked item(s); the cumulative operating model now contains 6 record(s). Supervisor result: The requested triggers have been successfully staged across two chunks. Triggers correctly route tickets based on form ID and ticket type, exclude closed status via logic (as requested), and use descriptive tags. All group IDs are correctly linked to a placeholder variable for staging; production deployment will require substituting the placeholder 27445104311324 with the actual department IDs. Next: drafting Help Center articles into the generated topic structure.",
+              "at": "2026-07-16T03:00:49.140961+00:00",
+              "source": "deterministic",
+              "provider": null,
+              "model": null,
+              "wave": 4,
+              "department": null,
+              "object_type": null
+            },
+            {
+              "event_id": "EVT-081D83B6C934",
+              "status": "wave_execution",
+              "message": "All 6 triggers have been staged across two chunks, routing tickets by form ID and type, excluding closed status, and tagging descriptively. Group IDs are linked to a placeholder variable; production will replace it with real IDs. Next, we\u2019ll draft Help Center articles for the new topic structure.",
+              "at": "2026-07-16T03:00:51.432708+00:00",
+              "source": "model_narrator",
+              "provider": "Groq",
+              "model": "openai/gpt-oss-20b",
+              "wave": 4,
+              "department": null,
+              "object_type": null
+            }
+          ]
+        },
+        "llm_routes": {
+          "default_provider": "gemini",
+          "default_model": "gemini-3.1-flash-lite",
+          "fallback_policy": {
+            "provider": "groq",
+            "gemini_max_retries": 2,
+            "gemini_failure_threshold": 3,
+            "gemini_cooldown_seconds": 180
+          },
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 420,
+            "strict_schema": false
+          },
+          "generator_wave3": "openai/gpt-oss-20b",
+          "generator_wave4": "openai/gpt-oss-20b",
+          "generator_secondary": "openai/gpt-oss-20b",
+          "generator_tertiary": "openai/gpt-oss-20b",
+          "gemini_supervisor": {
+            "enabled": true,
+            "model": "gemini-3.1-flash-lite",
+            "api_key_configured": true,
+            "auto_apply_patches": true,
+            "max_concurrency": 2,
+            "min_request_interval_seconds": 4.2,
+            "rate_limit_retries": 3
+          },
+          "progress_narrator": {
+            "enabled": true,
+            "provider": "groq",
+            "model": "openai/gpt-oss-20b",
+            "max_calls_per_batch": 6
+          },
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true,
+          "generator_secondary_api_key_configured": true,
+          "generator_tertiary_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "gemini-3.1-flash-lite",
+            "api_key_profile": "gemini_e3931441c2",
+            "final_status": "ok",
+            "http_status": 200,
+            "attempt_count": 1,
+            "retry_count": 0,
+            "estimated_tokens": 719,
+            "input_tokens": 819,
+            "output_tokens": 236,
+            "thought_tokens": 0,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 1055,
+            "elapsed_ms": 3062.43,
+            "pre_request_wait_ms": 0.0,
+            "error_class": "none",
+            "breaker_state": "closed",
+            "http_statuses": [
+              200
+            ],
+            "provider": "Gemini",
+            "selected_provider": "gemini",
+            "fallback_used": false
+          },
+          "generator": {
+            "model": "gemini-3.1-flash-lite",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 2,
+            "pre_request_wait_ms": 0.0,
+            "wait_reason": null,
+            "error_class": "none",
+            "provider_error_code": null
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 10,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 10,
+            "recent_batch_context": 1
+          },
+          "generator_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          }
+        },
+        "inference_assumptions": [
+          {
+            "kind": "business_blueprint_mode",
+            "message": "Smart Auto activated business blueprint orchestration (multi_object_target_prompt); 1 backlog items scheduled across waves."
+          }
+        ],
+        "base_object_match": null,
+        "inference_confidence": 0.8400000000000001,
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create 6 production-ready triggers for Customer Support and Claims & Incidents. Rout"
+        ],
+        "ambiguity_score": 0.2,
+        "ambiguity_threshold": 0.58,
+        "run_control": {
+          "pause_requested": false,
+          "pause_after_wave": false,
+          "cancel_requested": false,
+          "cancel_reason": "",
+          "updated_at": "",
+          "updated_by": ""
+        },
+        "checkpoints": [
+          {
+            "checkpoint_id": "CHK-04-EDCE5C62",
+            "wave": 4,
+            "created_at": "2026-07-16T03:00:49.534274+00:00",
+            "status": "pending",
+            "summary": {
+              "wave": 4,
+              "wave_position": 1,
+              "total_waves": 1,
+              "chunk_count": 2,
+              "created": 1,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "generated_records": 6,
+              "generated_counts": {
+                "triggers": 6
+              }
+            },
+            "preview_snapshot_ref": "/api/import-assistant/preview/BATCH-20260716-030017-7E5ECD?checkpoint=CHK-04-EDCE5C62",
+            "decision_at": null,
+            "decision_by": null,
+            "decision_note": null
+          }
+        ],
+        "rollback": {},
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [
+            "triggers"
+          ],
+          "generated_types": [
+            "triggers"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.85,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0,
+          "inference_hints_count": 0,
+          "inference_sources": []
+        },
+        "canonicalization": {
+          "trigger_article": {
+            "rules_processed": 6,
+            "articles_processed": 0,
+            "alias_mappings": 0,
+            "defaults_applied": 0,
+            "warnings": 0,
+            "blocked_records": 0,
+            "template_applied_count": 0,
+            "template_keys": []
+          }
+        },
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260716-030017-7E5ECD",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Triggers": 6
+            },
+            "total_records": 6
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260716-030017-7E5ECD",
+            "summary": {
+              "passed": 6,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "validated_rows": 6,
+            "validated_at": "2026-07-16T03:01:15.059Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null,
+        "usage_report": {
+          "schema_version": 1,
+          "label": "import_assistant:local-user",
+          "started_at": "2026-07-16T03:00:22.550026+00:00",
+          "finished_at": "2026-07-16T03:01:32.127552+00:00",
+          "token_source": "provider_response_when_available",
+          "totals": {
+            "calls": 7,
+            "successful_calls": 7,
+            "failed_calls": 0,
+            "retries": 2,
+            "estimated_tokens": 8238,
+            "input_tokens": 13149,
+            "output_tokens": 3238,
+            "thought_tokens": 0,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 16387,
+            "model_call_elapsed_ms_sum": 26703.18,
+            "pre_request_wait_ms_sum": 0.0,
+            "pipeline_wall_time_ms": 69577.3,
+            "model_elapsed_to_wall_ratio": 0.384
+          },
+          "phase_timings": {
+            "planning_and_backlog_ms": 6958.99,
+            "generation_and_supervision_ms": 25635.82,
+            "post_processing_ms": 296.15,
+            "staging_and_validation_ms": 32979.7
+          },
+          "by_provider": [
+            {
+              "provider": "Gemini",
+              "calls": 6,
+              "retries": 2,
+              "estimated_tokens": 7760,
+              "input_tokens": 12776,
+              "output_tokens": 3165,
+              "thought_tokens": 0,
+              "total_tokens": 15941,
+              "elapsed_ms_sum": 25597.22
+            },
+            {
+              "provider": "Groq",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 478,
+              "input_tokens": 373,
+              "output_tokens": 73,
+              "thought_tokens": 0,
+              "total_tokens": 446,
+              "elapsed_ms_sum": 1105.96
+            }
+          ],
+          "by_model": [
+            {
+              "model": "gemini-3.1-flash-lite",
+              "calls": 6,
+              "retries": 2,
+              "estimated_tokens": 7760,
+              "input_tokens": 12776,
+              "output_tokens": 3165,
+              "thought_tokens": 0,
+              "total_tokens": 15941,
+              "elapsed_ms_sum": 25597.22
+            },
+            {
+              "model": "openai/gpt-oss-20b",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 478,
+              "input_tokens": 373,
+              "output_tokens": 73,
+              "thought_tokens": 0,
+              "total_tokens": 446,
+              "elapsed_ms_sum": 1105.96
+            }
+          ],
+          "by_task": [
+            {
+              "task": "generator",
+              "calls": 2,
+              "retries": 2,
+              "estimated_tokens": 3164,
+              "input_tokens": 7006,
+              "output_tokens": 1691,
+              "thought_tokens": 0,
+              "total_tokens": 8697,
+              "elapsed_ms_sum": 12043.12
+            },
+            {
+              "task": "narrator",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 478,
+              "input_tokens": 373,
+              "output_tokens": 73,
+              "thought_tokens": 0,
+              "total_tokens": 446,
+              "elapsed_ms_sum": 1105.96
+            },
+            {
+              "task": "planner",
+              "calls": 2,
+              "retries": 0,
+              "estimated_tokens": 1088,
+              "input_tokens": 1181,
+              "output_tokens": 472,
+              "thought_tokens": 0,
+              "total_tokens": 1653,
+              "elapsed_ms_sum": 5253.13
+            },
+            {
+              "task": "supervisor",
+              "calls": 2,
+              "retries": 0,
+              "estimated_tokens": 3508,
+              "input_tokens": 4589,
+              "output_tokens": 1002,
+              "thought_tokens": 0,
+              "total_tokens": 5591,
+              "elapsed_ms_sum": 8300.97
+            }
+          ],
+          "calls": [
+            {
+              "recorded_at": "2026-07-16T03:00:26.336002+00:00",
+              "provider": "Gemini",
+              "task": "planner",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_e3931441c2",
+              "final_status": "ok",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 719,
+              "input_tokens": 819,
+              "output_tokens": 236,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 1055,
+              "elapsed_ms": 3062.43,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-16T03:00:29.019971+00:00",
+              "provider": "Gemini",
+              "task": "planner",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_e3931441c2",
+              "final_status": "ok",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 369,
+              "input_tokens": 362,
+              "output_tokens": 236,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 598,
+              "elapsed_ms": 2190.7,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-16T03:00:33.610383+00:00",
+              "provider": "Gemini",
+              "task": "generator",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_e3931441c2",
+              "final_status": "ok",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 1566,
+              "input_tokens": 1732,
+              "output_tokens": 363,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 2095,
+              "elapsed_ms": 3080.76,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-16T03:00:39.447797+00:00",
+              "provider": "Gemini",
+              "task": "supervisor",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_supervisor",
+              "final_status": "reviewed",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 1532,
+              "input_tokens": 1977,
+              "output_tokens": 458,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 2435,
+              "elapsed_ms": 4945.3,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-16T03:00:44.315852+00:00",
+              "provider": "Gemini",
+              "task": "generator",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_e3931441c2",
+              "final_status": "ok",
+              "http_status": 200,
+              "attempt_count": 3,
+              "retry_count": 2,
+              "estimated_tokens": 1598,
+              "input_tokens": 5274,
+              "output_tokens": 1328,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 6602,
+              "elapsed_ms": 8962.36,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-16T03:00:48.403784+00:00",
+              "provider": "Gemini",
+              "task": "supervisor",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_supervisor",
+              "final_status": "reviewed",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 1976,
+              "input_tokens": 2612,
+              "output_tokens": 544,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 3156,
+              "elapsed_ms": 3355.67,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-16T03:00:51.431510+00:00",
+              "provider": "Groq",
+              "task": "narrator",
+              "model": "openai/gpt-oss-20b",
+              "api_key_profile": "key_bce5faff61",
+              "final_status": "ok",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 478,
+              "input_tokens": 373,
+              "output_tokens": 73,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 446,
+              "elapsed_ms": 1105.96,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            }
+          ]
+        },
+        "appscript_metadata_sync": {
+          "action": "write_batch_metadata",
+          "status": "error",
+          "detail": "Apps Script error: Unsupported POST action.",
+          "http_status": 200,
+          "data": {
+            "ok": false,
+            "action": "write_batch_metadata",
+            "error": "Unsupported POST action."
+          }
+        }
+      }
+    },
+    "BATCH-20260716-030839-DA6F41": {
+      "batch_id": "BATCH-20260716-030839-DA6F41",
+      "status": "preview_ready",
+      "prompt": "Create one trigger named Mobile Activity QA that tags new incident tickets with mobile_activity_qa and excludes closed tickets. Preview only; do not deploy.",
+      "requester": "local-user",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-07-16T03:08:39.216530+00:00",
+      "updated_at": "2026-07-16T03:09:30.189155+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted. Preparing the department manifest, dependency order, and model lanes.",
+          "at": "2026-07-16T03:08:39.216530+00:00",
+          "source": "pipeline"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-07-16T03:08:43.999268+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner call in progress.",
+          "at": "2026-07-16T03:08:44.207374+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-07-16T03:08:47.229195+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-07-16T03:08:47.616798+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-07-16T03:08:47.884928+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Waiting for 1 Gemini supervisor review(s) before single generation finalization.",
+          "at": "2026-07-16T03:08:51.146032+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing triggers chunk 1/1 for safe patches.",
+          "at": "2026-07-16T03:08:51.410616+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for triggers chunk 1/1; applied=2.",
+          "at": "2026-07-16T03:08:54.942508+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini supervisor reviews settled before single generation finalization; records=1 dropped_after_patch=0.",
+          "at": "2026-07-16T03:08:55.272455+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-07-16T03:08:55.596163+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-07-16T03:08:55.973107+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Combined Apps Script pipeline unavailable; using legacy staging/validation/preview actions.",
+          "at": "2026-07-16T03:08:58.799584+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged.",
+          "at": "2026-07-16T03:09:05.901659+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation.",
+          "at": "2026-07-16T03:09:06.144679+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-07-16T03:09:26.219209+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-07-16T03:09:26.537647+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "triggers",
+          "title": "Mobile Activity QA",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Trigger configured to evaluate based on incident type and non-closed status; ensure this runs on both creation and updates."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "type",
+              "value": "incident",
+              "operator": "is"
+            },
+            {
+              "field": "status",
+              "value": "closed",
+              "operator": "less_than"
+            }
+          ],
+          "actions": [
+            {
+              "field": "set_tags",
+              "value": "mobile_activity_qa typeisincident statusless_thanclosed"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": null,
+          "execution_message": ""
+        }
+      ],
+      "generated_counts": {
+        "triggers": 1
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 1,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Create a new trigger named 'Mobile Activity QA' that adds the tag 'mobile_activity_qa' to tickets where the ticket type is 'incident' and the status is not 'closed'.",
+        "confidence": 0.95,
+        "ambiguity_score": 0.1,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [
+          "Requirement is clear and maps directly to trigger conditions and actions."
+        ],
+        "dependency_mode": "match_existing_or_create_new",
+        "focus_object_types": [],
+        "dependency_notes": "Trigger preview requested; no actual deployment to the Zendesk instance is required. Logic must filter for status != closed and type == incident.",
+        "related_objects_selected": 0,
+        "reference_catalog_counts": {
+          "brands": 2,
+          "groups": 2,
+          "ticket_forms": 2,
+          "triggers": 2,
+          "automations": 2
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 0,
+          "catalog_entries": 10,
+          "recent_batch_context": 1
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "gemini-3.1-flash-lite",
+          "provider": "Gemini",
+          "strict_schema": false,
+          "telemetry": {
+            "task": "planner",
+            "model": "gemini-3.1-flash-lite",
+            "api_key_profile": "gemini_e3931441c2",
+            "final_status": "ok",
+            "http_status": 200,
+            "attempt_count": 1,
+            "retry_count": 0,
+            "estimated_tokens": 670,
+            "input_tokens": 779,
+            "output_tokens": 174,
+            "thought_tokens": 0,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 953,
+            "elapsed_ms": 2811.0,
+            "pre_request_wait_ms": 0.0,
+            "error_class": "none",
+            "breaker_state": "closed",
+            "http_statuses": [
+              200
+            ],
+            "provider": "Gemini",
+            "selected_provider": "gemini",
+            "fallback_used": false
+          }
+        },
+        "orchestration_mode": "explicit_fast_path"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "planning": {
+          "planner_bypassed": false,
+          "mode": "llm",
+          "estimated_requested_records": 1,
+          "force_wave_chunk_path": false,
+          "force_wave_chunk_reason": "standard_prompt"
+        },
+        "orchestration": {
+          "mode": "explicit_fast_path",
+          "activation_reason": "standard_record_prompt",
+          "waves": [],
+          "reconciliation_summary": {
+            "create": 0,
+            "reuse": 0,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": [],
+          "template_usage": {
+            "applied_count": 0,
+            "template_keys": []
+          },
+          "taxonomy_resolution": {
+            "resolved_links": 0,
+            "unresolved_links": 0,
+            "unresolved_samples": []
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 3,
+          "max_chunks": 12,
+          "trigger_min_records": 3,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "numeric_intent",
+            "number_word_intent"
+          ],
+          "numeric_matches": [
+            {
+              "value": 1,
+              "object_hint": "triggers",
+              "raw": "one trigger",
+              "source": "number_word_intent"
+            }
+          ],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "gemini-3.1-flash-lite",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ]
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null,
+          "forced_wave_chunk_path": false,
+          "forced_wave_chunk_reason": "standard_prompt",
+          "deterministic_failover_threshold": 3,
+          "forced_deterministic_object_types": [],
+          "object_failure_counts": {}
+        },
+        "coverage_manifest": {
+          "enabled": false,
+          "profile": "none",
+          "reason": "fewer_than_two_named_departments",
+          "departments": [],
+          "explicit_forms": [],
+          "ticket_fields": [],
+          "help_center_topics": [],
+          "tags": []
+        },
+        "department_coverage": {
+          "enabled": false,
+          "status": "skipped",
+          "reason": "fewer_than_two_named_departments",
+          "departments": [],
+          "missing": [],
+          "totals": {
+            "required": 0,
+            "generated": 1
+          }
+        },
+        "quality_gates": {
+          "coverage": {
+            "enabled": false,
+            "status": "skipped",
+            "reason": "fewer_than_two_named_departments",
+            "departments": [],
+            "missing": [],
+            "totals": {
+              "required": 0,
+              "generated": 1
+            }
+          }
+        },
+        "supervisor": {
+          "enabled": true,
+          "available": true,
+          "availability_reason": "ok",
+          "model": "gemini-3.1-flash-lite",
+          "auto_apply_patches": true,
+          "max_concurrency": 2,
+          "approval_threshold": 0.8,
+          "max_regeneration_retries": 1,
+          "review_grouping": "department",
+          "reviews": [
+            {
+              "wave": 4,
+              "wave_position": null,
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "object_type": "triggers",
+              "backlog_id": "",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "status": "reviewed",
+              "model": "gemini-3.1-flash-lite",
+              "approved": true,
+              "quality_score": 1.0,
+              "raw_quality_score": 1.0,
+              "effective_quality_score": 0.49,
+              "effective_approved": false,
+              "approval_gate_reasons": [
+                "Trigger 'Mobile Activity QA' is missing a group routing action."
+              ],
+              "chunk_assessments": [
+                {
+                  "chunk_id": "triggers:1",
+                  "raw_approved": true,
+                  "raw_quality_score": 1.0,
+                  "effective_quality_score": 0.49,
+                  "effective_approved": false,
+                  "requires_regeneration": true,
+                  "approval_gate_reasons": [
+                    "Trigger 'Mobile Activity QA' is missing a group routing action."
+                  ],
+                  "record_keys": [
+                    "triggers:1:0"
+                  ]
+                }
+              ],
+              "context_gaps": [],
+              "dependency_issues": [],
+              "requires_regeneration": false,
+              "public_reasoning_summary": "The trigger configuration correctly filters for incident tickets and excludes closed statuses. Patches were added to clarify condition structures to ensure the trigger behaves as expected upon creation.",
+              "patches_requested": 2,
+              "patches_applied": 2,
+              "patches_rejected": 0,
+              "patch_results": [
+                {
+                  "operation": "add_tag",
+                  "target_index": 0,
+                  "target_title": null,
+                  "record_key": "triggers:1:0",
+                  "reason": "Ensure the trigger fires on ticket creation as requested by the prompt.",
+                  "status": "applied",
+                  "reject_reason": ""
+                },
+                {
+                  "operation": "add_tag",
+                  "target_index": 0,
+                  "target_title": null,
+                  "record_key": "triggers:1:0",
+                  "reason": "Explicitly define trigger execution scope.",
+                  "status": "applied",
+                  "reject_reason": ""
+                }
+              ],
+              "latency_ms": 3275.82,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "input_tokens": 1050,
+              "output_tokens": 346,
+              "thought_tokens": 0,
+              "total_tokens": 1396,
+              "reason": "",
+              "memory_suggestions": [
+                "Trigger 'Mobile Activity QA' verified and aligned with incident and status filtering requirements."
+              ]
+            }
+          ],
+          "memory": [],
+          "verified_memory": [],
+          "review_units": [],
+          "blocked_chunk_ids": [],
+          "remaining_manifest_coverage": {
+            "status": "skipped",
+            "totals": {
+              "required": 0,
+              "generated": 1
+            },
+            "missing": [],
+            "pending_counts": {}
+          },
+          "call_counts": {
+            "consolidated": 1,
+            "retry": 0,
+            "fallback": 0,
+            "total": 1
+          },
+          "auto_applied_patches": [
+            {
+              "wave": 4,
+              "wave_position": null,
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "object_type": "triggers",
+              "backlog_id": "",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "operation": "add_tag",
+              "target_index": 0,
+              "target_title": null,
+              "reason": "Ensure the trigger fires on ticket creation as requested by the prompt."
+            },
+            {
+              "wave": 4,
+              "wave_position": null,
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "object_type": "triggers",
+              "backlog_id": "",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "operation": "add_tag",
+              "target_index": 0,
+              "target_title": null,
+              "reason": "Explicitly define trigger execution scope."
+            }
+          ],
+          "patch_counts": {
+            "applied": 2,
+            "rejected": 0,
+            "skipped": 0
+          },
+          "usage": {
+            "calls": 1,
+            "retries": 0,
+            "input_tokens": 1050,
+            "output_tokens": 346,
+            "thought_tokens": 0,
+            "total_tokens": 1396,
+            "elapsed_ms_sum": 3275.05
+          },
+          "failures": [],
+          "total_duplicates_dropped_after_patch": 0
+        },
+        "progress_narration": {
+          "enabled": true,
+          "mode": "deterministic_events_plus_wave_narration",
+          "provider": "groq",
+          "model": "openai/gpt-oss-20b",
+          "scheduled_calls": 0,
+          "completed_calls": 0,
+          "fallback_count": 0,
+          "appscript_flushes": 0,
+          "appscript_flush_failures": 0,
+          "events": []
+        },
+        "llm_routes": {
+          "default_provider": "gemini",
+          "default_model": "gemini-3.1-flash-lite",
+          "fallback_policy": {
+            "provider": "groq",
+            "gemini_max_retries": 2,
+            "gemini_failure_threshold": 3,
+            "gemini_cooldown_seconds": 180
+          },
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 420,
+            "strict_schema": false
+          },
+          "generator_wave3": "openai/gpt-oss-20b",
+          "generator_wave4": "openai/gpt-oss-20b",
+          "generator_secondary": "openai/gpt-oss-20b",
+          "generator_tertiary": "openai/gpt-oss-20b",
+          "gemini_supervisor": {
+            "enabled": true,
+            "model": "gemini-3.1-flash-lite",
+            "api_key_configured": true,
+            "auto_apply_patches": true,
+            "max_concurrency": 2,
+            "min_request_interval_seconds": 4.2,
+            "rate_limit_retries": 3
+          },
+          "progress_narrator": {
+            "enabled": true,
+            "provider": "groq",
+            "model": "openai/gpt-oss-20b",
+            "max_calls_per_batch": 6
+          },
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true,
+          "generator_secondary_api_key_configured": true,
+          "generator_tertiary_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "task": "planner",
+            "model": "gemini-3.1-flash-lite",
+            "api_key_profile": "gemini_e3931441c2",
+            "final_status": "ok",
+            "http_status": 200,
+            "attempt_count": 1,
+            "retry_count": 0,
+            "estimated_tokens": 670,
+            "input_tokens": 779,
+            "output_tokens": 174,
+            "thought_tokens": 0,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 953,
+            "elapsed_ms": 2811.0,
+            "pre_request_wait_ms": 0.0,
+            "error_class": "none",
+            "breaker_state": "closed",
+            "http_statuses": [
+              200
+            ],
+            "provider": "Gemini",
+            "selected_provider": "gemini",
+            "fallback_used": false
+          },
+          "generator": {
+            "model": "gemini-3.1-flash-lite",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 0,
+            "pre_request_wait_ms": 0.0,
+            "wait_reason": null,
+            "error_class": "none",
+            "provider_error_code": null
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 0,
+            "catalog_entries": 10,
+            "recent_batch_context": 1
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 0,
+            "catalog_entries": 10,
+            "recent_batch_context": 1
+          },
+          "generator_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          }
+        },
+        "inference_assumptions": [],
+        "base_object_match": null,
+        "inference_confidence": 0.9400000000000001,
+        "context_notes": "Existing item behavior: use_selected_existing_as_base_or_reference. No explicit object selections were included in generation context.",
+        "recent_batch_context": [
+          "user: Create one trigger named Mobile Activity QA that tags new incident tickets with mobi"
+        ],
+        "ambiguity_score": 0.1,
+        "ambiguity_threshold": 0.58,
+        "run_control": {
+          "pause_requested": false,
+          "pause_after_wave": false,
+          "cancel_requested": false,
+          "cancel_reason": "",
+          "updated_at": "",
+          "updated_by": ""
+        },
+        "checkpoints": [],
+        "rollback": {},
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [],
+          "generated_types": [
+            "triggers"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.95,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "unresolved": [],
+          "forms_processed": 0,
+          "inference_hints_count": 0,
+          "inference_sources": []
+        },
+        "canonicalization": {
+          "trigger_article": {
+            "rules_processed": 1,
+            "articles_processed": 0,
+            "alias_mappings": 0,
+            "defaults_applied": 0,
+            "warnings": 0,
+            "blocked_records": 0,
+            "template_applied_count": 0,
+            "template_keys": []
+          }
+        },
+        "staging": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260716-030839-DA6F41",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Triggers": 1
+            },
+            "total_records": 1
+          }
+        },
+        "validation": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260716-030839-DA6F41",
+            "summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-07-16T03:09:13.520Z"
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200
+        },
+        "failure": null,
+        "usage_report": {
+          "schema_version": 1,
+          "label": "import_assistant:local-user",
+          "started_at": "2026-07-16T03:08:43.872987+00:00",
+          "finished_at": "2026-07-16T03:09:30.136260+00:00",
+          "token_source": "provider_response_when_available",
+          "totals": {
+            "calls": 3,
+            "successful_calls": 3,
+            "failed_calls": 0,
+            "retries": 0,
+            "estimated_tokens": 2980,
+            "input_tokens": 3423,
+            "output_tokens": 658,
+            "thought_tokens": 0,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 4081,
+            "model_call_elapsed_ms_sum": 9065.25,
+            "pre_request_wait_ms_sum": 0.0,
+            "pipeline_wall_time_ms": 46263.08,
+            "model_elapsed_to_wall_ratio": 0.196
+          },
+          "phase_timings": {
+            "planning_and_backlog_ms": 4011.92,
+            "generation_and_supervision_ms": 7711.24,
+            "post_processing_ms": 376.94,
+            "staging_and_validation_ms": 30564.54
+          },
+          "by_provider": [
+            {
+              "provider": "Gemini",
+              "calls": 3,
+              "retries": 0,
+              "estimated_tokens": 2980,
+              "input_tokens": 3423,
+              "output_tokens": 658,
+              "thought_tokens": 0,
+              "total_tokens": 4081,
+              "elapsed_ms_sum": 9065.25
+            }
+          ],
+          "by_model": [
+            {
+              "model": "gemini-3.1-flash-lite",
+              "calls": 3,
+              "retries": 0,
+              "estimated_tokens": 2980,
+              "input_tokens": 3423,
+              "output_tokens": 658,
+              "thought_tokens": 0,
+              "total_tokens": 4081,
+              "elapsed_ms_sum": 9065.25
+            }
+          ],
+          "by_task": [
+            {
+              "task": "generator",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 1417,
+              "input_tokens": 1594,
+              "output_tokens": 138,
+              "thought_tokens": 0,
+              "total_tokens": 1732,
+              "elapsed_ms_sum": 2979.2
+            },
+            {
+              "task": "planner",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 670,
+              "input_tokens": 779,
+              "output_tokens": 174,
+              "thought_tokens": 0,
+              "total_tokens": 953,
+              "elapsed_ms_sum": 2811.0
+            },
+            {
+              "task": "supervisor",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 893,
+              "input_tokens": 1050,
+              "output_tokens": 346,
+              "thought_tokens": 0,
+              "total_tokens": 1396,
+              "elapsed_ms_sum": 3275.05
+            }
+          ],
+          "calls": [
+            {
+              "recorded_at": "2026-07-16T03:08:47.167937+00:00",
+              "provider": "Gemini",
+              "task": "planner",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_e3931441c2",
+              "final_status": "ok",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 670,
+              "input_tokens": 779,
+              "output_tokens": 174,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 953,
+              "elapsed_ms": 2811.0,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-16T03:08:51.096211+00:00",
+              "provider": "Gemini",
+              "task": "generator",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_e3931441c2",
+              "final_status": "ok",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 1417,
+              "input_tokens": 1594,
+              "output_tokens": 138,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 1732,
+              "elapsed_ms": 2979.2,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-16T03:08:54.879866+00:00",
+              "provider": "Gemini",
+              "task": "supervisor",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_supervisor",
+              "final_status": "reviewed",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 893,
+              "input_tokens": 1050,
+              "output_tokens": 346,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 1396,
+              "elapsed_ms": 3275.05,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            }
+          ]
+        },
+        "appscript_metadata_sync": {
+          "action": "write_batch_metadata",
+          "status": "error",
+          "detail": "Apps Script error: Unsupported POST action.",
+          "http_status": 200,
+          "data": {
+            "ok": false,
+            "action": "write_batch_metadata",
+            "error": "Unsupported POST action."
+          }
+        }
+      }
     }
   }
 }

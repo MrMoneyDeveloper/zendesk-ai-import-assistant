@@ -10,6 +10,8 @@ import httpx
 
 from app.core.settings import get_settings
 from app.helpers.json_parser import extract_json_payload
+from app.services.perf_capture import emit_perf_event
+from app.services.usage_telemetry import record_model_call
 from app.validation.payloads import normalize_generated_rows
 
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
@@ -144,7 +146,9 @@ _OPERATION_ALIASES = {
 
 
 class GeminiSupervisorError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, telemetry: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.telemetry = telemetry or {}
 
 
 def _retry_delay_seconds(response: httpx.Response, *, fallback: float) -> float:
@@ -270,6 +274,48 @@ def _extract_interaction_text(payload: dict[str, Any]) -> str:
     return json.dumps(payload)
 
 
+def _extract_interaction_usage(payload: dict[str, Any]) -> dict[str, int]:
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "thought_tokens": 0,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 0,
+        }
+
+    def value(key: str) -> int:
+        try:
+            return max(int(usage.get(key)), 0)
+        except (TypeError, ValueError):
+            return 0
+
+    input_tokens = value("total_input_tokens")
+    output_tokens = value("total_output_tokens")
+    thought_tokens = value("total_thought_tokens")
+    cached_tokens = value("total_cached_tokens")
+    tool_use_tokens = value("total_tool_use_tokens")
+    total_tokens = value("total_tokens") or (
+        input_tokens + output_tokens + thought_tokens + tool_use_tokens
+    )
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "thought_tokens": thought_tokens,
+        "cached_tokens": cached_tokens,
+        "tool_use_tokens": tool_use_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def _record_gemini_call(metrics: dict[str, Any]) -> None:
+    payload = {"provider": "Gemini", **metrics}
+    record_model_call(payload)
+    emit_perf_event("llm_call", payload)
+
+
 def _resolve_patch_target(rows: list[dict], patch: dict[str, Any]) -> int | None:
     record_key = str(patch.get("record_key") or "").strip()
     if record_key:
@@ -337,6 +383,16 @@ def _replace_action(row: dict, field: str, value: object) -> None:
     ]
     retained.append({"field": normalized_field, "value": value})
     row["actions"] = retained
+
+
+def _action_text(row: dict, fields: set[str]) -> str:
+    normalized_fields = {str(field).strip().lower() for field in fields}
+    values = [
+        str(action.get("value") or "").strip()
+        for action in _ensure_actions(row)
+        if str(action.get("field", "")).strip().lower() in normalized_fields
+    ]
+    return max(values, key=len, default="")
 
 
 def _replace_condition(
@@ -500,6 +556,11 @@ def _apply_patch(
         body = _truncate_text(value, 12000)
         if not body:
             return False, "empty_body"
+        if len(body) < 120:
+            return False, "body_not_substantive"
+        existing_body = _action_text(row, {"body", "article_body"})
+        if existing_body and len(body) < max(120, int(len(existing_body) * 0.6)):
+            return False, "body_regression"
         _replace_action(row, "body", body)
         return True, "applied"
 
@@ -953,6 +1014,7 @@ class GeminiSupervisor:
             cumulative_records=cumulative_records,
             remaining_manifest_coverage=remaining_manifest_coverage,
         )
+        telemetry = review.pop("_telemetry", {})
         patched_rows, patch_summary = apply_supervisor_patches(
             records,
             review,
@@ -966,6 +1028,7 @@ class GeminiSupervisor:
             "records": patched_rows,
             "review": review,
             "patch_summary": patch_summary,
+            "telemetry": telemetry,
             "latency_ms": round((time.perf_counter() - started) * 1000.0, 2),
         }
 
@@ -1037,6 +1100,66 @@ class GeminiSupervisor:
                 "schema": SUPERVISOR_REVIEW_SCHEMA,
             },
         }
+        call_started = time.perf_counter()
+        estimated_input_tokens = max(
+            len(str(request_body.get("input") or "")) // 4,
+            1,
+        )
+        usage_totals = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "thought_tokens": 0,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 0,
+        }
+        status_codes: list[int] = []
+        retry_wait_seconds = 0.0
+
+        def add_usage(response_payload: dict[str, Any]) -> None:
+            usage = _extract_interaction_usage(response_payload)
+            for key in usage_totals:
+                usage_totals[key] += int(usage.get(key, 0) or 0)
+
+        def build_telemetry(
+            *,
+            final_status: str,
+            attempt_count: int,
+            http_status: int | None,
+            error_class: str,
+        ) -> dict[str, Any]:
+            return {
+                "task": "supervisor",
+                "model": self.settings.gemini_supervisor_model,
+                "api_key_profile": "gemini_supervisor",
+                "final_status": final_status,
+                "http_status": http_status,
+                "attempt_count": max(int(attempt_count), 1),
+                "retry_count": max(int(attempt_count) - 1, 0),
+                "estimated_tokens": estimated_input_tokens,
+                **usage_totals,
+                "elapsed_ms": round((time.perf_counter() - call_started) * 1000.0, 2),
+                "pre_request_wait_ms": round(retry_wait_seconds * 1000.0, 2),
+                "error_class": error_class,
+                "http_statuses": status_codes[-8:],
+            }
+
+        def telemetry_error(
+            message: str,
+            *,
+            attempt_count: int,
+            http_status: int | None,
+            error_class: str,
+        ) -> GeminiSupervisorError:
+            telemetry = build_telemetry(
+                final_status="error",
+                attempt_count=attempt_count,
+                http_status=http_status,
+                error_class=error_class,
+            )
+            _record_gemini_call(telemetry)
+            return GeminiSupervisorError(message, telemetry=telemetry)
+
         max_retries = max(
             int(getattr(self.settings, "gemini_supervisor_rate_limit_retries", 0) or 0),
             0,
@@ -1068,11 +1191,15 @@ class GeminiSupervisor:
                     )
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 if attempt >= max_retries:
-                    raise GeminiSupervisorError(
+                    raise telemetry_error(
                         "Gemini supervisor transport failed after "
-                        f"{attempt + 1} attempt(s): {type(exc).__name__}."
+                        f"{attempt + 1} attempt(s): {type(exc).__name__}.",
+                        attempt_count=attempt + 1,
+                        http_status=None,
+                        error_class="transport_error",
                     ) from exc
                 retry_delay = max(min_interval, float(2 ** attempt))
+                retry_wait_seconds += retry_delay
                 logger.warning(
                     "Gemini supervisor transport failed (%s); retrying attempt %s/%s after %.2fs.",
                     type(exc).__name__,
@@ -1082,11 +1209,15 @@ class GeminiSupervisor:
                 )
                 await self._defer_request_slot(retry_delay)
                 continue
+            status_codes.append(int(response.status_code))
             if response.status_code != 429:
                 if not response.is_success:
                     detail = _truncate_text(response.text, 500)
-                    raise GeminiSupervisorError(
-                        f"Gemini supervisor request failed ({response.status_code}): {detail}"
+                    raise telemetry_error(
+                        f"Gemini supervisor request failed ({response.status_code}): {detail}",
+                        attempt_count=attempt + 1,
+                        http_status=response.status_code,
+                        error_class="http_error",
                     )
                 try:
                     response_payload = response.json()
@@ -1095,6 +1226,7 @@ class GeminiSupervisor:
                         "Gemini supervisor returned non-JSON response."
                     )
                 else:
+                    add_usage(response_payload)
                     raw_text = _extract_interaction_text(response_payload)
                     try:
                         parsed = extract_json_payload(raw_text)
@@ -1103,9 +1235,23 @@ class GeminiSupervisor:
                             "Gemini supervisor output was not parseable JSON."
                         )
                     else:
-                        return _normalize_review_payload(parsed)
+                        normalized_review = _normalize_review_payload(parsed)
+                        telemetry = build_telemetry(
+                            final_status="reviewed",
+                            attempt_count=attempt + 1,
+                            http_status=response.status_code,
+                            error_class="none",
+                        )
+                        _record_gemini_call(telemetry)
+                        normalized_review["_telemetry"] = telemetry
+                        return normalized_review
                 if attempt >= max_retries:
-                    raise last_output_error
+                    raise telemetry_error(
+                        str(last_output_error or "Gemini supervisor returned malformed output."),
+                        attempt_count=attempt + 1,
+                        http_status=response.status_code,
+                        error_class="malformed_output",
+                    )
                 logger.warning(
                     "Gemini supervisor returned malformed structured output; retrying attempt %s/%s.",
                     attempt + 2,
@@ -1113,13 +1259,17 @@ class GeminiSupervisor:
                 )
                 continue
             if attempt >= max_retries:
-                raise GeminiSupervisorError(
-                    f"Gemini supervisor rate limited after {attempt + 1} attempt(s)."
+                raise telemetry_error(
+                    f"Gemini supervisor rate limited after {attempt + 1} attempt(s).",
+                    attempt_count=attempt + 1,
+                    http_status=response.status_code,
+                    error_class="rate_limited",
                 )
             retry_delay = _retry_delay_seconds(
                 response,
                 fallback=max(min_interval, float(15 * (2 ** attempt))),
             )
+            retry_wait_seconds += retry_delay
             logger.warning(
                 "Gemini supervisor rate limited; retrying attempt %s/%s after %.2fs.",
                 attempt + 2,
@@ -1129,7 +1279,22 @@ class GeminiSupervisor:
             await self._defer_request_slot(retry_delay)
 
         if response is None:
-            raise GeminiSupervisorError("Gemini supervisor request did not return a response.")
+            raise telemetry_error(
+                "Gemini supervisor request did not return a response.",
+                attempt_count=max_retries + 1,
+                http_status=None,
+                error_class="no_response",
+            )
         if last_output_error is not None:
-            raise last_output_error
-        raise GeminiSupervisorError("Gemini supervisor request exhausted retries.")
+            raise telemetry_error(
+                str(last_output_error),
+                attempt_count=max_retries + 1,
+                http_status=response.status_code,
+                error_class="malformed_output",
+            )
+        raise telemetry_error(
+            "Gemini supervisor request exhausted retries.",
+            attempt_count=max_retries + 1,
+            http_status=response.status_code,
+            error_class="retry_exhausted",
+        )

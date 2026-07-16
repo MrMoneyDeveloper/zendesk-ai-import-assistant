@@ -6,6 +6,7 @@ import httpx
 
 from app.services.gemini_supervisor import (
     GeminiSupervisor,
+    _extract_interaction_usage,
     _retry_delay_seconds,
     apply_supervisor_patches,
     evaluate_supervisor_bundle,
@@ -44,7 +45,18 @@ def test_supervisor_retries_rate_limit_before_parsing_review(monkeypatch):
     }
     responses = [
         httpx.Response(429, headers={"Retry-After": "0"}, json={"error": {}}),
-        httpx.Response(200, json={"output_text": json.dumps(reviewed_payload)}),
+        httpx.Response(
+            200,
+            json={
+                "output_text": json.dumps(reviewed_payload),
+                "usage": {
+                    "total_input_tokens": 210,
+                    "total_output_tokens": 35,
+                    "total_thought_tokens": 5,
+                    "total_tokens": 250,
+                },
+            },
+        ),
     ]
 
     class FakeAsyncClient:
@@ -90,7 +102,35 @@ def test_supervisor_retries_rate_limit_before_parsing_review(monkeypatch):
 
     assert review["approved"] is True
     assert review["quality_score"] == 0.9
+    assert review["_telemetry"]["attempt_count"] == 2
+    assert review["_telemetry"]["retry_count"] == 1
+    assert review["_telemetry"]["input_tokens"] == 210
+    assert review["_telemetry"]["output_tokens"] == 35
+    assert review["_telemetry"]["thought_tokens"] == 5
+    assert review["_telemetry"]["total_tokens"] == 250
     assert responses == []
+
+
+def test_interaction_usage_supports_official_usage_fields():
+    assert _extract_interaction_usage(
+        {
+            "usage": {
+                "total_input_tokens": 100,
+                "total_output_tokens": 20,
+                "total_thought_tokens": 10,
+                "total_cached_tokens": 5,
+                "total_tool_use_tokens": 3,
+                "total_tokens": 133,
+            }
+        }
+    ) == {
+        "input_tokens": 100,
+        "output_tokens": 20,
+        "thought_tokens": 10,
+        "cached_tokens": 5,
+        "tool_use_tokens": 3,
+        "total_tokens": 133,
+    }
 
 
 def test_supervisor_retries_malformed_structured_output(monkeypatch):
@@ -404,6 +444,11 @@ def test_supervisor_merges_typed_actions_without_duplicates():
 
 
 def test_supervisor_accepts_list_tags_and_replaces_article_body():
+    replacement_body = (
+        "Gather the payment reference, statement date, transaction amount, and supporting receipt. "
+        "Submit the evidence through the secure request form, then wait for Finance Operations to "
+        "confirm reconciliation and provide the next action. Escalate suspected fraud immediately."
+    )
     rows = [
         {
             "object_type": "articles",
@@ -418,7 +463,7 @@ def test_supervisor_accepts_list_tags_and_replaces_article_body():
     review = {
         "patches": [
             {"operation": "add_tag", "target_index": 0, "value": ["billing support", "payments"]},
-            {"operation": "set_article_body", "target_index": 0, "value": "new body"},
+            {"operation": "set_article_body", "target_index": 0, "value": replacement_body},
         ]
     }
 
@@ -426,11 +471,39 @@ def test_supervisor_accepts_list_tags_and_replaces_article_body():
 
     assert summary["applied"] == 2
     assert [item for item in patched[0]["actions"] if item["field"] == "body"] == [
-        {"field": "body", "value": "new body"}
+        {"field": "body", "value": replacement_body}
     ]
     assert [item for item in patched[0]["actions"] if item["field"] == "set_tags"] == [
         {"field": "set_tags", "value": "payments billing_support"}
     ]
+
+
+def test_supervisor_rejects_article_body_regression():
+    existing_body = "Existing deployment-safe guidance. " * 20
+    rows = [
+        {
+            "object_type": "articles",
+            "title": "Payment Help",
+            "conditions": [],
+            "actions": [{"field": "body", "value": existing_body}],
+        }
+    ]
+    review = {
+        "patches": [
+            {
+                "operation": "set_article_body",
+                "target_index": 0,
+                "value": "Approved for ingestion.",
+            }
+        ]
+    }
+
+    patched, summary = apply_supervisor_patches(rows, review, auto_apply=True)
+
+    assert summary["applied"] == 0
+    assert summary["rejected"] == 1
+    assert summary["patch_results"][0]["reject_reason"] == "body_not_substantive"
+    assert patched[0]["actions"] == [{"field": "body", "value": existing_body}]
 
 
 def test_supervisor_name_routing_requires_verified_reference():

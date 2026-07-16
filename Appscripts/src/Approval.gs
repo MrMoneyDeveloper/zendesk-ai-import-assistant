@@ -15,14 +15,59 @@ function updateApprovalStatus(payload) {
     const approvalHeaders = getTabDefinitionByName_('Approval Log').headers;
 
     const rows = [];
+    const rejected = [];
     const summary = { approved: 0, skipped: 0, edit_later: 0, blocked: 0 };
     const decisionMap = {};
+    const recordState = loadApprovalRecordState_(spreadsheet, batchId);
+    const validationByRecord = loadLatestValidationByRecord_(spreadsheet, batchId);
+    const allowedDecisions = {
+      approved: true,
+      skipped: true,
+      edit_later: true,
+      blocked: true,
+      pending_review: true
+    };
 
     decisions.forEach(function eachDecision(decision) {
       const recordId = asString_(decision.record_id).trim();
-      const importDecision = asString_(decision.import_decision || 'pending_review').trim();
+      const requestedDecision = asString_(decision.import_decision || 'pending_review').trim();
       if (!recordId) {
         return;
+      }
+      if (!recordState[recordId]) {
+        rejected.push({
+          record_id: recordId,
+          requested_decision: requestedDecision,
+          reason: 'Record does not exist in this batch.'
+        });
+        return;
+      }
+      if (!allowedDecisions[requestedDecision]) {
+        rejected.push({
+          record_id: recordId,
+          requested_decision: requestedDecision,
+          reason: 'Unsupported approval decision.'
+        });
+        return;
+      }
+
+      const validation = validationByRecord[recordId] || {};
+      const stored = recordState[recordId] || {};
+      const validationStatus = asString_(
+        validation.validation_status || stored.validation_status || ''
+      ).trim().toLowerCase();
+      const blockedReason = asString_(
+        validation.blocked_reason || stored.blocked_reason || ''
+      ).trim();
+      let importDecision = requestedDecision;
+      if (requestedDecision === 'approved' && (validationStatus === 'failed' || blockedReason)) {
+        importDecision = 'blocked';
+        rejected.push({
+          record_id: recordId,
+          requested_decision: requestedDecision,
+          effective_decision: importDecision,
+          reason: blockedReason || 'Record failed deterministic validation.'
+        });
       }
       decisionMap[recordId] = {
         import_decision: importDecision,
@@ -53,11 +98,32 @@ function updateApprovalStatus(payload) {
       action: 'update_approval_status',
       batch_id: batchId,
       updated_records: rows.length,
-      summary: summary
+      summary: summary,
+      rejected_decisions: rejected
     };
   } finally {
     lock.releaseLock();
   }
+}
+
+function loadApprovalRecordState_(spreadsheet, batchId) {
+  const output = {};
+  OBJECT_SHEET_NAMES.forEach(function eachSheetName(sheetName) {
+    const sheet = spreadsheet.getSheetByName(sheetName);
+    if (!sheet) {
+      return;
+    }
+    rowsFromSheet_(sheet).forEach(function eachRow(row) {
+      if (asString_(row.batch_id).trim() !== batchId) {
+        return;
+      }
+      const recordId = asString_(row.record_id).trim();
+      if (recordId) {
+        output[recordId] = row;
+      }
+    });
+  });
+  return output;
 }
 
 function applyApprovalToObjectTabs_(spreadsheet, batchId, decisionMap) {

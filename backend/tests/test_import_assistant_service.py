@@ -1,4 +1,5 @@
 import asyncio
+import json
 from types import SimpleNamespace
 
 from app.models.schemas import ValidationSummary
@@ -20,6 +21,7 @@ from app.services.import_assistant_service import (
     _build_existing_object_index,
     _build_preview_records,
     _dedupe_generated_rows,
+    _draft_department_content_rows,
     _estimate_requested_record_count,
     _extract_object_type_targets,
     _extract_explicit_constraints,
@@ -31,9 +33,12 @@ from app.services.import_assistant_service import (
     _should_use_department_template_first,
     _resolve_wave_api_key,
     _resolve_wave_generator_model,
+    _select_wave_generator_route,
     _run_business_blueprint_compiler,
     _reconcile_backlog_item,
+    apply_approval,
 )
+from app.services.batch_store import get_batch_store, reset_batch_store
 from app.services.planner import _resolve_fallback_object_type
 from app.services.gemini_supervisor import evaluate_supervisor_bundle
 
@@ -54,6 +59,66 @@ def test_build_preview_records_sets_warnings_and_blocks():
     assert summary.blocked == 1
     assert records[0]["validation_status"] == "warning"
     assert records[1]["validation_status"] == "failed"
+
+
+def test_approval_sync_uses_backend_effective_blocked_decision(monkeypatch, tmp_path):
+    captured = []
+
+    class CaptureAppScriptBridge:
+        @property
+        def enabled(self):
+            return True
+
+        async def invoke(self, action, payload=None, method="POST", timeout_seconds=None):
+            captured.append({"action": action, "payload": payload})
+            return {
+                "action": action,
+                "status": "ok",
+                "detail": None,
+                "http_status": 200,
+                "data": {"ok": True},
+            }
+
+    monkeypatch.setenv("BATCH_STORE_FILE", str(tmp_path / "approval-batches.json"))
+    reset_batch_store()
+    monkeypatch.setattr(
+        "app.services.import_assistant_service.AppScriptBridgeService",
+        CaptureAppScriptBridge,
+    )
+    store = get_batch_store()
+    store.save_batch(
+        {
+            "batch_id": "BATCH-APPROVAL-GATE",
+            "status": "preview_ready",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "status_history": [],
+            "records": [
+                {
+                    "record_id": "REC-BLOCKED",
+                    "object_type": "triggers",
+                    "title": "Unsafe trigger",
+                    "validation_status": "failed",
+                    "blocked_reason": "Missing routing action.",
+                    "import_decision": "pending_review",
+                }
+            ],
+        }
+    )
+
+    asyncio.run(
+        apply_approval(
+            "BATCH-APPROVAL-GATE",
+            "reviewer@example.com",
+            [{"record_id": "REC-BLOCKED", "import_decision": "approved"}],
+        )
+    )
+
+    assert store.get_batch("BATCH-APPROVAL-GATE")["records"][0]["import_decision"] == "blocked"
+    assert captured[0]["action"] == "update_approval_status"
+    assert captured[0]["payload"]["records"] == [
+        {"record_id": "REC-BLOCKED", "import_decision": "blocked"}
+    ]
 
 
 def test_resolve_wave_generator_model_uses_wave_overrides():
@@ -736,6 +801,117 @@ def test_department_objects_are_template_first_for_gemini_supervision():
     assert _should_use_department_template_first({"source": "fallback"}, "categories") is False
 
 
+def test_department_hybrid_strategy_routes_macros_and_articles_to_models():
+    backlog_item = {"source": "department_coverage"}
+
+    assert _should_use_department_template_first(
+        backlog_item,
+        "triggers",
+        strategy="hybrid",
+    ) is True
+    assert _should_use_department_template_first(
+        backlog_item,
+        "automations",
+        strategy="hybrid",
+    ) is True
+    assert _should_use_department_template_first(
+        backlog_item,
+        "macros",
+        strategy="hybrid",
+    ) is False
+    assert _should_use_department_template_first(
+        backlog_item,
+        "articles",
+        strategy="hybrid",
+    ) is False
+
+
+def test_wave_generator_route_cursor_rotates_across_department_items():
+    routes = [
+        {"profile": "tertiary", "model": "model-c", "api_key": "key-c"},
+        {"profile": "secondary", "model": "model-b", "api_key": "key-b"},
+        {"profile": "primary", "model": "model-a", "api_key": "key-a"},
+    ]
+    cursor = 0
+    selected = []
+    for _ in range(7):
+        route, cursor = _select_wave_generator_route(routes, cursor)
+        selected.append(route["profile"])
+
+    assert selected == [
+        "tertiary",
+        "secondary",
+        "primary",
+        "tertiary",
+        "secondary",
+        "primary",
+        "tertiary",
+    ]
+
+
+def test_department_hybrid_content_draft_overlays_body_without_replacing_structure(monkeypatch):
+    class FakeGrokClient:
+        async def chat(self, messages, **_kwargs):
+            payload = json.loads(messages[1]["content"])
+            return json.dumps(
+                {
+                    "drafts": [
+                        {
+                            "title": item["title"],
+                            "body": (
+                                "Please provide the account reference, relevant dates, screenshots, and "
+                                "a clear description of the impact. Our specialist will verify the details, "
+                                "confirm the next action, and provide an expected resolution time. Escalate "
+                                "immediately when there is a safety, fraud, or service continuity risk."
+                            ),
+                        }
+                        for item in payload["draft_targets"]
+                    ]
+                }
+            )
+
+    monkeypatch.setattr(
+        "app.services.import_assistant_service.GrokClient",
+        FakeGrokClient,
+    )
+    rows, applied = asyncio.run(
+        _draft_department_content_rows(
+            object_type="macros",
+            target_count=3,
+            prompt=APEX_OPERATING_MODEL_PROMPT,
+            reference_catalog={},
+            existing_titles=[],
+            generated_rows=[],
+            backlog_item={
+                "source": "department_coverage",
+                "department_name": "Finance Operations",
+                "topic": "Payments",
+                "tag": "apex_payment_issue",
+            },
+            model="test-model",
+            api_key="test-key",
+        )
+    )
+
+    assert applied == 3
+    assert len(rows) == 3
+    assert all(row["object_type"] == "macros" for row in rows)
+    assert all(any(action["field"] == "set_tags" for action in row["actions"]) for row in rows)
+    assert all(
+        any(
+            action["field"] == "comment_value" and "account reference" in action["value"]
+            for action in row["actions"]
+        )
+        for row in rows
+    )
+    assert all(
+        not any("fallback used because model output could not be parsed" in warning for warning in row["warnings"])
+        for row in rows
+    )
+    assert all(
+        any("Primary model content draft applied" in note for note in row["dependency_notes"])
+        for row in rows
+    )
 def test_build_deterministic_chunk_rows_generates_valid_trigger_rule_payload():
     rows = _build_deterministic_chunk_rows(
         object_type="triggers",

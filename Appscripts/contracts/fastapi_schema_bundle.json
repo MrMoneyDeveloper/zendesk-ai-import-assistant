@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-07T21:48:56.167617+00:00",
+  "generated_at": "2026-07-16T02:11:56.100053+00:00",
   "source": "backend/app/models/schemas.py",
   "routes": {
     "generate": {
@@ -40,7 +40,7 @@
     "GenerateRequest": {
       "properties": {
         "prompt": {
-          "maxLength": 4000,
+          "maxLength": 12000,
           "minLength": 5,
           "title": "Prompt",
           "type": "string"
@@ -256,9 +256,65 @@
       "type": "object"
     },
     "ImportAssistantGenerateRequest": {
+      "$defs": {
+        "ContextReference": {
+          "properties": {
+            "object_type": {
+              "enum": [
+                "brand",
+                "group",
+                "ticket_form",
+                "help_center",
+                "category",
+                "section",
+                "trigger",
+                "automation",
+                "macro",
+                "view",
+                "ticket_field",
+                "article"
+              ],
+              "title": "Object Type",
+              "type": "string"
+            },
+            "id": {
+              "maxLength": 120,
+              "minLength": 1,
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "maxLength": 1200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Description"
+            }
+          },
+          "required": [
+            "object_type",
+            "id",
+            "name"
+          ],
+          "title": "ContextReference",
+          "type": "object"
+        }
+      },
       "properties": {
         "prompt": {
-          "maxLength": 4000,
+          "maxLength": 12000,
           "minLength": 5,
           "title": "Prompt",
           "type": "string"
@@ -278,6 +334,72 @@
           "default": "local-user",
           "title": "Requester",
           "type": "string"
+        },
+        "dependency_mode": {
+          "default": "match_existing_or_create_new",
+          "enum": [
+            "match_existing_or_create_new",
+            "force_create_new",
+            "force_existing_only"
+          ],
+          "title": "Dependency Mode",
+          "type": "string"
+        },
+        "related_objects": {
+          "items": {
+            "$ref": "#/$defs/ContextReference"
+          },
+          "title": "Related Objects",
+          "type": "array"
+        },
+        "reference_catalog": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/ContextReference"
+            },
+            "type": "array"
+          },
+          "title": "Reference Catalog",
+          "type": "object"
+        },
+        "recent_batch_context": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Recent Batch Context",
+          "type": "array"
+        },
+        "focus_object_types": {
+          "items": {
+            "enum": [
+              "brands",
+              "categories",
+              "sections",
+              "triggers",
+              "automations",
+              "macros",
+              "views",
+              "groups",
+              "ticket_fields",
+              "ticket_forms",
+              "articles"
+            ],
+            "type": "string"
+          },
+          "title": "Focus Object Types",
+          "type": "array"
+        },
+        "context_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Notes"
         }
       },
       "required": [
@@ -288,6 +410,36 @@
     },
     "ImportAssistantGenerateResponse": {
       "$defs": {
+        "ClarificationQuestion": {
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "question": {
+              "title": "Question",
+              "type": "string"
+            },
+            "reason": {
+              "title": "Reason",
+              "type": "string"
+            },
+            "examples": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Examples",
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "question",
+            "reason"
+          ],
+          "title": "ClarificationQuestion",
+          "type": "object"
+        },
         "ValidationSummary": {
           "properties": {
             "passed": {
@@ -321,8 +473,13 @@
             "request_validated",
             "planning",
             "planned",
+            "business_blueprinting",
+            "backlog_building",
+            "wave_execution",
+            "clarification_required",
             "schemas_selected",
             "generating",
+            "supervisor_review",
             "generated",
             "staging",
             "staged",
@@ -333,6 +490,10 @@
             "preview_ready",
             "partially_approved",
             "approved",
+            "deploying",
+            "deployed",
+            "deployed_partial",
+            "deploy_failed",
             "failed"
           ],
           "title": "Status",
@@ -356,6 +517,18 @@
         "preview_url": {
           "title": "Preview Url",
           "type": "string"
+        },
+        "needs_clarification": {
+          "default": false,
+          "title": "Needs Clarification",
+          "type": "boolean"
+        },
+        "clarification_questions": {
+          "items": {
+            "$ref": "#/$defs/ClarificationQuestion"
+          },
+          "title": "Clarification Questions",
+          "type": "array"
         },
         "metadata": {
           "additionalProperties": true,
@@ -384,8 +557,13 @@
                 "request_validated",
                 "planning",
                 "planned",
+                "business_blueprinting",
+                "backlog_building",
+                "wave_execution",
+                "clarification_required",
                 "schemas_selected",
                 "generating",
+                "supervisor_review",
                 "generated",
                 "staging",
                 "staged",
@@ -396,6 +574,10 @@
                 "preview_ready",
                 "partially_approved",
                 "approved",
+                "deploying",
+                "deployed",
+                "deployed_partial",
+                "deploy_failed",
                 "failed"
               ],
               "title": "Status",
@@ -409,6 +591,90 @@
             "at": {
               "title": "At",
               "type": "string"
+            },
+            "event_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Event Id"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source"
+            },
+            "provider": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Provider"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Model"
+            },
+            "wave": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Wave"
+            },
+            "department": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Department"
+            },
+            "object_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Object Type"
             }
           },
           "required": [
@@ -451,8 +717,13 @@
             "request_validated",
             "planning",
             "planned",
+            "business_blueprinting",
+            "backlog_building",
+            "wave_execution",
+            "clarification_required",
             "schemas_selected",
             "generating",
+            "supervisor_review",
             "generated",
             "staging",
             "staged",
@@ -463,6 +734,10 @@
             "preview_ready",
             "partially_approved",
             "approved",
+            "deploying",
+            "deployed",
+            "deployed_partial",
+            "deploy_failed",
             "failed"
           ],
           "title": "Status",
@@ -601,6 +876,34 @@
           },
           "title": "Actions",
           "type": "array"
+        },
+        "deployment_status": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "deployed",
+            "failed",
+            "skipped"
+          ],
+          "title": "Deployment Status",
+          "type": "string"
+        },
+        "zendesk_object_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Zendesk Object Id"
+        },
+        "execution_message": {
+          "default": "",
+          "title": "Execution Message",
+          "type": "string"
         }
       },
       "required": [
@@ -693,6 +996,34 @@
               },
               "title": "Actions",
               "type": "array"
+            },
+            "deployment_status": {
+              "default": "pending",
+              "enum": [
+                "pending",
+                "deployed",
+                "failed",
+                "skipped"
+              ],
+              "title": "Deployment Status",
+              "type": "string"
+            },
+            "zendesk_object_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Zendesk Object Id"
+            },
+            "execution_message": {
+              "default": "",
+              "title": "Execution Message",
+              "type": "string"
             }
           },
           "required": [
@@ -738,8 +1069,13 @@
             "request_validated",
             "planning",
             "planned",
+            "business_blueprinting",
+            "backlog_building",
+            "wave_execution",
+            "clarification_required",
             "schemas_selected",
             "generating",
+            "supervisor_review",
             "generated",
             "staging",
             "staged",
@@ -750,6 +1086,10 @@
             "preview_ready",
             "partially_approved",
             "approved",
+            "deploying",
+            "deployed",
+            "deployed_partial",
+            "deploy_failed",
             "failed"
           ],
           "title": "Status",
@@ -872,8 +1212,13 @@
             "request_validated",
             "planning",
             "planned",
+            "business_blueprinting",
+            "backlog_building",
+            "wave_execution",
+            "clarification_required",
             "schemas_selected",
             "generating",
+            "supervisor_review",
             "generated",
             "staging",
             "staged",
@@ -884,6 +1229,10 @@
             "preview_ready",
             "partially_approved",
             "approved",
+            "deploying",
+            "deployed",
+            "deployed_partial",
+            "deploy_failed",
             "failed"
           ],
           "title": "Status",
@@ -921,6 +1270,8 @@
             "write_batch_to_sheets",
             "validate_batch",
             "get_batch_preview",
+            "stage_validate_preview",
+            "rollback_batch",
             "update_approval_status",
             "write_execution_log",
             "get_execution_summary",

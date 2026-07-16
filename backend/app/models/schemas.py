@@ -38,6 +38,8 @@ DependencyMode = Literal[
     "force_existing_only",
 ]
 OnExistingMode = Literal["create_new", "overwrite_existing", "skip_existing"]
+ZendeskDeploymentScope = Literal["support", "help_center", "all"]
+ZendeskArticleMode = Literal["draft", "publish"]
 FocusObjectType = Literal[
     "brands",
     "categories",
@@ -247,6 +249,13 @@ class StatusHistoryItem(BaseModel):
     status: BatchStatus
     message: str = ""
     at: str
+    event_id: str | None = None
+    source: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    wave: int | None = None
+    department: str | None = None
+    object_type: str | None = None
 
 
 class JobStatusResponse(BaseModel):
@@ -507,6 +516,43 @@ class ZendeskContextResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ZendeskHelpCenterReadinessRequest(ZendeskCredentialValidationRequest):
+    help_center_url: str | None = Field(default=None, max_length=2048)
+    brand_id: str | None = Field(default=None, max_length=100)
+    locale: str | None = Field(default=None, max_length=35)
+
+    @field_validator("help_center_url", "brand_id", "locale")
+    @classmethod
+    def trim_optional_values(cls, value: str | None) -> str | None:
+        cleaned = str(value or "").strip()
+        return cleaned or None
+
+
+class ZendeskHelpCenterReadinessResponse(BaseModel):
+    ready: bool
+    state: Literal[
+        "ready",
+        "manual_enablement_required",
+        "brand_selection_required",
+        "permission_denied",
+        "invalid_credentials",
+        "invalid_url",
+        "unavailable",
+    ]
+    detail: str
+    base_url: str
+    help_center_api_base_url: str
+    help_center_url: str
+    locale: str
+    brand: dict[str, Any] | None = None
+    available_brands: list[dict[str, Any]] = Field(default_factory=list)
+    checks: list[dict[str, Any]] = Field(default_factory=list)
+    instructions: list[str] = Field(default_factory=list)
+    documentation_url: str = "https://support.zendesk.com/hc/en-us/articles/5702269234330"
+    can_create_structure: bool = False
+    can_create_articles: bool = False
+
+
 class ZendeskDeployRequest(BaseModel):
     batch_id: str
     subdomain: str = Field(..., min_length=2, max_length=200)
@@ -514,6 +560,13 @@ class ZendeskDeployRequest(BaseModel):
     api_token: str = Field(..., min_length=6, max_length=512)
     dry_run: bool = False
     on_existing: OnExistingMode = "create_new"
+    deployment_scope: ZendeskDeploymentScope = "support"
+    help_center_url: str | None = Field(default=None, max_length=2048)
+    brand_id: str | None = Field(default=None, max_length=100)
+    locale: str | None = Field(default=None, max_length=35)
+    article_mode: ZendeskArticleMode = "draft"
+    confirm_help_center_deploy: bool = False
+    confirm_article_publish: bool = False
 
     @field_validator("subdomain")
     @classmethod
@@ -539,6 +592,12 @@ class ZendeskDeployRequest(BaseModel):
     @classmethod
     def normalize_token(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("help_center_url", "brand_id", "locale")
+    @classmethod
+    def trim_optional_deploy_values(cls, value: str | None) -> str | None:
+        cleaned = str(value or "").strip()
+        return cleaned or None
 
 
 class ZendeskDeployRecordResult(BaseModel):

@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -55,6 +56,89 @@ class CountingAppScriptBridgeService:
         }
 
 
+def test_generate_async_reserves_pollable_batch_before_generation(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+    scheduled = {}
+
+    def fake_schedule(request, batch_id):
+        scheduled["batch_id"] = batch_id
+        scheduled["prompt"] = request.prompt
+
+    monkeypatch.setattr(
+        "app.routes.import_assistant._schedule_reserved_generation",
+        fake_schedule,
+    )
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/generate-async",
+        json={
+            "prompt": "Build a department operating model for claims and finance.",
+            "target_environment": "sandbox",
+            "mode": "generate_validate_preview",
+            "requester": "async-test-user",
+        },
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "received"
+    assert payload["batch_id"] == scheduled["batch_id"]
+    assert scheduled["prompt"].startswith("Build a department operating model")
+    assert "department manifest" in payload["status_history"][0]["message"]
+
+    job_response = client.get(f"/api/import-assistant/jobs/{payload['batch_id']}")
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "received"
+
+
+def test_interrupted_async_generation_marks_reserved_batch_failed(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+
+    from app.models.schemas import ImportAssistantGenerateRequest
+    from app.routes import import_assistant as route_module
+    from app.services.import_assistant_service import reserve_import_assistant_batch
+
+    request = ImportAssistantGenerateRequest(
+        prompt="Create one trigger for interruption testing.",
+        target_environment="sandbox",
+        mode="generate_validate_preview",
+        requester="async-cancel-test",
+    )
+    reserved = reserve_import_assistant_batch(request)
+
+    async def slow_preflight():
+        await asyncio.sleep(60)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(route_module, "_sync_schema_preflight_if_enabled", slow_preflight)
+
+    async def cancel_run():
+        task = asyncio.create_task(
+            route_module._run_reserved_generation(request, reserved.batch_id)
+        )
+        await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(cancel_run())
+
+    failed_batch = get_batch_store().get_batch(reserved.batch_id)
+    assert failed_batch["status"] == "failed"
+    assert failed_batch["metadata"]["failure"]["failure_code"] == "generation_interrupted"
+
+
 def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
@@ -80,7 +164,15 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
 
     async def fake_deploy_records_to_zendesk(
-        *, subdomain, email, api_token, records, dry_run=False, on_existing="create_new"
+        *,
+        subdomain,
+        email,
+        api_token,
+        records,
+        dry_run=False,
+        on_existing="create_new",
+        article_mode="draft",
+        help_center_base_url=None,
     ):
         return {
             "summary": {
@@ -167,6 +259,215 @@ def test_generate_preview_and_approve_flow(monkeypatch, tmp_path):
     assert deploy_payload["summary"]["deployed"] == 1
 
     assert Path(store_file).exists()
+
+
+def test_deploy_runs_support_then_resumable_help_center_phase(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    get_settings.cache_clear()
+    reset_batch_store()
+    monkeypatch.setattr("app.services.import_assistant_service.AppScriptBridgeService", StubAppScriptBridgeService)
+    monkeypatch.setattr("app.routes.import_assistant.AppScriptBridgeService", StubAppScriptBridgeService)
+
+    deployed_type_batches: list[list[str]] = []
+
+    async def fake_deploy_records_to_zendesk(
+        *,
+        subdomain,
+        email,
+        api_token,
+        records,
+        dry_run=False,
+        on_existing="create_new",
+        article_mode="draft",
+        help_center_base_url=None,
+    ):
+        deployed_type_batches.append([str(row.get("object_type")) for row in records])
+        results = [
+            {
+                "record_id": row["record_id"],
+                "object_type": row["object_type"],
+                "title": row["title"],
+                "deployment_status": "deployed",
+                "zendesk_object_id": f"ZD-{row['record_id']}",
+                "execution_message": "created",
+                "executed_at": "2026-01-01T00:00:00Z",
+            }
+            for row in records
+        ]
+        return {
+            "summary": {
+                "attempted": len(results),
+                "deployed": len(results),
+                "failed": 0,
+                "skipped": 0,
+            },
+            "results": results,
+            "base_url": "https://acme.zendesk.com",
+            "dependency_auto_create": {"events": [], "created_count": 0},
+            "sanitization_stats": {},
+        }
+
+    async def fake_help_center_readiness(**kwargs):
+        return {
+            "ready": True,
+            "state": "ready",
+            "detail": "Help Center is ready.",
+            "base_url": "https://acme.zendesk.com",
+            "help_center_api_base_url": "https://acme.zendesk.com",
+            "help_center_url": "https://acme.zendesk.com/hc/en-us",
+            "locale": "en-us",
+            "brand": {"id": "7", "name": "Main brand", "has_help_center": True},
+            "available_brands": [],
+            "checks": [],
+            "instructions": [],
+            "can_create_structure": True,
+            "can_create_articles": True,
+        }
+
+    monkeypatch.setattr(
+        "app.services.import_assistant_service.deploy_records_to_zendesk",
+        fake_deploy_records_to_zendesk,
+    )
+    monkeypatch.setattr(
+        "app.services.import_assistant_service.check_zendesk_help_center_readiness",
+        fake_help_center_readiness,
+    )
+
+    store = get_batch_store()
+    records = [
+        {
+            "record_id": "REC-SUPPORT",
+            "object_type": "triggers",
+            "title": "Route Claims",
+            "import_decision": "approved",
+            "deployable": True,
+            "deployment_status": "pending",
+        },
+        {
+            "record_id": "REC-CATEGORY",
+            "object_type": "categories",
+            "title": "Claims Support",
+            "import_decision": "approved",
+            "deployable": True,
+            "deployment_status": "pending",
+        },
+        {
+            "record_id": "REC-SECTION",
+            "object_type": "sections",
+            "title": "Claims",
+            "import_decision": "approved",
+            "deployable": True,
+            "deployment_status": "pending",
+        },
+        {
+            "record_id": "REC-ARTICLE",
+            "object_type": "articles",
+            "title": "Submit a Claim",
+            "import_decision": "approved",
+            "deployable": True,
+            "deployment_status": "pending",
+        },
+    ]
+    store.save_batch(
+        {
+            "batch_id": "BATCH-PHASES",
+            "status": "approved",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "records": records,
+            "metadata": {},
+            "status_history": [],
+        }
+    )
+
+    from app.main import app
+
+    client = TestClient(app)
+    credentials = {
+        "batch_id": "BATCH-PHASES",
+        "subdomain": "acme",
+        "email": "admin@acme.com",
+        "api_token": "tok_test_123",
+    }
+    support_response = client.post(
+        "/api/import-assistant/deploy",
+        json={**credentials, "deployment_scope": "support"},
+    )
+    assert support_response.status_code == 200
+    assert support_response.json()["status"] == "deployed_partial"
+    assert support_response.json()["metadata"]["pending_help_center_count"] == 3
+    assert deployed_type_batches[0] == ["triggers"]
+
+    help_center_response = client.post(
+        "/api/import-assistant/deploy",
+        json={
+            **credentials,
+            "deployment_scope": "help_center",
+            "help_center_url": "https://acme.zendesk.com/hc/en-us",
+            "confirm_help_center_deploy": True,
+            "article_mode": "draft",
+        },
+    )
+    assert help_center_response.status_code == 200
+    assert help_center_response.json()["status"] == "deployed"
+    assert deployed_type_batches[1] == ["categories", "sections", "articles"]
+    saved_records = get_batch_store().get_batch("BATCH-PHASES")["records"]
+    support_record = next(row for row in saved_records if row["record_id"] == "REC-SUPPORT")
+    assert support_record["zendesk_object_id"] == "ZD-REC-SUPPORT"
+
+
+def test_help_center_readiness_route_returns_manual_handoff(monkeypatch):
+    async def fake_readiness(**kwargs):
+        return {
+            "ready": False,
+            "state": "manual_enablement_required",
+            "detail": "Enable Help Center for Main brand.",
+            "base_url": "https://acme.zendesk.com",
+            "help_center_api_base_url": "https://brand-one.zendesk.com",
+            "help_center_url": "https://brand-one.zendesk.com/hc/en-us",
+            "locale": "en-us",
+            "brand": {
+                "id": "7",
+                "name": "Main brand",
+                "subdomain": "brand-one",
+                "has_help_center": False,
+            },
+            "available_brands": [],
+            "checks": [
+                {
+                    "name": "brand_help_center",
+                    "status": "failed",
+                    "detail": "Zendesk reports Help Center is disabled.",
+                }
+            ],
+            "instructions": ["Enable Help Center in Zendesk Guide, then verify again."],
+            "can_create_structure": False,
+            "can_create_articles": False,
+        }
+
+    monkeypatch.setattr(
+        "app.routes.import_assistant.check_zendesk_help_center_readiness",
+        fake_readiness,
+    )
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/import-assistant/zendesk/help-center/readiness",
+        json={
+            "subdomain": "acme",
+            "email": "admin@acme.com",
+            "api_token": "tok_test_123",
+            "help_center_url": "https://brand-one.zendesk.com/hc/en-us",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["state"] == "manual_enablement_required"
+    assert payload["ready"] is False
+    assert payload["instructions"]
 
 
 def test_generate_returns_structured_request_validation_failure(monkeypatch, tmp_path):

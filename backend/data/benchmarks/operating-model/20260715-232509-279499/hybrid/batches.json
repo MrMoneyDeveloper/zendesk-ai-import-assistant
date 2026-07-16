@@ -1,0 +1,965 @@
+{
+  "batches": {
+    "BATCH-20260715-232753-3DB9C9": {
+      "batch_id": "BATCH-20260715-232753-3DB9C9",
+      "status": "generating",
+      "prompt": "Build a Zendesk support operating model for Apex Mobility Finance, a company that finances electric scooters, delivery e-bikes, and small EV fleets for gig workers and small businesses.\n\nBusiness context:\nApex has these departments:\n- Customer Support: first-line support for account questions, payment issues, login problems, and general requests.\n- Claims & Incidents: handles damaged vehicles, theft reports, accident claims, insurance evidence, and urgent safety incidents.\n- Finance Operations: handles failed payments, settlement disputes, refunds, payoff quotes, and billing corrections.\n- Fleet Onboarding: helps business customers onboard multiple riders, verify documents, activate vehicles, and schedule handover.\n- Technical Support: handles app bugs, GPS/device issues, charger problems, battery diagnostics, and telematics troubleshooting.\n- Compliance: handles KYC document review, suspicious activity, regulatory complaints, and data/privacy requests.\n- VIP / Enterprise Success: handles high-value fleet accounts, partner escalations, and white-glove support.\n\nCreate a complete Zendesk configuration in dependency order:\n- Groups for the departments above, reusing existing matching groups if selected.\n- Ticket fields for Department, Customer Segment, Vehicle Type, Issue Category, Incident Severity, Payment Status, KYC Status, Fleet Size, and Requested Outcome.\n- Ticket forms for General Support, Claims & Incidents, Finance Operations, Fleet Onboarding, Technical Support, Compliance Review, and VIP Enterprise Support.\n- Triggers to route tickets to the correct department based on form, issue category, customer segment, severity, and payment/KYC signals.\n- Automations for stale urgent incidents, unresolved failed payments, pending KYC reviews, and enterprise escalations.\n- Macros for first response, missing information request, payment dispute acknowledgement, incident claim acknowledgement, KYC document request, technical troubleshooting steps, and VIP escalation acknowledgement.\n- Views for each department showing useful columns like requester, priority, status, vehicle type, issue category, severity, payment status, KYC status, assignee, and updated date.\n- Help center categories, sections, and articles for payments, claims, onboarding, technical troubleshooting, compliance/KYC, and enterprise fleet support.\n\nOperational rules:\n- Use existing selected Zendesk context where appropriate, but create missing dependencies when needed.\n- Keep every record deploy-safe and incremental.\n- Add dependency notes when an object depends on a field, group, category, or section.\n- Use clear Apex-specific tags.\n- Do not invent external Zendesk IDs. Reference dependencies by clear names and notes.\n- Make the setup practical for a real support team, not a demo.",
+      "requester": "operating-model-benchmark-20260715-232509-279499-hybrid",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "created_at": "2026-07-15T23:27:53.266707+00:00",
+      "updated_at": "2026-07-15T23:42:53.257511+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted.",
+          "at": "2026-07-15T23:27:53.266707+00:00"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-07-15T23:27:53.271657+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Large multi-item prompt detected; forcing wave/chunk orchestration (multi_object_target_prompt).",
+          "at": "2026-07-15T23:27:53.273777+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner bypassed for department_coverage_manifest; using deterministic inference.",
+          "at": "2026-07-15T23:27:53.274932+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-07-15T23:27:53.277795+00:00"
+        },
+        {
+          "status": "business_blueprinting",
+          "message": "Compiling business brief into executable blueprint.",
+          "at": "2026-07-15T23:27:53.279387+00:00"
+        },
+        {
+          "status": "backlog_building",
+          "message": "Building deterministic backlog and dependency order.",
+          "at": "2026-07-15T23:27:53.282142+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-07-15T23:27:53.284081+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-07-15T23:27:53.285242+00:00"
+        },
+        {
+          "status": "wave_execution",
+          "message": "Executing deterministic orchestration waves.",
+          "at": "2026-07-15T23:27:53.286583+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 categories chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.288627+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 categories chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.290597+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 categories chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.292261+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 categories chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.293987+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 categories chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.295914+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 categories chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.297981+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 sections chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.299578+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 sections chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.301393+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 sections chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.309969+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 sections chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.312791+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 sections chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.321566+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 sections chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:27:53.323947+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Waiting for 6 Gemini supervisor review(s) before wave 1/5 checkpoint.",
+          "at": "2026-07-15T23:27:53.325853+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:27:53.328182+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:27:53.625010+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:27:56.831934+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:27:56.840489+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=2.",
+          "at": "2026-07-15T23:28:00.431922+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:00.433667+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=2.",
+          "at": "2026-07-15T23:28:05.266879+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:05.268529+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:28:08.523169+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:08.525002+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=2.",
+          "at": "2026-07-15T23:28:13.967199+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=1.",
+          "at": "2026-07-15T23:28:17.207943+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini supervisor reviews settled before wave 1/5 checkpoint; records=12 dropped_after_patch=0.",
+          "at": "2026-07-15T23:28:17.210975+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 1/5 completed: chunks=12, created=12, reused=0, updated=0, blocked=0.",
+          "at": "2026-07-15T23:28:17.213046+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Checkpoint CHK-01-0D52C8DD created for wave 1/5. Generation continues while confirmation is pending.",
+          "at": "2026-07-15T23:28:17.217159+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 groups chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:17.220227+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 groups chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:17.222673+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 groups chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:17.224689+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 groups chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:17.226708+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 groups chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:17.228780+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 groups chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:17.230974+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 groups chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:17.233182+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 ticket_fields chunk 1/3 (target=3, template=department).",
+          "at": "2026-07-15T23:28:17.235637+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 ticket_fields chunk 2/3 (target=3, template=department).",
+          "at": "2026-07-15T23:28:17.238357+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 ticket_fields chunk 3/3 (target=3, template=department).",
+          "at": "2026-07-15T23:28:17.241067+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Waiting for 8 Gemini supervisor review(s) before wave 2/5 checkpoint.",
+          "at": "2026-07-15T23:28:17.244335+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:17.246735+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:17.249401+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:28:21.196581+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:21.198479+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=1.",
+          "at": "2026-07-15T23:28:25.558004+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:25.560002+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=2.",
+          "at": "2026-07-15T23:28:29.720800+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:29.723093+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=2.",
+          "at": "2026-07-15T23:28:33.849661+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:33.851599+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=1.",
+          "at": "2026-07-15T23:28:38.291736+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:38.294068+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=1.",
+          "at": "2026-07-15T23:28:43.199636+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:43.201647+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=2.",
+          "at": "2026-07-15T23:28:46.280072+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=2.",
+          "at": "2026-07-15T23:28:51.803404+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini supervisor reviews settled before wave 2/5 checkpoint; records=28 dropped_after_patch=0.",
+          "at": "2026-07-15T23:28:51.807524+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 2/5 completed: chunks=10, created=8, reused=0, updated=0, blocked=0.",
+          "at": "2026-07-15T23:28:51.809411+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Checkpoint CHK-02-1BAC1A59 created for wave 2/5. Generation continues while confirmation is pending.",
+          "at": "2026-07-15T23:28:51.813201+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 ticket_forms chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:51.815649+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 ticket_forms chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:51.817850+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 ticket_forms chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:51.821110+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 ticket_forms chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:51.824323+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 ticket_forms chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:51.827000+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 ticket_forms chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:51.829322+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 ticket_forms chunk 1/1 (target=1, template=department).",
+          "at": "2026-07-15T23:28:51.831581+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 views chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:28:51.833832+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 views chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:28:51.836166+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 views chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:28:51.838613+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 views chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:28:51.841252+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 views chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:28:51.843467+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 views chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:28:51.845611+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 views chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:28:51.848085+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Waiting for 7 Gemini supervisor review(s) before wave 3/5 checkpoint.",
+          "at": "2026-07-15T23:28:51.850137+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:51.853734+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:51.865073+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=1.",
+          "at": "2026-07-15T23:28:55.431469+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:55.434027+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=2.",
+          "at": "2026-07-15T23:28:59.336997+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:28:59.339420+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:29:04.614307+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:29:04.616461+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=3.",
+          "at": "2026-07-15T23:29:08.428451+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:29:08.431675+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=2.",
+          "at": "2026-07-15T23:29:12.086602+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:29:12.088737+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:29:17.325648+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=1.",
+          "at": "2026-07-15T23:29:24.843805+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini supervisor reviews settled before wave 3/5 checkpoint; records=49 dropped_after_patch=0.",
+          "at": "2026-07-15T23:29:24.861288+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 3/5 completed: chunks=14, created=14, reused=0, updated=0, blocked=0.",
+          "at": "2026-07-15T23:29:24.865375+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Checkpoint CHK-03-E6AC642B created for wave 3/5. Generation continues while confirmation is pending.",
+          "at": "2026-07-15T23:29:24.872442+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 triggers chunk 1/1 (target=3, template=department).",
+          "at": "2026-07-15T23:29:24.877310+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 triggers chunk 1/1 (target=3, template=department).",
+          "at": "2026-07-15T23:29:24.881806+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 triggers chunk 1/1 (target=3, template=department).",
+          "at": "2026-07-15T23:29:24.885655+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 triggers chunk 1/1 (target=3, template=department).",
+          "at": "2026-07-15T23:29:24.889236+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 triggers chunk 1/1 (target=3, template=department).",
+          "at": "2026-07-15T23:29:24.892461+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 triggers chunk 1/1 (target=3, template=department).",
+          "at": "2026-07-15T23:29:24.896212+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 triggers chunk 1/1 (target=3, template=department).",
+          "at": "2026-07-15T23:29:24.900132+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 automations chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:29:24.904182+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 automations chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:29:24.907782+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 automations chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:29:24.911196+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 automations chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:29:24.915950+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 automations chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:29:24.920814+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 automations chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:29:24.925389+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 automations chunk 1/1 (target=2, template=department).",
+          "at": "2026-07-15T23:29:24.929628+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 4/5 macros chunk 1/1 (0.16s).",
+          "at": "2026-07-15T23:29:24.934831+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 (target=3).",
+          "at": "2026-07-15T23:29:25.105389+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 used deterministic fallback record synthesis.",
+          "at": "2026-07-15T23:30:02.289900+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 4/5 macros chunk 1/1 (0.16s).",
+          "at": "2026-07-15T23:30:02.293913+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 (target=3).",
+          "at": "2026-07-15T23:30:02.460203+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 used deterministic fallback record synthesis.",
+          "at": "2026-07-15T23:31:21.035945+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 4/5 macros chunk 1/1 (0.19s).",
+          "at": "2026-07-15T23:31:21.040177+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 (target=3).",
+          "at": "2026-07-15T23:31:21.242105+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Object-level failover activated for macros: 3 generation failures in this run. Remaining chunks will use deterministic synthesis.",
+          "at": "2026-07-15T23:32:39.680409+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 used deterministic fallback record synthesis.",
+          "at": "2026-07-15T23:32:39.683480+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 4/5 macros chunk 1/1 (0.18s).",
+          "at": "2026-07-15T23:32:39.686967+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 (target=3).",
+          "at": "2026-07-15T23:32:39.878761+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 4/5 macros chunk 1/1 (0.22s).",
+          "at": "2026-07-15T23:32:39.883308+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 (target=3).",
+          "at": "2026-07-15T23:32:40.109221+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 4/5 macros chunk 1/1 (0.16s).",
+          "at": "2026-07-15T23:32:40.113395+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 (target=3).",
+          "at": "2026-07-15T23:32:40.294580+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 4/5 macros chunk 1/1 (0.18s).",
+          "at": "2026-07-15T23:32:40.298386+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 macros chunk 1/1 (target=3).",
+          "at": "2026-07-15T23:32:40.487788+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Waiting for 7 Gemini supervisor review(s) before wave 4/5 checkpoint.",
+          "at": "2026-07-15T23:32:40.491923+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:32:40.502516+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:32:40.736409+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:32:44.929177+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:32:44.932244+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:32:48.654294+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:32:48.657242+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:32:53.525341+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:32:53.527842+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:32:57.696534+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:32:57.699003+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:33:00.668284+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing department_bundle chunk 1/1 for safe patches.",
+          "at": "2026-07-15T23:33:00.671258+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:33:04.800727+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for department_bundle chunk 1/1; applied=0.",
+          "at": "2026-07-15T23:33:11.014538+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini supervisor reviews settled before wave 4/5 checkpoint; records=105 dropped_after_patch=0.",
+          "at": "2026-07-15T23:33:11.039871+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 4/5 completed: chunks=21, created=21, reused=0, updated=0, blocked=0.",
+          "at": "2026-07-15T23:33:11.042724+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Checkpoint CHK-04-AE406813 created for wave 4/5. Generation continues while confirmation is pending.",
+          "at": "2026-07-15T23:33:11.048199+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 5/5 articles chunk 1/1 (0.16s).",
+          "at": "2026-07-15T23:33:11.051479+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 5/5 articles chunk 1/1 (target=2).",
+          "at": "2026-07-15T23:33:11.224838+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 5/5 articles chunk 1/1 used deterministic fallback record synthesis.",
+          "at": "2026-07-15T23:36:06.631322+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 5/5 articles chunk 1/1 (0.23s).",
+          "at": "2026-07-15T23:36:06.635298+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 5/5 articles chunk 1/1 (target=2).",
+          "at": "2026-07-15T23:36:06.898265+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 5/5 articles chunk 1/1 used deterministic fallback record synthesis.",
+          "at": "2026-07-15T23:39:31.417108+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 5/5 articles chunk 1/1 (0.17s).",
+          "at": "2026-07-15T23:39:31.421876+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 5/5 articles chunk 1/1 (target=2).",
+          "at": "2026-07-15T23:39:31.605514+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Object-level failover activated for articles: 3 generation failures in this run. Remaining chunks will use deterministic synthesis.",
+          "at": "2026-07-15T23:42:53.058378+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 5/5 articles chunk 1/1 used deterministic fallback record synthesis.",
+          "at": "2026-07-15T23:42:53.061715+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 5/5 articles chunk 1/1 (0.18s).",
+          "at": "2026-07-15T23:42:53.065937+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Wave 5/5 articles chunk 1/1 (target=2).",
+          "at": "2026-07-15T23:42:53.251893+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Pacing before wave 5/5 articles chunk 1/1 (0.23s).",
+          "at": "2026-07-15T23:42:53.257499+00:00"
+        }
+      ],
+      "records": [],
+      "generated_counts": {},
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": 0
+      },
+      "planning_summary": {},
+      "metadata": {
+        "run_control": {
+          "pause_requested": false,
+          "pause_after_wave": false,
+          "cancel_requested": false,
+          "cancel_reason": "",
+          "updated_at": "",
+          "updated_by": ""
+        },
+        "checkpoints": [
+          {
+            "checkpoint_id": "CHK-01-0D52C8DD",
+            "wave": 1,
+            "created_at": "2026-07-15T23:28:17.214809+00:00",
+            "status": "pending",
+            "summary": {
+              "wave": 1,
+              "wave_position": 1,
+              "total_waves": 5,
+              "chunk_count": 12,
+              "created": 12,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "generated_records": 12,
+              "generated_counts": {
+                "categories": 6,
+                "sections": 6
+              }
+            },
+            "preview_snapshot_ref": "/api/import-assistant/preview/BATCH-20260715-232753-3DB9C9?checkpoint=CHK-01-0D52C8DD",
+            "decision_at": null,
+            "decision_by": null,
+            "decision_note": null
+          },
+          {
+            "checkpoint_id": "CHK-02-1BAC1A59",
+            "wave": 2,
+            "created_at": "2026-07-15T23:28:51.811243+00:00",
+            "status": "pending",
+            "summary": {
+              "wave": 2,
+              "wave_position": 2,
+              "total_waves": 5,
+              "chunk_count": 10,
+              "created": 8,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "generated_records": 16,
+              "generated_counts": {
+                "categories": 6,
+                "sections": 6,
+                "groups": 7,
+                "ticket_fields": 9
+              }
+            },
+            "preview_snapshot_ref": "/api/import-assistant/preview/BATCH-20260715-232753-3DB9C9?checkpoint=CHK-02-1BAC1A59",
+            "decision_at": null,
+            "decision_by": null,
+            "decision_note": null
+          },
+          {
+            "checkpoint_id": "CHK-03-E6AC642B",
+            "wave": 3,
+            "created_at": "2026-07-15T23:29:24.868905+00:00",
+            "status": "pending",
+            "summary": {
+              "wave": 3,
+              "wave_position": 3,
+              "total_waves": 5,
+              "chunk_count": 14,
+              "created": 14,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "generated_records": 21,
+              "generated_counts": {
+                "categories": 6,
+                "sections": 6,
+                "groups": 7,
+                "ticket_fields": 9,
+                "ticket_forms": 7,
+                "views": 14
+              }
+            },
+            "preview_snapshot_ref": "/api/import-assistant/preview/BATCH-20260715-232753-3DB9C9?checkpoint=CHK-03-E6AC642B",
+            "decision_at": null,
+            "decision_by": null,
+            "decision_note": null
+          },
+          {
+            "checkpoint_id": "CHK-04-AE406813",
+            "wave": 4,
+            "created_at": "2026-07-15T23:33:11.045228+00:00",
+            "status": "pending",
+            "summary": {
+              "wave": 4,
+              "wave_position": 4,
+              "total_waves": 5,
+              "chunk_count": 21,
+              "created": 21,
+              "reused": 0,
+              "updated": 0,
+              "blocked": 0,
+              "generated_records": 56,
+              "generated_counts": {
+                "categories": 6,
+                "sections": 6,
+                "groups": 7,
+                "ticket_fields": 9,
+                "ticket_forms": 7,
+                "views": 14,
+                "triggers": 21,
+                "automations": 14,
+                "macros": 21
+              }
+            },
+            "preview_snapshot_ref": "/api/import-assistant/preview/BATCH-20260715-232753-3DB9C9?checkpoint=CHK-04-AE406813",
+            "decision_at": null,
+            "decision_by": null,
+            "decision_note": null
+          }
+        ],
+        "rollback": {}
+      }
+    }
+  }
+}

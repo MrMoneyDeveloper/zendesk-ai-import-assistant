@@ -57,7 +57,7 @@ function validateBatch(payload) {
 
     const validationSheet = getSheetByNameOrCreate_(spreadsheet, 'Validation Log');
     const validationHeaders = getTabDefinitionByName_('Validation Log').headers;
-    appendRowsByHeader_(validationSheet, validationHeaders, validationRows);
+    replaceBatchRows_(validationSheet, validationHeaders, batchId, validationRows);
 
     getScriptProperties_().setProperty(APP_CONFIG.LAST_VALIDATION_AT_PROPERTY, nowIso_());
 
@@ -86,6 +86,8 @@ function validateRecordByType_(record) {
 
   if (objectType === 'triggers') {
     validateTriggersRecord_(record, warnings, blocking);
+  } else if (objectType === 'automations') {
+    validateAutomationRecord_(record, warnings, blocking);
   } else if (objectType === 'macros') {
     validateMacroRecord_(record, warnings, blocking);
   } else if (objectType === 'views') {
@@ -94,6 +96,12 @@ function validateRecordByType_(record) {
     validateTicketFieldRecord_(record, warnings, blocking);
   } else if (objectType === 'ticket_forms') {
     validateTicketFormRecord_(record, warnings, blocking);
+  } else if (objectType === 'sections') {
+    validateSectionRecord_(record, warnings, blocking);
+  } else if (objectType === 'articles') {
+    validateArticleRecord_(record, warnings, blocking);
+  } else if (objectType === 'brands' || objectType === 'groups' || objectType === 'categories') {
+    // A non-empty title is the deployable payload for these name-based objects.
   } else if (objectType === 'tag_dictionary') {
     validateTagDictionaryRecord_(record, warnings, blocking);
   } else if (objectType === 'recommendations') {
@@ -114,6 +122,46 @@ function validateRecordByType_(record) {
     warnings: uniqueWarnings,
     blocked_reason: uniqueBlocking.join(' | ')
   };
+}
+
+function validateAutomationRecord_(record, warnings, blocking) {
+  validateTriggersRecord_(record, warnings, blocking);
+  const conditions = Array.isArray(record.conditions) ? record.conditions : [];
+  const hasTimeCondition = conditions.some(function eachCondition(condition) {
+    const field = asString_(condition && condition.field).trim().toLowerCase();
+    return field.indexOf('hour') >= 0 || field.indexOf('time') >= 0 || field.indexOf('calendar') >= 0;
+  });
+  if (!hasTimeCondition) {
+    blocking.push('Automation must include time-based condition logic.');
+  }
+}
+
+function validateSectionRecord_(record, warnings, blocking) {
+  const categoryReference = findRecordValueByAliases_(
+    record,
+    ['category_id', 'category_name', 'category']
+  );
+  if (!asString_(categoryReference).trim()) {
+    blocking.push('Help Center section must reference a generated or existing category by name or ID.');
+  }
+}
+
+function validateArticleRecord_(record, warnings, blocking) {
+  const sectionReference = findRecordValueByAliases_(
+    record,
+    ['section_id', 'section_name', 'section']
+  );
+  if (!asString_(sectionReference).trim()) {
+    blocking.push('Help Center article must reference a generated or existing section by name or ID.');
+  }
+  const body = findRecordValueByAliases_(
+    record,
+    ['body', 'article_body', 'comment_value', 'comment_value_html']
+  );
+  const bodyText = asString_(body).trim();
+  if (bodyText.length < 120) {
+    blocking.push('Help Center article body must contain at least 120 characters of substantive guidance.');
+  }
 }
 
 function validateTriggersRecord_(record, warnings, blocking) {

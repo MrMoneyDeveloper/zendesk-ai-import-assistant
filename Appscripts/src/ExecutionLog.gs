@@ -55,8 +55,18 @@ function getExecutionSummary(payload) {
     };
   }
 
-  const rows = rowsFromSheet_(sheet).filter(function eachRow(row) {
-    return asString_(row.batch_id).trim() === batchId;
+  const latestByRecord = {};
+  rowsFromSheet_(sheet).forEach(function eachRow(row) {
+    if (asString_(row.batch_id).trim() !== batchId) {
+      return;
+    }
+    const recordId = asString_(row.record_id).trim();
+    if (recordId) {
+      latestByRecord[recordId] = row;
+    }
+  });
+  const rows = Object.keys(latestByRecord).map(function eachRecordId(recordId) {
+    return latestByRecord[recordId];
   });
 
   const summary = { deployed: 0, failed: 0, skipped: 0, pending: 0 };

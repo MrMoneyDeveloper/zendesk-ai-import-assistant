@@ -41,6 +41,10 @@ TICKET_FORM_REFERENCE_FIELDS = {
     "ticket_field_names",
 }
 
+HELP_CENTER_ENABLEMENT_DOC_URL = (
+    "https://support.zendesk.com/hc/en-us/articles/5702269234330"
+)
+
 _HELP_CENTER_FALLBACK_404_COOLDOWN: dict[str, float] = {}
 
 RULE_ACTION_ALLOWLIST = {
@@ -479,7 +483,8 @@ async def fetch_zendesk_reference_catalog(
 
         if not catalogs["help_centers"]:
             warnings.append(
-                "No help centers returned by Zendesk Guide endpoints. Article creation still works via section_id."
+                "No Help Center was confirmed by Zendesk Guide endpoints. Verify the target brand "
+                "before attempting category, section, or article deployment."
             )
 
     fetched_total = sum(len(v) for v in catalogs.values())
@@ -753,17 +758,14 @@ def _build_category_payload(record: dict) -> dict:
 def _build_section_payload(record: dict) -> tuple[dict, str | None]:
     name = str(record.get("title", "")).strip() or "Untitled section"
     locale = str(_find_first_value(record, "locale") or "en-us").strip().lower()
-    category_value = _find_first_value(record, "category_id")
+    category_value = _find_first_value_by_aliases(record, {"category_id", "category_name", "category"})
     payload = {"section": {"name": name, "locale": locale}}
     description_value = _find_first_value(record, "description")
     if description_value:
         payload["section"]["description"] = str(description_value).strip()
     if category_value is None:
         return payload, None
-    category_id_text = str(category_value).strip()
-    if not category_id_text.isdigit():
-        return payload, "Section category_id must be numeric."
-    return payload, category_id_text
+    return payload, str(category_value).strip()
 
 
 def _build_ticket_form_payload(record: dict) -> tuple[dict, list[str]]:
@@ -814,28 +816,29 @@ def _build_ticket_field_payload(record: dict) -> dict:
     return payload
 
 
-def _build_article_payload(record: dict) -> tuple[dict, str | None]:
+def _build_article_payload(record: dict, *, article_mode: str = "draft") -> tuple[dict, str | None]:
     title = str(record.get("title", "Untitled article")).strip() or "Untitled article"
     body = str(_find_first_value(record, "body") or "").strip()
     if not body:
         body = f"<p>{title}</p>"
     locale = str(_find_first_value(record, "locale") or "en-us").strip().lower()
-    section_id = _find_first_value(record, "section_id")
-    if not section_id:
-        return {}, "Article requires a section_id in conditions/actions."
-    section_id_text = str(section_id).strip()
-    if not section_id_text.isdigit():
-        return {}, "Article section_id must be numeric."
+    section_reference = _find_first_value_by_aliases(
+        record,
+        {"section_id", "section_name", "section"},
+    )
+    if not section_reference:
+        return {}, "Article requires a section_id or section_name in conditions/actions."
+    section_reference_text = str(section_reference).strip()
     payload = {
         "article": {
             "title": title,
             "body": body,
             "locale": locale,
-            "draft": False,
+            "draft": str(article_mode).strip().lower() != "publish",
         },
         "notify_subscribers": False,
     }
-    return payload, section_id_text
+    return payload, section_reference_text
 
 
 async def validate_zendesk_credentials(subdomain: str, email: str, api_token: str) -> dict:
@@ -923,6 +926,354 @@ async def validate_zendesk_credentials(subdomain: str, email: str, api_token: st
     }
 
 
+def _normalize_help_center_target(
+    *,
+    subdomain: str,
+    help_center_url: str | None,
+    locale: str | None,
+) -> tuple[str, str, str | None]:
+    requested_locale = str(locale or "").strip().lower()
+    raw_url = str(help_center_url or "").strip()
+    if not raw_url:
+        effective_locale = requested_locale or "en-us"
+        return f"https://{subdomain}.zendesk.com/hc/{effective_locale}", effective_locale, None
+
+    if "://" not in raw_url:
+        raw_url = f"https://{raw_url}"
+    parsed = urlparse(raw_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return raw_url, requested_locale or "en-us", "Provide a valid Help Center URL."
+
+    locale_match = re.search(r"/hc/([a-z]{2}(?:-[a-z0-9]{2,8})?)", parsed.path, flags=re.IGNORECASE)
+    if not locale_match and not requested_locale:
+        return (
+            raw_url.rstrip("/"),
+            "en-us",
+            "Help Center URL must include a locale path such as /hc/en-us.",
+        )
+    effective_locale = requested_locale or str(locale_match.group(1)).lower()
+    normalized_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
+    return normalized_url, effective_locale, None
+
+
+def _help_center_manual_instructions(*, brand_name: str, locale: str) -> list[str]:
+    return [
+        "Sign in to Zendesk as the account owner or an admin with Guide permissions.",
+        f"Open Knowledge/Guide, select the '{brand_name}' brand, and choose Get started or Enable Help Center.",
+        f"Activate the Help Center and make sure the '{locale}' locale is enabled.",
+        "Return here, paste the brand Help Center URL, and run Verify again.",
+    ]
+
+
+async def check_zendesk_help_center_readiness(
+    *,
+    subdomain: str,
+    email: str,
+    api_token: str,
+    help_center_url: str | None = None,
+    brand_id: str | None = None,
+    locale: str | None = None,
+) -> dict:
+    normalized_subdomain = _normalize_subdomain(subdomain)
+    base_url = _build_base_url(normalized_subdomain)
+    help_center_api_base_url = base_url
+    target_url, effective_locale, url_error = _normalize_help_center_target(
+        subdomain=normalized_subdomain,
+        help_center_url=help_center_url,
+        locale=locale,
+    )
+    checks: list[dict] = []
+    available_brands: list[dict] = []
+    default_brand_name = normalized_subdomain
+
+    def _response(
+        *,
+        ready: bool,
+        state: str,
+        detail: str,
+        brand: dict | None = None,
+        instructions: list[str] | None = None,
+    ) -> dict:
+        return {
+            "ready": ready,
+            "state": state,
+            "detail": detail,
+            "base_url": base_url,
+            "help_center_api_base_url": help_center_api_base_url,
+            "help_center_url": target_url,
+            "locale": effective_locale,
+            "brand": brand,
+            "available_brands": available_brands,
+            "checks": checks,
+            "instructions": instructions or [],
+            "documentation_url": HELP_CENTER_ENABLEMENT_DOC_URL,
+            "can_create_structure": ready,
+            "can_create_articles": ready,
+        }
+
+    if url_error:
+        checks.append(
+            {
+                "name": "help_center_url",
+                "status": "failed",
+                "detail": url_error,
+                "expected": "https://brand.example.com/hc/en-us",
+                "actual": str(help_center_url or ""),
+            }
+        )
+        return _response(
+            ready=False,
+            state="invalid_url",
+            detail=url_error,
+        )
+
+    auth_user = f"{email}/token"
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            brands_started = time.perf_counter()
+            brands_response = await client.get(
+                f"{base_url}/api/v2/brands.json",
+                auth=(auth_user, api_token),
+                headers={"Content-Type": "application/json"},
+            )
+            _emit_zendesk_http_event(
+                operation="help_center_readiness_brands",
+                method="GET",
+                url_or_path="/api/v2/brands.json",
+                status_code=brands_response.status_code,
+                duration_ms=(time.perf_counter() - brands_started) * 1000.0,
+                success=brands_response.is_success,
+                error=None if brands_response.is_success else f"HTTP {brands_response.status_code}",
+            )
+            checks.append(
+                {
+                    "name": "brands_api",
+                    "status": "passed" if brands_response.is_success else "failed",
+                    "detail": (
+                        "Authenticated brand catalog is available."
+                        if brands_response.is_success
+                        else f"Zendesk returned HTTP {brands_response.status_code}."
+                    ),
+                    "http_status": brands_response.status_code,
+                }
+            )
+            if brands_response.status_code == 401:
+                return _response(
+                    ready=False,
+                    state="invalid_credentials",
+                    detail="Zendesk rejected the session credentials while checking brands.",
+                )
+            if brands_response.status_code == 403:
+                return _response(
+                    ready=False,
+                    state="permission_denied",
+                    detail="The authenticated user cannot read Zendesk brands.",
+                    instructions=["Use an admin account with access to Brands and Guide, then verify again."],
+                )
+            if not brands_response.is_success:
+                return _response(
+                    ready=False,
+                    state="unavailable",
+                    detail=f"Zendesk brand readiness check failed (HTTP {brands_response.status_code}).",
+                    instructions=["Wait briefly and run Verify again. No Help Center records were changed."],
+                )
+
+            try:
+                brands_payload = brands_response.json() if brands_response.text else {}
+            except ValueError:
+                brands_payload = {}
+            raw_brands = brands_payload.get("brands", []) if isinstance(brands_payload, dict) else []
+            target_host = str(urlparse(target_url).hostname or "").strip().lower()
+            selected_brand: dict | None = None
+
+            for raw_brand in raw_brands if isinstance(raw_brands, list) else []:
+                if not isinstance(raw_brand, dict):
+                    continue
+                raw_brand_id = str(raw_brand.get("id", "")).strip()
+                name = str(raw_brand.get("name", "")).strip() or f"Brand {raw_brand_id}"
+                brand_url = str(raw_brand.get("brand_url", "")).strip()
+                host_mapping = str(raw_brand.get("host_mapping", "")).strip().lower()
+                brand_subdomain = str(raw_brand.get("subdomain", "")).strip().lower()
+                brand_hosts = {
+                    host
+                    for host in [
+                        host_mapping,
+                        str(urlparse(brand_url).hostname or "").strip().lower(),
+                        f"{brand_subdomain}.zendesk.com" if brand_subdomain else "",
+                    ]
+                    if host
+                }
+                normalized_brand = {
+                    "id": raw_brand_id,
+                    "name": name,
+                    "has_help_center": raw_brand.get("has_help_center"),
+                    "help_center_state": str(raw_brand.get("help_center_state", "")).strip().lower() or None,
+                    "brand_url": brand_url or None,
+                    "host_mapping": host_mapping or None,
+                    "subdomain": brand_subdomain or None,
+                    "default": bool(raw_brand.get("default", False)),
+                }
+                available_brands.append(normalized_brand)
+                if brand_id and raw_brand_id == str(brand_id).strip():
+                    selected_brand = normalized_brand
+                elif not brand_id and target_host and target_host in brand_hosts:
+                    selected_brand = normalized_brand
+
+            if not selected_brand and not brand_id and len(available_brands) == 1:
+                selected_brand = available_brands[0]
+            if not selected_brand and not brand_id:
+                default_matches = [item for item in available_brands if item.get("default")]
+                if len(default_matches) == 1 and target_host == f"{normalized_subdomain}.zendesk.com":
+                    selected_brand = default_matches[0]
+
+            if not selected_brand:
+                checks.append(
+                    {
+                        "name": "brand_selection",
+                        "status": "failed",
+                        "detail": "The URL could not be matched to one Zendesk brand.",
+                        "actual": target_host,
+                    }
+                )
+                return _response(
+                    ready=False,
+                    state="brand_selection_required",
+                    detail="Select the target brand or provide that brand's exact Help Center URL.",
+                    instructions=[
+                        "Open the target brand in Zendesk Admin Center and copy its Help Center URL.",
+                        "Paste the URL here and verify again.",
+                    ],
+                )
+
+            default_brand_name = str(selected_brand.get("name") or default_brand_name)
+            selected_brand_subdomain = str(selected_brand.get("subdomain") or "").strip().lower()
+            if selected_brand_subdomain:
+                help_center_api_base_url = _build_base_url(selected_brand_subdomain)
+            else:
+                help_center_api_base_url = base_url
+            checks.append(
+                {
+                    "name": "brand_selection",
+                    "status": "passed",
+                    "detail": f"Matched Help Center target to brand '{default_brand_name}'.",
+                    "brand_id": selected_brand.get("id"),
+                }
+            )
+
+            has_help_center = selected_brand.get("has_help_center")
+            help_center_state = str(selected_brand.get("help_center_state") or "").lower()
+            explicitly_disabled = has_help_center is False or help_center_state in {
+                "disabled",
+                "not_enabled",
+                "none",
+            }
+            if explicitly_disabled:
+                checks.append(
+                    {
+                        "name": "brand_help_center",
+                        "status": "failed",
+                        "detail": "Zendesk reports that Help Center is not enabled for this brand.",
+                        "expected": "has_help_center=true",
+                        "actual": f"has_help_center={has_help_center}; state={help_center_state or 'unknown'}",
+                    }
+                )
+                return _response(
+                    ready=False,
+                    state="manual_enablement_required",
+                    detail=f"Enable and activate Help Center for '{default_brand_name}' before deploying content.",
+                    brand=selected_brand,
+                    instructions=_help_center_manual_instructions(
+                        brand_name=default_brand_name,
+                        locale=effective_locale,
+                    ),
+                )
+
+            guide_path = f"/api/v2/help_center/{effective_locale}/categories.json?per_page=1"
+            guide_started = time.perf_counter()
+            guide_response = await client.get(
+                f"{help_center_api_base_url}{guide_path}",
+                auth=(auth_user, api_token),
+                headers={"Content-Type": "application/json"},
+            )
+            _emit_zendesk_http_event(
+                operation="help_center_readiness_guide",
+                method="GET",
+                url_or_path=guide_path,
+                status_code=guide_response.status_code,
+                duration_ms=(time.perf_counter() - guide_started) * 1000.0,
+                success=guide_response.is_success,
+                error=None if guide_response.is_success else f"HTTP {guide_response.status_code}",
+            )
+            checks.append(
+                {
+                    "name": "guide_api",
+                    "status": "passed" if guide_response.is_success else "failed",
+                    "detail": (
+                        "Authenticated Help Center category API is available."
+                        if guide_response.is_success
+                        else f"Zendesk Guide returned HTTP {guide_response.status_code}."
+                    ),
+                    "http_status": guide_response.status_code,
+                }
+            )
+            if guide_response.is_success:
+                return _response(
+                    ready=True,
+                    state="ready",
+                    detail=(
+                        f"Help Center is ready for '{default_brand_name}'. Categories and sections can be "
+                        "created before article drafts."
+                    ),
+                    brand=selected_brand,
+                )
+            if guide_response.status_code in {401, 403}:
+                return _response(
+                    ready=False,
+                    state="permission_denied" if guide_response.status_code == 403 else "invalid_credentials",
+                    detail=(
+                        "The current Zendesk user does not have Guide access for this brand."
+                        if guide_response.status_code == 403
+                        else "Zendesk rejected the session credentials while checking Guide."
+                    ),
+                    brand=selected_brand,
+                    instructions=[
+                        "Use an account owner, Support admin, or Guide admin with publishing permissions, then verify again."
+                    ],
+                )
+            if guide_response.status_code == 404:
+                return _response(
+                    ready=False,
+                    state="manual_enablement_required",
+                    detail=f"Zendesk Guide is not active for '{default_brand_name}'.",
+                    brand=selected_brand,
+                    instructions=_help_center_manual_instructions(
+                        brand_name=default_brand_name,
+                        locale=effective_locale,
+                    ),
+                )
+            return _response(
+                ready=False,
+                state="unavailable",
+                detail=f"Help Center verification failed (HTTP {guide_response.status_code}).",
+                brand=selected_brand,
+                instructions=["Retry verification. No Help Center records were changed."],
+            )
+    except httpx.HTTPError as exc:
+        checks.append(
+            {
+                "name": "zendesk_connection",
+                "status": "failed",
+                "detail": str(exc),
+            }
+        )
+        return _response(
+            ready=False,
+            state="unavailable",
+            detail=f"Zendesk readiness request failed: {exc}",
+            instructions=["Check connectivity and run Verify again. No Help Center records were changed."],
+        )
+
+
 async def deploy_records_to_zendesk(
     *,
     subdomain: str,
@@ -931,8 +1282,17 @@ async def deploy_records_to_zendesk(
     records: list[dict],
     dry_run: bool = False,
     on_existing: str = "create_new",
+    article_mode: str = "draft",
+    help_center_base_url: str | None = None,
 ) -> dict:
     base_url = _build_base_url(_normalize_subdomain(subdomain))
+    parsed_help_center_base = urlparse(str(help_center_base_url or "").strip())
+    guide_base_url = (
+        f"{parsed_help_center_base.scheme}://{parsed_help_center_base.netloc}"
+        if parsed_help_center_base.scheme in {"http", "https"}
+        and parsed_help_center_base.netloc
+        else base_url
+    )
     auth_user = f"{email}/token"
 
     results: list[dict] = []
@@ -976,6 +1336,7 @@ async def deploy_records_to_zendesk(
         "brands": 5,
         "categories": 8,
         "sections": 9,
+        "articles": 10,
         "groups": 10,
         "ticket_fields": 20,
         "ticket_forms": 30,
@@ -1003,6 +1364,9 @@ async def deploy_records_to_zendesk(
         raw = str(record.get("object_type", "")).strip().lower()
         normalized = object_mappings.get(raw, raw)
         return deploy_priority_by_type.get(normalized, 100), normalized
+
+    def _api_base_for_type(object_type: str) -> str:
+        return guide_base_url if object_type in {"categories", "sections", "articles"} else base_url
 
     def _apply_payload_title_suffix(
         *,
@@ -1032,11 +1396,11 @@ async def deploy_records_to_zendesk(
         return payload
 
     async with httpx.AsyncClient(timeout=30) as client:
-        async def _safe_list(path: str) -> dict:
+        async def _safe_list(path: str, *, object_type: str) -> dict:
             started = time.perf_counter()
             try:
                 response = await client.get(
-                    f"{base_url}{path}",
+                    f"{_api_base_for_type(object_type)}{path}",
                     auth=(auth_user, api_token),
                     headers={"Content-Type": "application/json"},
                 )
@@ -1100,7 +1464,7 @@ async def deploy_records_to_zendesk(
                 existing_cache[object_type] = {}
                 return {}
 
-            payload = await _safe_list(path)
+            payload = await _safe_list(path, object_type=object_type)
             items_key = items_key_by_type.get(object_type, object_type)
             entries = payload.get(items_key, []) if isinstance(payload, dict) else []
             match_map: dict[str, str] = {}
@@ -1196,7 +1560,7 @@ async def deploy_records_to_zendesk(
             try:
                 started = time.perf_counter()
                 response = await client.post(
-                    f"{base_url}{endpoint}",
+                    f"{_api_base_for_type(object_type)}{endpoint}",
                     auth=(auth_user, api_token),
                     headers={"Content-Type": "application/json"},
                     json=payload,
@@ -1392,39 +1756,15 @@ async def deploy_records_to_zendesk(
                 update_path_template = "/api/v2/help_center/categories/{id}.json"
                 response_root = "category"
             elif object_type == "sections":
-                payload, category_id_or_error = _build_section_payload(record)
-                if not payload:
-                    failed += 1
-                    results.append(
-                        {
-                            "record_id": record_id,
-                            "object_type": object_type,
-                            "title": title,
-                            "deployment_status": "failed",
-                            "zendesk_object_id": None,
-                            "execution_message": str(category_id_or_error),
-                            "executed_at": executed_at,
-                        }
-                    )
-                    continue
+                payload, category_reference = _build_section_payload(record)
                 resolved_category_id: str | None = None
-                if category_id_or_error and str(category_id_or_error).strip().isdigit():
-                    resolved_category_id = str(category_id_or_error).strip()
-                elif category_id_or_error and "numeric" in str(category_id_or_error).lower():
-                    failed += 1
-                    results.append(
-                        {
-                            "record_id": record_id,
-                            "object_type": object_type,
-                            "title": title,
-                            "deployment_status": "failed",
-                            "zendesk_object_id": None,
-                            "execution_message": str(category_id_or_error),
-                            "executed_at": executed_at,
-                        }
+                category_resolution_error: str | None = None
+                if category_reference:
+                    resolved_category_id, category_resolution_error = await _ensure_dependency_id(
+                        object_type="categories",
+                        raw_value=category_reference,
                     )
-                    continue
-                elif not category_id_or_error:
+                else:
                     fallback_categories = await _load_existing_map("categories")
                     if len(fallback_categories) == 1:
                         resolved_category_id = next(iter(fallback_categories.values()))
@@ -1438,8 +1778,8 @@ async def deploy_records_to_zendesk(
                             "deployment_status": "failed",
                             "zendesk_object_id": None,
                             "execution_message": (
-                                "Section requires category_id. Provide category_id or include one existing "
-                                "category in context for unambiguous auto-linking."
+                                "Section requires a resolvable category_id or exact category_name. "
+                                + (category_resolution_error or "Include its category in this Help Center phase.")
                             ),
                             "executed_at": executed_at,
                         }
@@ -1523,7 +1863,10 @@ async def deploy_records_to_zendesk(
                 update_path_template = "/api/v2/ticket_fields/{id}.json"
                 response_root = "ticket_field"
             elif object_type == "articles":
-                payload, section_id_or_error = _build_article_payload(record)
+                payload, section_reference = _build_article_payload(
+                    record,
+                    article_mode=article_mode,
+                )
                 if not payload:
                     failed += 1
                     results.append(
@@ -1533,12 +1876,33 @@ async def deploy_records_to_zendesk(
                             "title": title,
                             "deployment_status": "failed",
                             "zendesk_object_id": None,
-                            "execution_message": str(section_id_or_error),
+                            "execution_message": str(section_reference),
                             "executed_at": executed_at,
                         }
                     )
                     continue
-                create_path = f"/api/v2/help_center/sections/{section_id_or_error}/articles.json"
+                resolved_section_id, section_resolution_error = await _ensure_dependency_id(
+                    object_type="sections",
+                    raw_value=section_reference,
+                )
+                if not resolved_section_id:
+                    failed += 1
+                    results.append(
+                        {
+                            "record_id": record_id,
+                            "object_type": object_type,
+                            "title": title,
+                            "deployment_status": "failed",
+                            "zendesk_object_id": None,
+                            "execution_message": (
+                                "Article requires a resolvable section_id or exact section_name. "
+                                + str(section_resolution_error or "Include its section in this Help Center phase.")
+                            ),
+                            "executed_at": executed_at,
+                        }
+                    )
+                    continue
+                create_path = f"/api/v2/help_center/sections/{resolved_section_id}/articles.json"
                 update_path_template = "/api/v2/help_center/articles/{id}.json"
                 response_root = "article"
 
@@ -1660,6 +2024,10 @@ async def deploy_records_to_zendesk(
                 success_text = "updated"
 
             if dry_run:
+                if title:
+                    existing_cache.setdefault(object_type, {})[title.strip().lower()] = (
+                        existing_id or f"DRY-RUN-{record_id or object_type}"
+                    )
                 deployed += 1
                 results.append(
                     {
@@ -1678,14 +2046,14 @@ async def deploy_records_to_zendesk(
                 started = time.perf_counter()
                 if method == "POST":
                     response = await client.post(
-                        f"{base_url}{request_path}",
+                        f"{_api_base_for_type(object_type)}{request_path}",
                         auth=(auth_user, api_token),
                         headers={"Content-Type": "application/json"},
                         json=payload,
                     )
                 else:
                     response = await client.put(
-                        f"{base_url}{request_path}",
+                        f"{_api_base_for_type(object_type)}{request_path}",
                         auth=(auth_user, api_token),
                         headers={"Content-Type": "application/json"},
                         json=payload,
@@ -1782,6 +2150,7 @@ async def deploy_records_to_zendesk(
         },
         "results": results,
         "base_url": base_url,
+        "help_center_base_url": guide_base_url,
         "sanitization_stats": sanitization_stats,
         "dependency_auto_create": {
             "events": dependency_events,

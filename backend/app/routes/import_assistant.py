@@ -32,6 +32,8 @@ from app.models.schemas import (
     ZendeskDeployResponse,
     ZendeskCredentialValidationRequest,
     ZendeskCredentialValidationResponse,
+    ZendeskHelpCenterReadinessRequest,
+    ZendeskHelpCenterReadinessResponse,
 )
 from app.services.import_assistant_service import (
     GenerateFailureError,
@@ -44,6 +46,8 @@ from app.services.import_assistant_service import (
     list_recent_batches,
     get_job_status,
     get_preview,
+    mark_import_assistant_batch_failed,
+    reserve_import_assistant_batch,
     set_batch_run_control,
 )
 from app.services.perf_capture import emit_perf_event
@@ -53,9 +57,15 @@ from app.services.attachment_extractor import (
     extract_attachment_payload,
 )
 from app.services.sheets_service import SheetsService
-from app.services.zendesk import fetch_zendesk_reference_catalog, validate_zendesk_credentials
+from app.services.zendesk import (
+    check_zendesk_help_center_readiness,
+    fetch_zendesk_reference_catalog,
+    validate_zendesk_credentials,
+)
 
 router = APIRouter(prefix="/import-assistant", tags=["import-assistant"])
+
+_BACKGROUND_GENERATION_TASKS: set[asyncio.Task[None]] = set()
 
 SCHEMA_SYNC_MODELS = [
     "GenerateRequest",
@@ -86,6 +96,8 @@ SCHEMA_SYNC_MODELS = [
     "ZendeskCredentialValidationResponse",
     "ZendeskContextRequest",
     "ZendeskContextResponse",
+    "ZendeskHelpCenterReadinessRequest",
+    "ZendeskHelpCenterReadinessResponse",
     "ZendeskDeployRequest",
     "ZendeskDeployRecordResult",
     "ZendeskDeploySummary",
@@ -522,6 +534,81 @@ async def generate(request_payload: object = Body(...)) -> ImportAssistantGenera
         raise HTTPException(status_code=502, detail=detail) from exc
 
 
+async def _run_reserved_generation(
+    request: ImportAssistantGenerateRequest,
+    batch_id: str,
+) -> None:
+    try:
+        preflight = await _sync_schema_preflight_if_enabled()
+        if preflight.get("status") == "error":
+            raise RuntimeError(preflight.get("detail") or "Apps Script schema sync preflight failed.")
+        await generate_import_assistant_batch(request, reserved_batch_id=batch_id)
+    except asyncio.CancelledError:
+        mark_import_assistant_batch_failed(
+            batch_id,
+            stage="generate",
+            code="generation_interrupted",
+            reason="Background generation was interrupted before the batch reached preview.",
+            next_step="Retry the prompt after the backend service is available.",
+        )
+        raise
+    except GenerateFailureError as exc:
+        mark_import_assistant_batch_failed(
+            batch_id,
+            stage=exc.stage,
+            code=exc.code,
+            reason=exc.reason,
+            next_step=exc.next_step,
+        )
+    except Exception as exc:  # noqa: BLE001
+        mark_import_assistant_batch_failed(
+            batch_id,
+            stage="generate",
+            code="generate_runtime_error",
+            reason=f"Background generation failed: {exc}",
+            next_step="Retry generation after resolving the runtime error shown above.",
+        )
+
+
+def _schedule_reserved_generation(
+    request: ImportAssistantGenerateRequest,
+    batch_id: str,
+) -> None:
+    task = asyncio.create_task(_run_reserved_generation(request, batch_id))
+    _BACKGROUND_GENERATION_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_GENERATION_TASKS.discard)
+
+
+@router.post("/generate-async", response_model=JobStatusResponse, status_code=202)
+async def generate_async(request_payload: object = Body(...)) -> JobStatusResponse:
+    """Reserve a pollable job and run the existing pipeline in the background."""
+    settings = get_settings()
+    sanitized_payload, compaction = _sanitize_generate_payload(request_payload, settings=settings)
+    try:
+        request = ImportAssistantGenerateRequest.model_validate(sanitized_payload)
+    except ValidationError as exc:
+        validation_errors, summary = _format_model_validation_errors(exc)
+        batch_id = create_request_validation_failed_batch(
+            request_payload=sanitized_payload,
+            validation_errors=validation_errors,
+            compaction=compaction,
+        )
+        detail = _build_failure_detail(
+            stage="request",
+            code="request_validation_failed",
+            reason=f"Request validation failed. {summary}",
+            next_step="Adjust the invalid fields shown in validation_errors and retry.",
+        )
+        detail["validation_errors"] = validation_errors
+        detail["batch_id"] = batch_id
+        detail["compaction"] = compaction
+        raise HTTPException(status_code=422, detail=detail) from exc
+
+    reserved = reserve_import_assistant_batch(request)
+    _schedule_reserved_generation(request, reserved.batch_id)
+    return reserved
+
+
 @router.get("/jobs/{batch_id}", response_model=JobStatusResponse)
 async def get_job(batch_id: str) -> JobStatusResponse:
     try:
@@ -635,6 +722,13 @@ async def deploy_to_zendesk(request: ZendeskDeployRequest) -> ZendeskDeployRespo
             api_token=request.api_token,
             dry_run=request.dry_run,
             on_existing=request.on_existing,
+            deployment_scope=request.deployment_scope,
+            help_center_url=request.help_center_url,
+            brand_id=request.brand_id,
+            locale=request.locale,
+            article_mode=request.article_mode,
+            confirm_help_center_deploy=request.confirm_help_center_deploy,
+            confirm_article_publish=request.confirm_article_publish,
         )
         return ZendeskDeployResponse(**result)
     except KeyError as exc:
@@ -775,3 +869,21 @@ async def zendesk_context_catalog(
         api_token=request.api_token,
     )
     return ZendeskContextResponse(**result)
+
+
+@router.post(
+    "/zendesk/help-center/readiness",
+    response_model=ZendeskHelpCenterReadinessResponse,
+)
+async def zendesk_help_center_readiness(
+    request: ZendeskHelpCenterReadinessRequest,
+) -> ZendeskHelpCenterReadinessResponse:
+    result = await check_zendesk_help_center_readiness(
+        subdomain=request.subdomain,
+        email=request.email,
+        api_token=request.api_token,
+        help_center_url=request.help_center_url,
+        brand_id=request.brand_id,
+        locale=request.locale,
+    )
+    return ZendeskHelpCenterReadinessResponse(**result)

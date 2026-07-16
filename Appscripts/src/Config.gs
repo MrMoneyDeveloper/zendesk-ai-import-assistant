@@ -27,7 +27,13 @@ const OBJECT_RECORD_HEADERS = Object.freeze([
   'approved_by',
   'approved_at',
   'deployment_status',
-  'zendesk_object_id'
+  'zendesk_object_id',
+  'chunk_id',
+  'record_key',
+  'department',
+  'topic',
+  'source_provider',
+  'source_model'
 ]);
 
 const REQUIRED_TABS = Object.freeze([
@@ -48,11 +54,23 @@ const REQUIRED_TABS = Object.freeze([
     headers: OBJECT_RECORD_HEADERS
   },
   {
+    name: 'Brands',
+    headers: OBJECT_RECORD_HEADERS
+  },
+  {
+    name: 'Groups',
+    headers: OBJECT_RECORD_HEADERS
+  },
+  {
     name: 'Macros',
     headers: OBJECT_RECORD_HEADERS
   },
   {
     name: 'Triggers',
+    headers: OBJECT_RECORD_HEADERS
+  },
+  {
+    name: 'Automations',
     headers: OBJECT_RECORD_HEADERS
   },
   {
@@ -66,6 +84,51 @@ const REQUIRED_TABS = Object.freeze([
   {
     name: 'Recommendations',
     headers: OBJECT_RECORD_HEADERS
+  },
+  {
+    name: 'Categories',
+    headers: OBJECT_RECORD_HEADERS
+  },
+  {
+    name: 'Sections',
+    headers: OBJECT_RECORD_HEADERS
+  },
+  {
+    name: 'Articles',
+    headers: OBJECT_RECORD_HEADERS
+  },
+  {
+    name: 'Batch Metadata',
+    headers: [
+      'batch_id',
+      'status',
+      'coverage_status',
+      'coverage_manifest_json',
+      'department_coverage_json',
+      'quality_gates_json',
+      'supervisor_json',
+      'llm_routes_json',
+      'usage_report_json',
+      'orchestration_json',
+      'progress_narration_json',
+      'updated_at'
+    ]
+  },
+  {
+    name: 'Progress Log',
+    headers: [
+      'batch_id',
+      'event_id',
+      'status',
+      'wave',
+      'department',
+      'object_type',
+      'message',
+      'source',
+      'provider',
+      'model',
+      'at'
+    ]
   },
   {
     name: 'Validation Log',
@@ -108,16 +171,26 @@ const REQUIRED_TABS = Object.freeze([
 ]);
 
 const OBJECT_SHEET_NAMES = Object.freeze([
+  'Brands',
+  'Groups',
   'Ticket Fields',
   'Ticket Forms',
   'Macros',
   'Triggers',
+  'Automations',
   'Views',
+  'Categories',
+  'Sections',
+  'Articles',
   'Tag Dictionary',
   'Recommendations'
 ]);
 
 const OBJECT_TAB_BY_TYPE = Object.freeze({
+  brand: 'Brands',
+  brands: 'Brands',
+  group: 'Groups',
+  groups: 'Groups',
   ticket_field: 'Ticket Fields',
   ticket_fields: 'Ticket Fields',
   ticket_form: 'Ticket Forms',
@@ -126,14 +199,54 @@ const OBJECT_TAB_BY_TYPE = Object.freeze({
   macros: 'Macros',
   trigger: 'Triggers',
   triggers: 'Triggers',
+  automation: 'Automations',
+  automations: 'Automations',
   view: 'Views',
   views: 'Views',
+  category: 'Categories',
+  categories: 'Categories',
+  section: 'Sections',
+  sections: 'Sections',
+  article: 'Articles',
+  articles: 'Articles',
   tag_dictionary: 'Tag Dictionary',
   recommendation: 'Recommendations',
   recommendations: 'Recommendations'
 });
 
+const CANONICAL_OBJECT_TYPE_BY_TYPE = Object.freeze({
+  brand: 'brands',
+  brands: 'brands',
+  group: 'groups',
+  groups: 'groups',
+  ticket_field: 'ticket_fields',
+  ticket_fields: 'ticket_fields',
+  ticket_form: 'ticket_forms',
+  ticket_forms: 'ticket_forms',
+  macro: 'macros',
+  macros: 'macros',
+  trigger: 'triggers',
+  triggers: 'triggers',
+  automation: 'automations',
+  automations: 'automations',
+  view: 'views',
+  views: 'views',
+  category: 'categories',
+  categories: 'categories',
+  section: 'sections',
+  sections: 'sections',
+  article: 'articles',
+  articles: 'articles',
+  tag_dictionary: 'tag_dictionary',
+  recommendation: 'recommendations',
+  recommendations: 'recommendations'
+});
+
 const DEPLOYABLE_OBJECT_TYPES = Object.freeze({
+  brand: true,
+  brands: true,
+  group: true,
+  groups: true,
   ticket_field: true,
   ticket_fields: true,
   ticket_form: true,
@@ -142,8 +255,16 @@ const DEPLOYABLE_OBJECT_TYPES = Object.freeze({
   macros: true,
   trigger: true,
   triggers: true,
+  automation: true,
+  automations: true,
   view: true,
   views: true,
+  category: true,
+  categories: true,
+  section: true,
+  sections: true,
+  article: true,
+  articles: true,
   tag_dictionary: false,
   recommendation: false,
   recommendations: false

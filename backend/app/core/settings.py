@@ -108,6 +108,7 @@ def _resolve_model(provider: str, configured_model: str) -> str:
 class Settings:
     app_name: str
     frontend_origin: str
+    llm_default_provider: str
     llm_provider: str
     xai_api_key: str
     xai_api_key_wave3: str
@@ -162,6 +163,8 @@ class Settings:
     llm_auto_chunk_pacing_seconds: float
     llm_auto_chunk_pacing_jitter_seconds: float
     benchmark_mode_enabled: bool
+    department_generation_strategy: str
+    department_content_draft_max_output_tokens: int
     diagnostics_mode_enabled: bool
     perf_capture_enabled: bool
     perf_capture_dir: str
@@ -206,6 +209,19 @@ class Settings:
     gemini_supervisor_approval_threshold: float
     gemini_supervisor_max_regeneration_retries: int
     gemini_supervisor_review_grouping: str
+    gemini_default_model: str
+    gemini_default_max_retries: int
+    gemini_default_failure_threshold: int
+    gemini_default_cooldown_seconds: int
+    gemini_default_retry_max_delay_seconds: float
+    gemini_default_max_concurrency: int
+    gemini_default_min_request_interval_seconds: float
+    gemini_default_timeout_seconds: float
+    progress_narrator_enabled: bool
+    progress_narrator_provider: str
+    progress_narrator_model: str
+    progress_narrator_max_output_tokens: int
+    progress_narrator_max_calls_per_batch: int
 
 
 @lru_cache
@@ -214,8 +230,8 @@ def get_settings() -> Settings:
     provider = _resolve_provider(api_key, os.getenv("LLM_PROVIDER", "auto"))
     default_model = _resolve_model(provider, os.getenv("XAI_MODEL", ""))
     default_max_tokens = _as_int(os.getenv("XAI_MAX_OUTPUT_TOKENS"), 1800)
-    default_planner_model = "qwen/qwen3-32b" if provider == "groq" else default_model
-    default_clarifier_model = "qwen/qwen3-32b" if provider == "groq" else default_model
+    default_planner_model = "openai/gpt-oss-20b" if provider == "groq" else default_model
+    default_clarifier_model = "openai/gpt-oss-20b" if provider == "groq" else default_model
     default_generator_model = "openai/gpt-oss-20b" if provider == "groq" else default_model
 
     default_schema_supported_models = ("openai/gpt-oss-20b", "grok-4.3", "grok-4.20")
@@ -226,6 +242,11 @@ def get_settings() -> Settings:
     return Settings(
         app_name=os.getenv("APP_NAME", "AI Zendesk Import Assistant"),
         frontend_origin=os.getenv("FRONTEND_ORIGIN", "http://localhost:5173"),
+        llm_default_provider=_as_choice(
+            os.getenv("LLM_DEFAULT_PROVIDER"),
+            "gemini",
+            {"gemini", "groq"},
+        ),
         llm_provider=provider,
         xai_api_key=api_key,
         xai_api_key_wave3=os.getenv("XAI_API_KEY_WAVE3", "").strip(),
@@ -369,6 +390,15 @@ def get_settings() -> Settings:
             0.0,
         ),
         benchmark_mode_enabled=_as_bool(os.getenv("BENCHMARK_MODE"), False),
+        department_generation_strategy=_as_choice(
+            os.getenv("DEPARTMENT_GENERATION_STRATEGY"),
+            "template",
+            {"template", "hybrid"},
+        ),
+        department_content_draft_max_output_tokens=max(
+            _as_int(os.getenv("DEPARTMENT_CONTENT_DRAFT_MAX_OUTPUT_TOKENS"), 2400),
+            800,
+        ),
         diagnostics_mode_enabled=_as_bool(os.getenv("DIAGNOSTICS_MODE"), False),
         perf_capture_enabled=_as_bool(os.getenv("PERF_CAPTURE_ENABLED"), False),
         perf_capture_dir=os.getenv("PERF_CAPTURE_DIR", "").strip(),
@@ -504,5 +534,59 @@ def get_settings() -> Settings:
         gemini_supervisor_review_grouping=(
             os.getenv("GEMINI_SUPERVISOR_REVIEW_GROUPING", "department").strip().lower()
             or "department"
+        ),
+        gemini_default_model=(
+            os.getenv("GEMINI_DEFAULT_MODEL", "").strip()
+            or os.getenv("GEMINI_SUPERVISOR_MODEL", "").strip()
+            or "gemini-3.1-flash-lite"
+        ),
+        gemini_default_max_retries=max(
+            _as_int(os.getenv("GEMINI_DEFAULT_MAX_RETRIES"), 2),
+            0,
+        ),
+        gemini_default_failure_threshold=max(
+            _as_int(os.getenv("GEMINI_DEFAULT_FAILURE_THRESHOLD"), 3),
+            1,
+        ),
+        gemini_default_cooldown_seconds=max(
+            _as_int(os.getenv("GEMINI_DEFAULT_COOLDOWN_SECONDS"), 180),
+            15,
+        ),
+        gemini_default_retry_max_delay_seconds=max(
+            _as_float(os.getenv("GEMINI_DEFAULT_RETRY_MAX_DELAY_SECONDS"), 8.0),
+            0.5,
+        ),
+        gemini_default_max_concurrency=max(
+            _as_int(os.getenv("GEMINI_DEFAULT_MAX_CONCURRENCY"), 2),
+            1,
+        ),
+        gemini_default_min_request_interval_seconds=max(
+            _as_float(os.getenv("GEMINI_DEFAULT_MIN_REQUEST_INTERVAL_SECONDS"), 1.0),
+            0.0,
+        ),
+        gemini_default_timeout_seconds=max(
+            _as_float(os.getenv("GEMINI_DEFAULT_TIMEOUT_SECONDS"), 60.0),
+            5.0,
+        ),
+        progress_narrator_enabled=_as_bool(
+            os.getenv("PROGRESS_NARRATOR_ENABLED"),
+            True,
+        ),
+        progress_narrator_provider=_as_choice(
+            os.getenv("PROGRESS_NARRATOR_PROVIDER"),
+            "groq",
+            {"groq", "gemini"},
+        ),
+        progress_narrator_model=(
+            os.getenv("PROGRESS_NARRATOR_MODEL", "").strip()
+            or "openai/gpt-oss-20b"
+        ),
+        progress_narrator_max_output_tokens=max(
+            _as_int(os.getenv("PROGRESS_NARRATOR_MAX_OUTPUT_TOKENS"), 120),
+            40,
+        ),
+        progress_narrator_max_calls_per_batch=max(
+            _as_int(os.getenv("PROGRESS_NARRATOR_MAX_CALLS_PER_BATCH"), 6),
+            0,
         ),
     )

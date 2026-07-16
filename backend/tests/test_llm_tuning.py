@@ -26,11 +26,12 @@ def test_groq_stage_model_defaults_and_conservative_context(monkeypatch):
     monkeypatch.delenv("LLM_AUTO_CHUNK_SIZE", raising=False)
     monkeypatch.delenv("LLM_AUTO_CHUNK_MAX_CHUNKS", raising=False)
     monkeypatch.delenv("LLM_AUTO_CHUNK_TRIGGER_MIN_RECORDS", raising=False)
+    monkeypatch.delenv("DEPARTMENT_GENERATION_STRATEGY", raising=False)
     get_settings.cache_clear()
 
     settings = get_settings()
-    assert settings.llm_model_planner == "qwen/qwen3-32b"
-    assert settings.llm_model_clarifier == "qwen/qwen3-32b"
+    assert settings.llm_model_planner == "openai/gpt-oss-20b"
+    assert settings.llm_model_clarifier == "openai/gpt-oss-20b"
     assert settings.llm_model_generator == "openai/gpt-oss-20b"
 
     assert settings.llm_planner_max_output_tokens == 300
@@ -53,6 +54,32 @@ def test_groq_stage_model_defaults_and_conservative_context(monkeypatch):
     assert settings.llm_auto_chunk_trigger_min_records == 7
     assert settings.llm_auto_chunk_pacing_seconds >= 0
     assert settings.llm_auto_chunk_pacing_jitter_seconds >= 0
+    assert settings.department_generation_strategy == "template"
+
+
+def test_department_generation_strategy_accepts_hybrid(monkeypatch):
+    monkeypatch.setenv("DEPARTMENT_GENERATION_STRATEGY", "hybrid")
+    get_settings.cache_clear()
+
+    assert get_settings().department_generation_strategy == "hybrid"
+
+
+def test_groq_usage_extracts_input_output_and_total_tokens():
+    usage = GrokClient._extract_usage(
+        {
+            "usage": {
+                "prompt_tokens": 120,
+                "completion_tokens": 45,
+                "total_tokens": 165,
+            }
+        }
+    )
+
+    assert usage == {
+        "input_tokens": 120,
+        "output_tokens": 45,
+        "total_tokens": 165,
+    }
 
 
 def test_stage_strict_flags_can_inherit_global(monkeypatch):
@@ -215,6 +242,50 @@ def test_non_rate_limit_4xx_does_not_inflate_local_usage(monkeypatch):
     assert after == before
     metrics = GrokClient.get_last_call_metrics("generator")
     assert metrics.get("error_class") in {"unsupported_response_format", "schema_validation_failure", "other_invalid_request"}
+
+
+def test_schema_to_json_object_fallback_is_counted_as_retry(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("XAI_API_KEY", "gsk_test_key")
+    monkeypatch.setenv("LLM_JSON_SCHEMA_SUPPORTED_MODELS", "openai/gpt-oss-20b")
+    monkeypatch.setenv("LLM_FALLBACK_TO_JSON_OBJECT", "true")
+    get_settings.cache_clear()
+    GrokClient._LAST_CALL_METRICS.clear()
+    _FakeAsyncClient.recorded_payloads = []
+    _FakeAsyncClient.responses = [
+        _FakeResponse(
+            400,
+            {
+                "error": {
+                    "message": "Failed to validate JSON.",
+                    "code": "json_validate_failed",
+                }
+            },
+        ),
+        _FakeResponse(
+            200,
+            {
+                "choices": [{"message": {"content": '{"ok":true}'}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            },
+        ),
+    ]
+    monkeypatch.setattr("app.api.grok.client.httpx.AsyncClient", _FakeAsyncClient)
+
+    output = asyncio.run(
+        GrokClient().chat(
+            [{"role": "user", "content": "Return JSON"}],
+            model="openai/gpt-oss-20b",
+            response_schema={"type": "object"},
+            strict_schema=True,
+            task="generator",
+        )
+    )
+
+    assert output == '{"ok":true}'
+    metrics = GrokClient.get_last_call_metrics("generator")
+    assert metrics.get("response_format_mode") == "json_object_fallback"
+    assert metrics.get("retry_count") == 1
 
 
 def test_circuit_breaker_opens_after_configured_failures(monkeypatch):

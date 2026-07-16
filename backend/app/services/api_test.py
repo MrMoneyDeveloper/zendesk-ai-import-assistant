@@ -13,9 +13,12 @@ def _provider_label(provider: str) -> str:
 
 async def run_api_test() -> dict:
     settings = get_settings()
-    provider = _provider_label(settings.llm_provider)
+    gemini_ready = bool(
+        settings.llm_default_provider == "gemini" and settings.gemini_api_key
+    )
+    provider = "Gemini (Groq failover)" if gemini_ready else _provider_label(settings.llm_provider)
 
-    if not settings.xai_enabled:
+    if not gemini_ready and not settings.xai_enabled:
         return {
             "provider": provider,
             "base_url": settings.xai_base_url,
@@ -24,7 +27,7 @@ async def run_api_test() -> dict:
             "detail": "XAI_ENABLED is false.",
         }
 
-    if not settings.xai_api_key:
+    if not gemini_ready and not settings.xai_api_key:
         return {
             "provider": provider,
             "base_url": settings.xai_base_url,
@@ -50,17 +53,27 @@ async def run_api_test() -> dict:
             model=route.model,
             max_output_tokens=route.max_output_tokens,
             strict_schema=False,
+            task=route.task,
         )
         latency_ms = (time.perf_counter() - start) * 1000
+        metrics = GrokClient.get_last_call_metrics("healthcheck")
 
         return {
-            "provider": provider,
-            "base_url": settings.xai_base_url,
-            "model": route.model,
+            "provider": str(metrics.get("provider") or provider),
+            "base_url": (
+                "https://generativelanguage.googleapis.com/v1beta/interactions"
+                if str(metrics.get("provider", "")).lower() == "gemini"
+                else settings.xai_base_url
+            ),
+            "model": str(metrics.get("model") or route.model),
             "status": "ok",
             "latency_ms": round(latency_ms, 2),
             "output_preview": content[:220],
-            "detail": "Request completed successfully.",
+            "detail": (
+                "Request completed through Groq failover."
+                if metrics.get("fallback_used")
+                else "Request completed successfully."
+            ),
         }
     except Exception as exc:
         latency_ms = (time.perf_counter() - start) * 1000

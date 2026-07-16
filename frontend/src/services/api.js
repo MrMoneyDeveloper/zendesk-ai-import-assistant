@@ -9,7 +9,7 @@ export async function testApis() {
 }
 
 export async function generateBatch(payload) {
-  const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/generate`, payload);
+  const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/generate-async`, payload);
   return res.data;
 }
 
@@ -70,6 +70,14 @@ export async function validateZendeskCredentials(payload) {
 
 export async function getZendeskContext(payload) {
   const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/zendesk/context`, payload);
+  return res.data;
+}
+
+export async function checkZendeskHelpCenterReadiness(payload) {
+  const res = await axios.post(
+    `${IMPORT_ASSISTANT_ROOT}/zendesk/help-center/readiness`,
+    payload
+  );
   return res.data;
 }
 

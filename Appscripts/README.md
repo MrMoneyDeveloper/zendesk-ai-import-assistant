@@ -43,17 +43,42 @@ POST actions:
 - `sync_schema`
 - `generate_api_key`
 - `write_batch_to_sheets`
+- `write_batch_metadata`
+- `append_progress_events`
 - `validate_batch`
 - `get_batch_preview`
 - `update_approval_status`
 - `write_execution_log`
 - `get_execution_summary`
+- `get_batch_operational_state`
 
 GET actions:
 - `health` (no API key)
 - `schema_info`
 - `get_batch_preview` (requires `batch_id`)
 - `get_execution_summary` (requires `batch_id`)
+- `get_batch_operational_state` (requires `batch_id`)
+
+## Operating-model upgrade
+
+The department-first backend requires `OperatingModel.gs` plus the updated `Config.gs`, `Utils.gs`,
+`SheetWriter.gs`, `Validation.gs`, and `Api.gs`. After pushing these files, run `setupOnce({})` once and
+deploy a new Web App version. The migration appends missing headers and creates dedicated tabs for Brands,
+Groups, Automations, Categories, Sections, Articles, Batch Metadata, and Progress Log.
+
+Upgrade commands:
+- `cd Appscripts`
+- `npx @google/clasp login` (only when `clasp` reports `invalid_grant` or `invalid_rapt`)
+- `npx @google/clasp push`
+- In Apps Script, run `setupOnce({})`, then edit the Web App deployment and select **New version**.
+
+The combined staging response now includes `summary.timings_ms` for staging, validation, preview, and total
+Apps Script time. Approval writes independently force failed or blocked records back to `blocked`, and
+execution summaries count only the latest result for each record.
+
+Batch staging is idempotent by `batch_id` and `record_id`, so retrying a run replaces that batch's prior
+object rows instead of duplicating them. Progress events and batch metadata use upsert keys and are safe to
+send more than once.
 
 Manual editor helper:
 - `rotateApiKeyFromEditor()` generates a fresh key, stores it in Script Properties, and writes it to the `Integration Secrets` sheet.

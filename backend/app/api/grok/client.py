@@ -8,10 +8,13 @@ from typing import Any, ClassVar
 
 import httpx
 
+from app.api.gemini.client import GeminiInteractionClient, GeminiRequestError
 from app.api.grok.models import RECOMMENDED_MODEL, SUPPORTED_MODELS
+from app.api.grok.schemas import PLANNER_JSON_SCHEMA
 from app.core.settings import get_settings
 from app.loggers.logger import get_logger
 from app.services.perf_capture import emit_perf_event
+from app.services.usage_telemetry import record_model_call
 
 logger = get_logger(__name__)
 
@@ -148,15 +151,37 @@ class GrokClient:
         return parsed
 
     @staticmethod
-    def _extract_usage_tokens(data: dict[str, Any]) -> int | None:
+    def _extract_usage(data: dict[str, Any]) -> dict[str, int]:
         usage = data.get("usage")
         if not isinstance(usage, dict):
-            return None
-        value = usage.get("total_tokens")
-        try:
-            total_tokens = int(value)
-        except (TypeError, ValueError):
-            return None
+            return {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+            }
+
+        def positive_int(*keys: str) -> int:
+            for key in keys:
+                try:
+                    parsed = int(usage.get(key))
+                except (TypeError, ValueError):
+                    continue
+                if parsed > 0:
+                    return parsed
+            return 0
+
+        input_tokens = positive_int("prompt_tokens", "input_tokens", "total_input_tokens")
+        output_tokens = positive_int("completion_tokens", "output_tokens", "total_output_tokens")
+        total_tokens = positive_int("total_tokens") or (input_tokens + output_tokens)
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+        }
+
+    @classmethod
+    def _extract_usage_tokens(cls, data: dict[str, Any]) -> int | None:
+        total_tokens = cls._extract_usage(data)["total_tokens"]
         return total_tokens if total_tokens > 0 else None
 
     @staticmethod
@@ -185,6 +210,7 @@ class GrokClient:
         status = int(response.status_code)
         detail, error_code, failed_generation = self._extract_error_payload(response)
         text = detail.lower()
+        normalized_error_code = str(error_code or "").strip().lower()
         if status == 429:
             return "rate_limited", detail, error_code, failed_generation
 
@@ -195,7 +221,8 @@ class GrokClient:
 
         if status == 400:
             if (
-                "failed to generate json" in text
+                normalized_error_code == "json_validate_failed"
+                or "failed to generate json" in text
                 or "failed_generation" in text
                 or "json_validate_failed" in text
                 or "generated json does not match the expected schema" in text
@@ -429,6 +456,7 @@ class GrokClient:
     def _record_call_metrics(self, task: str | None, metrics: dict[str, Any]) -> None:
         if task:
             self._LAST_CALL_METRICS[task] = metrics
+        record_model_call({"provider": self.provider_name, **metrics})
         emit_perf_event(
             "llm_call",
             {
@@ -439,6 +467,11 @@ class GrokClient:
                 "final_status": metrics.get("final_status"),
                 "estimated_tokens": metrics.get("estimated_tokens"),
                 "used_tokens": metrics.get("used_tokens"),
+                "input_tokens": metrics.get("input_tokens"),
+                "output_tokens": metrics.get("output_tokens"),
+                "total_tokens": metrics.get("total_tokens"),
+                "elapsed_ms": metrics.get("elapsed_ms"),
+                "attempt_count": metrics.get("attempt_count"),
                 "retry_count": metrics.get("retry_count"),
                 "pre_request_wait_ms": metrics.get("pre_request_wait_ms"),
                 "wait_reason": metrics.get("wait_reason"),
@@ -458,6 +491,7 @@ class GrokClient:
         task: str | None = None,
         initial_breaker_state: str = "closed",
         api_key_profile: str | None = None,
+        initial_retry_count: int = 0,
     ) -> dict[str, Any]:
         attempts = max(self.settings.llm_retry_max_attempts, 1)
         backoff = max(self.settings.llm_retry_backoff_seconds, 0.0)
@@ -465,9 +499,10 @@ class GrokClient:
         model = str(payload.get("model") or "")
         estimated_tokens = self._estimate_payload_tokens(payload)
         total_wait_seconds = 0.0
-        retry_count = 0
+        retry_count = max(int(initial_retry_count), 0)
         wait_reason: str | None = None
         breaker_state = initial_breaker_state
+        call_started = time.perf_counter()
 
         for attempt in range(1, attempts + 1):
             pre_wait_seconds, pre_wait_reason = self._compute_pre_request_wait_seconds(
@@ -540,6 +575,11 @@ class GrokClient:
                         "task": task,
                         "model": model,
                         "estimated_tokens": estimated_tokens,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "elapsed_ms": round((time.perf_counter() - call_started) * 1000.0, 2),
+                        "attempt_count": attempt,
                         "pre_request_wait_ms": round(total_wait_seconds * 1000.0, 2),
                         "retry_count": retry_count,
                         "final_status": "http_error",
@@ -564,7 +604,8 @@ class GrokClient:
                 )
 
             data = response.json()
-            used_tokens = self._extract_usage_tokens(data) or estimated_tokens
+            usage = self._extract_usage(data)
+            used_tokens = usage["total_tokens"] or estimated_tokens
             self._record_usage(
                 model,
                 used_tokens,
@@ -578,6 +619,11 @@ class GrokClient:
                     "model": model,
                     "estimated_tokens": estimated_tokens,
                     "used_tokens": used_tokens,
+                    "input_tokens": usage["input_tokens"],
+                    "output_tokens": usage["output_tokens"],
+                    "total_tokens": used_tokens,
+                    "elapsed_ms": round((time.perf_counter() - call_started) * 1000.0, 2),
+                    "attempt_count": attempt,
                     "pre_request_wait_ms": round(total_wait_seconds * 1000.0, 2),
                     "retry_count": retry_count,
                     "final_status": "ok",
@@ -599,6 +645,11 @@ class GrokClient:
                     "task": task,
                     "model": model,
                     "estimated_tokens": estimated_tokens,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "elapsed_ms": round((time.perf_counter() - call_started) * 1000.0, 2),
+                    "attempt_count": attempts,
                     "pre_request_wait_ms": round(total_wait_seconds * 1000.0, 2),
                     "retry_count": retry_count,
                     "final_status": "error",
@@ -623,6 +674,11 @@ class GrokClient:
                 "task": task,
                 "model": model,
                 "estimated_tokens": estimated_tokens,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "elapsed_ms": round((time.perf_counter() - call_started) * 1000.0, 2),
+                "attempt_count": attempts,
                 "pre_request_wait_ms": round(total_wait_seconds * 1000.0, 2),
                 "retry_count": retry_count,
                 "final_status": "http_error",
@@ -659,6 +715,135 @@ class GrokClient:
         task: str | None = None,
         response_format_override: str | None = None,
         api_key_override: str | None = None,
+        reasoning_effort: str | None = None,
+        reasoning_format: str | None = None,
+        prefer_provider: str | None = None,
+    ) -> str:
+        selected_preference = str(
+            prefer_provider or getattr(self.settings, "llm_default_provider", "groq") or "groq"
+        ).strip().lower()
+        gemini_tasks = {"planner", "generator", "clarifier", "healthcheck"}
+        gemini_failure: GeminiRequestError | None = None
+        task_name = str(task or "default")
+
+        if selected_preference == "gemini" and task_name in gemini_tasks:
+            gemini_schema = response_schema
+            if task_name == "planner" and gemini_schema is None:
+                gemini_schema = PLANNER_JSON_SCHEMA
+            require_json = bool(
+                gemini_schema is not None
+                or str(response_format_override or "").strip().lower() == "json_object"
+            )
+            try:
+                content = await GeminiInteractionClient().chat(
+                    messages,
+                    task=task_name,
+                    response_schema=gemini_schema,
+                    require_json=require_json,
+                    model=str(getattr(self.settings, "gemini_default_model", "") or "").strip()
+                    or None,
+                )
+                gemini_metrics = GeminiInteractionClient.get_last_call_metrics(task_name)
+                gemini_metrics.update(
+                    {
+                        "provider": "Gemini",
+                        "selected_provider": "gemini",
+                        "fallback_used": False,
+                    }
+                )
+                if task:
+                    self._LAST_CALL_METRICS[task] = gemini_metrics
+                return content
+            except GeminiRequestError as exc:
+                gemini_failure = exc
+                logger.warning(
+                    "Gemini default route failed for task '%s' (%s); switching to %s fallback.",
+                    task_name,
+                    exc.error_class,
+                    self.provider_name,
+                )
+
+        try:
+            result = await self._chat_openai_compatible(
+                messages,
+                temperature,
+                model=model,
+                max_output_tokens=max_output_tokens,
+                response_schema=response_schema,
+                response_schema_name=response_schema_name,
+                strict_schema=strict_schema,
+                task=task,
+                response_format_override=response_format_override,
+                api_key_override=api_key_override,
+                reasoning_effort=reasoning_effort,
+                reasoning_format=reasoning_format,
+            )
+        except Exception:
+            if task and gemini_failure is not None:
+                latest = deepcopy(self._LAST_CALL_METRICS.get(task, {}))
+                gemini_metrics = (
+                    gemini_failure.telemetry
+                    or GeminiInteractionClient.get_last_call_metrics(task_name)
+                )
+                latest.update(
+                    {
+                        "provider": self.provider_name,
+                        "selected_provider": self.provider_name.lower(),
+                        "fallback_used": True,
+                        "fallback_from": "Gemini",
+                        "fallback_reason": gemini_failure.error_class,
+                        "gemini_attempt_count": int(
+                            gemini_metrics.get("attempt_count", 0) or 0
+                        ),
+                        "gemini_http_status": gemini_failure.http_status,
+                        "provider_chain": ["Gemini", self.provider_name],
+                    }
+                )
+                self._LAST_CALL_METRICS[task] = latest
+            raise
+        if task:
+            latest = deepcopy(self._LAST_CALL_METRICS.get(task, {}))
+            latest.update(
+                {
+                    "provider": self.provider_name,
+                    "selected_provider": self.provider_name.lower(),
+                    "fallback_used": gemini_failure is not None,
+                }
+            )
+            if gemini_failure is not None:
+                gemini_metrics = (
+                    gemini_failure.telemetry
+                    or GeminiInteractionClient.get_last_call_metrics(task_name)
+                )
+                latest.update(
+                    {
+                        "fallback_from": "Gemini",
+                        "fallback_reason": gemini_failure.error_class,
+                        "gemini_attempt_count": int(
+                            gemini_metrics.get("attempt_count", 0) or 0
+                        ),
+                        "gemini_http_status": gemini_failure.http_status,
+                        "provider_chain": ["Gemini", self.provider_name],
+                    }
+                )
+            self._LAST_CALL_METRICS[task] = latest
+        return result
+
+    async def _chat_openai_compatible(
+        self,
+        messages: list[dict[str, Any]],
+        temperature: float | None = None,
+        *,
+        model: str | None = None,
+        max_output_tokens: int | None = None,
+        response_schema: dict | None = None,
+        response_schema_name: str = "structured_response",
+        strict_schema: bool | None = None,
+        task: str | None = None,
+        response_format_override: str | None = None,
+        api_key_override: str | None = None,
+        reasoning_effort: str | None = None,
+        reasoning_format: str | None = None,
     ) -> str:
         if not self.settings.xai_enabled:
             raise RuntimeError("xAI integration is disabled via XAI_ENABLED.")
@@ -693,6 +878,10 @@ class GrokClient:
             "temperature": temperature if temperature is not None else self.settings.xai_temperature,
             "max_tokens": max_output_tokens or self.settings.xai_max_output_tokens,
         }
+        if reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
+        if reasoning_format:
+            payload["reasoning_format"] = reasoning_format
         strict = self.settings.llm_strict_schema_mode if strict_schema is None else strict_schema
         response_format_mode = "none"
         override = (response_format_override or "").strip().lower()
@@ -764,6 +953,7 @@ class GrokClient:
                 task=task,
                 initial_breaker_state=f"open:{exc.error_class}",
                 api_key_profile=api_key_profile,
+                initial_retry_count=1,
             )
             if task:
                 latest = deepcopy(self._LAST_CALL_METRICS.get(task, {}))

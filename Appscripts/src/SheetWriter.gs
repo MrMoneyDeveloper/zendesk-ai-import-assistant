@@ -13,7 +13,7 @@ function writeBatchToSheets(payload) {
     const requestSheet = getSheetByNameOrCreate_(spreadsheet, 'Requests');
     const planningSheet = getSheetByNameOrCreate_(spreadsheet, 'Planning Output');
 
-    appendRowsByHeader_(requestSheet, requestHeaders, [
+    upsertRowsByKeys_(requestSheet, requestHeaders, [
       {
         batch_id: batchId,
         prompt: asString_(input.prompt),
@@ -22,17 +22,17 @@ function writeBatchToSheets(payload) {
         target_environment: asString_(input.target_environment || 'sandbox'),
         created_at: asString_(input.created_at || nowIso_())
       }
-    ]);
+    ], ['batch_id']);
 
     const planning = input.planning_summary || {};
-    appendRowsByHeader_(planningSheet, planningHeaders, [
+    upsertRowsByKeys_(planningSheet, planningHeaders, [
       {
         batch_id: batchId,
         object_type: asString_(planning.object_type),
         intent: asString_(planning.intent),
         confidence: asString_(planning.confidence)
       }
-    ]);
+    ], ['batch_id']);
 
     const records = Array.isArray(input.records) ? input.records : [];
     const grouped = {};
@@ -59,17 +59,33 @@ function writeBatchToSheets(payload) {
         approved_by: asString_(record.approved_by || ''),
         approved_at: asString_(record.approved_at || ''),
         deployment_status: asString_(record.deployment_status || 'pending'),
-        zendesk_object_id: asString_(record.zendesk_object_id || '')
+        zendesk_object_id: asString_(record.zendesk_object_id || ''),
+        chunk_id: asString_(record.chunk_id || record._supervisor_chunk_id || ''),
+        record_key: asString_(record.record_key || record._supervisor_record_key || ''),
+        department: asString_(record.department || record.department_name || ''),
+        topic: asString_(record.topic || ''),
+        source_provider: asString_(record.source_provider || ''),
+        source_model: asString_(record.source_model || '')
       });
     });
 
     const writeSummary = {};
-    Object.keys(grouped).forEach(function eachSheetName(sheetName) {
+    OBJECT_SHEET_NAMES.forEach(function eachSheetName(sheetName) {
       const sheet = getSheetByNameOrCreate_(spreadsheet, sheetName);
       const headers = getTabDefinitionByName_(sheetName).headers;
-      const written = appendRowsByHeader_(sheet, headers, grouped[sheetName]);
+      const written = replaceBatchRows_(sheet, headers, batchId, grouped[sheetName] || []);
       writeSummary[sheetName] = written;
     });
+
+    const metadataWritten = typeof writeBatchMetadataUnlocked_ === 'function'
+      ? writeBatchMetadataUnlocked_(spreadsheet, input)
+      : 0;
+    const progressWritten = typeof appendProgressEventsUnlocked_ === 'function'
+      ? appendProgressEventsUnlocked_(spreadsheet, {
+          batch_id: batchId,
+          events: Array.isArray(input.progress_events) ? input.progress_events : []
+        })
+      : 0;
 
     return {
       ok: true,
@@ -80,6 +96,8 @@ function writeBatchToSheets(payload) {
       request_rows_written: 1,
       planning_rows_written: 1,
       object_rows_written: writeSummary,
+      metadata_rows_written: metadataWritten,
+      progress_rows_written: progressWritten,
       total_records: records.length
     };
   } finally {

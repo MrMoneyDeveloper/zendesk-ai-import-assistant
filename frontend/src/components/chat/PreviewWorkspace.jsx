@@ -1,5 +1,13 @@
 import { useMemo, useState } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import {
+  BookOpen,
+  CheckCircle2,
+  CircleAlert,
+  ExternalLink,
+  RefreshCw,
+  Send,
+} from "lucide-react";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -67,9 +75,20 @@ export default function PreviewWorkspace({
   onDeployToZendesk,
   isDeploying,
   deployResult,
+  deploymentMetadata,
+  helpCenterUrl,
+  onHelpCenterUrlChange,
+  helpCenterReadiness,
+  onVerifyHelpCenter,
+  isVerifyingHelpCenter,
+  helpCenterArticleMode,
+  onHelpCenterArticleModeChange,
+  onDeployHelpCenter,
 }) {
   const [recordSearch, setRecordSearch] = useState("");
   const [showTechnical, setShowTechnical] = useState(false);
+  const [includeHelpCenter, setIncludeHelpCenter] = useState(false);
+  const [confirmPublish, setConfirmPublish] = useState(false);
   const records = useMemo(() => previewData?.records || [], [previewData?.records]);
 
   const filteredRecords = useMemo(() => {
@@ -157,6 +176,35 @@ export default function PreviewWorkspace({
   const duplicateWarningRows = records.filter((row) =>
     (row.warnings || []).some((warning) => String(warning).toLowerCase().includes("duplicate candidate"))
   );
+  const helpCenterRecords = records.filter((row) => (
+    ["category", "categories", "section", "sections", "article", "articles"]
+      .includes(String(row.object_type || "").toLowerCase())
+  ));
+  const approvedHelpCenterRecords = helpCenterRecords.filter((row) => (
+    (decisions[row.record_id] || row.import_decision) === "approved" && row.deployable
+  ));
+  const helpCenterCounts = helpCenterRecords.reduce((acc, row) => {
+    const type = String(row.object_type || "").toLowerCase();
+    const key = type.startsWith("categor") ? "categories" : type.startsWith("section") ? "sections" : "articles";
+    acc[key] += 1;
+    return acc;
+  }, { categories: 0, sections: 0, articles: 0 });
+  const latestScope = deployResult?.metadata?.deployment_scope;
+  const supportPhaseObserved = Boolean(
+    latestScope === "support"
+    || deploymentMetadata?.phases?.support
+    || deploymentMetadata?.phases?.all
+  );
+  const readinessState = helpCenterReadiness?.state || "not_checked";
+  const readinessReady = Boolean(helpCenterReadiness?.ready);
+  const requiresPublishConfirmation = helpCenterArticleMode === "publish";
+  const canDeployHelpCenter = Boolean(
+    includeHelpCenter
+    && readinessReady
+    && approvedHelpCenterRecords.length > 0
+    && (!requiresPublishConfirmation || confirmPublish)
+    && !isDeploying
+  );
 
   return (
     <Card className="mt-8 border-[#7B1FFF]/30 bg-[#120522]/70">
@@ -164,7 +212,7 @@ export default function PreviewWorkspace({
         <div>
           <p className="text-sm font-medium text-slate-200">Review and Confirm</p>
           <p className="mt-1 text-xs text-slate-400">
-            Confirm what to send, then deploy.
+            Confirm the records, deploy Support objects first, then choose whether to create Help Center content.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -174,10 +222,12 @@ export default function PreviewWorkspace({
           <Button
             variant="default"
             size="sm"
+            className="gap-2"
             onClick={onApproveAndDeploy || onDeployToZendesk}
             disabled={isDeploying || isApproving}
           >
-            {isDeploying ? "Deploying..." : "Approve with Client"}
+            <Send size={15} />
+            {isDeploying ? "Deploying..." : "Deploy Support Objects"}
           </Button>
         </div>
       </CardHeader>
@@ -308,6 +358,171 @@ export default function PreviewWorkspace({
             </div>
           ) : null}
         </div>
+
+        {helpCenterRecords.length > 0 && supportPhaseObserved ? (
+          <section className="-mx-6 mt-6 border-y border-[#7B1FFF]/25 bg-[#07030F]/45 px-6 py-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 gap-3">
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-violet-500/15 text-violet-200">
+                  <BookOpen size={18} />
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-100">Create Help Center content?</h3>
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-400">
+                    Support deployment is separate. Verify the target brand, then create categories and sections before its approved articles.
+                  </p>
+                </div>
+              </div>
+              <div className="text-right text-xs text-slate-400">
+                <p>{helpCenterCounts.categories} categories | {helpCenterCounts.sections} sections | {helpCenterCounts.articles} articles</p>
+                <p className="mt-1">{approvedHelpCenterRecords.length} approved for this phase</p>
+              </div>
+            </div>
+
+            <label className="mt-5 flex cursor-pointer items-start gap-3 text-sm text-slate-200">
+              <input
+                type="checkbox"
+                checked={includeHelpCenter}
+                onChange={(event) => setIncludeHelpCenter(event.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-violet-500"
+              />
+              <span>
+                Create the approved Help Center hierarchy and articles
+                <span className="mt-0.5 block text-xs text-slate-400">No Help Center write occurs until verification passes and you confirm below.</span>
+              </span>
+            </label>
+
+            {includeHelpCenter ? (
+              <div className="mt-5 space-y-4 border-t border-[#7B1FFF]/20 pt-4">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                  <label className="block min-w-0">
+                    <span className="text-xs font-medium text-slate-300">Brand Help Center URL</span>
+                    <input
+                      type="url"
+                      value={helpCenterUrl}
+                      onChange={(event) => onHelpCenterUrlChange(event.target.value)}
+                      placeholder="https://brand.zendesk.com/hc/en-us"
+                      className="mt-1.5 h-10 w-full rounded-md border border-[#7B1FFF]/35 bg-[#07030F]/70 px-3 text-sm text-slate-100 outline-none focus:border-violet-400"
+                    />
+                  </label>
+                  <Button
+                    variant="outline"
+                    className="mt-auto gap-2"
+                    onClick={onVerifyHelpCenter}
+                    disabled={isVerifyingHelpCenter || isDeploying}
+                  >
+                    <RefreshCw size={15} className={isVerifyingHelpCenter ? "animate-spin" : ""} />
+                    {isVerifyingHelpCenter ? "Verifying..." : "Verify"}
+                  </Button>
+                </div>
+
+                {helpCenterReadiness ? (
+                  <div className={`border-l-2 px-3 py-2 text-xs ${
+                    readinessReady
+                      ? "border-emerald-500 bg-emerald-950/15 text-emerald-200"
+                      : "border-amber-500 bg-amber-950/15 text-amber-100"
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      {readinessReady ? <CheckCircle2 size={16} /> : <CircleAlert size={16} />}
+                      <div className="min-w-0">
+                        <p className="font-semibold">{readinessReady ? "Help Center ready" : "Action required"}</p>
+                        <p className="mt-1 leading-5">{helpCenterReadiness.detail}</p>
+                        {helpCenterReadiness.brand?.name ? (
+                          <p className="mt-1 text-slate-300">Brand: {helpCenterReadiness.brand.name} | Locale: {helpCenterReadiness.locale}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                    {!readinessReady && (helpCenterReadiness.instructions || []).length > 0 ? (
+                      <ol className="mt-3 list-decimal space-y-1 pl-5 text-slate-300">
+                        {helpCenterReadiness.instructions.map((instruction) => (
+                          <li key={instruction}>{instruction}</li>
+                        ))}
+                      </ol>
+                    ) : null}
+                    {(helpCenterReadiness.checks || []).length > 0 ? (
+                      <div className="mt-3 grid gap-1 border-t border-white/10 pt-2 text-slate-300 sm:grid-cols-2">
+                        {helpCenterReadiness.checks.map((check) => (
+                          <p key={check.name}>
+                            <span className="font-medium">{check.name.replaceAll("_", " ")}:</span> {check.detail}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                    {!readinessReady && helpCenterReadiness.documentation_url ? (
+                      <a
+                        href={helpCenterReadiness.documentation_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-flex items-center gap-1 font-medium text-violet-200 hover:text-violet-100"
+                      >
+                        Zendesk enablement instructions <ExternalLink size={13} />
+                      </a>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">Verification uses read-only brand and Guide API requests.</p>
+                )}
+
+                <div>
+                  <p className="text-xs font-medium text-slate-300">Article state</p>
+                  <div className="mt-2 inline-flex rounded-md border border-[#7B1FFF]/30 p-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onHelpCenterArticleModeChange("draft");
+                        setConfirmPublish(false);
+                      }}
+                      className={`h-8 px-3 text-xs ${helpCenterArticleMode === "draft" ? "rounded bg-violet-500/25 text-white" : "text-slate-400"}`}
+                    >
+                      Drafts
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onHelpCenterArticleModeChange("publish")}
+                      className={`h-8 px-3 text-xs ${helpCenterArticleMode === "publish" ? "rounded bg-violet-500/25 text-white" : "text-slate-400"}`}
+                    >
+                      Publish
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Drafts are created without making article content public. Publishing requires a separate confirmation.
+                  </p>
+                </div>
+
+                {requiresPublishConfirmation ? (
+                  <label className="flex items-start gap-3 border-l-2 border-amber-500 bg-amber-950/15 px-3 py-2 text-xs text-amber-100">
+                    <input
+                      type="checkbox"
+                      checked={confirmPublish}
+                      onChange={(event) => setConfirmPublish(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 accent-amber-500"
+                    />
+                    I confirm these approved articles should be published immediately, not created as drafts.
+                  </label>
+                ) : null}
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#7B1FFF]/20 pt-4">
+                  <p className="text-xs text-slate-400">
+                    State: {readinessState.replaceAll("_", " ")}. Failed records remain retryable; successful records are not deployed twice.
+                  </p>
+                  <Button
+                    variant="default"
+                    className="gap-2"
+                    onClick={onDeployHelpCenter}
+                    disabled={!canDeployHelpCenter}
+                  >
+                    <Send size={15} />
+                    {isDeploying
+                      ? "Deploying..."
+                      : helpCenterArticleMode === "publish"
+                        ? "Create hierarchy and publish"
+                        : "Create hierarchy and drafts"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
       </CardContent>
     </Card>
   );

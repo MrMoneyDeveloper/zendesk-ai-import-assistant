@@ -203,6 +203,7 @@ class BatchStore:
         batch_id: str,
         status: str,
         message: str = "",
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with _lock:
             data = self._read()
@@ -212,7 +213,21 @@ class BatchStore:
                 raise KeyError(batch_id)
 
             history = batch.setdefault("status_history", [])
-            history.append({"status": status, "message": message, "at": _utc_now()})
+            event = {"status": status, "message": message, "at": _utc_now()}
+            if isinstance(context, dict):
+                for key in (
+                    "event_id",
+                    "source",
+                    "provider",
+                    "model",
+                    "wave",
+                    "department",
+                    "object_type",
+                ):
+                    value = context.get(key)
+                    if value is not None and str(value).strip():
+                        event[key] = value
+            history.append(event)
             batch["updated_at"] = _utc_now()
             batches[batch_id] = batch
             self._write(data)
