@@ -29,7 +29,6 @@ import {
 
 import PromptComposer from "./components/chat/PromptComposer";
 import PreviewWorkspace from "./components/chat/PreviewWorkspace";
-import StatusRibbon from "./components/chat/StatusRibbon";
 import IntegrationPanel from "./components/chat/IntegrationPanel";
 import ZendeskSessionGate from "./components/chat/ZendeskSessionGate";
 import { Button } from "./components/ui/button";
@@ -1363,6 +1362,60 @@ function App() {
     queryClient.invalidateQueries({ queryKey: ["preview", selectedBatchId] });
   };
 
+  const scrollToSection = (selector) => {
+    window.setTimeout(() => {
+      document
+        .querySelector(selector)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
+  const handleSidebarNavigation = (label) => {
+    if (label === "New Chat") {
+      startNewChat();
+      return;
+    }
+
+    if (label === "Dashboard") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (label === "All Chats") {
+      setShowExistingContext(true);
+      scrollToSection("#recent-requests");
+      return;
+    }
+
+    if (label === "Templates") {
+      scrollToSection("#zendesk-templates");
+      return;
+    }
+
+    if (label === "Knowledge Base") {
+      setFocusObjectTypes(["articles"]);
+      setExternalPrompt("Create a help center article");
+      scrollToSection("#knowledge-base");
+      return;
+    }
+
+    if (label === "Integrations") {
+      setShowExistingContext(true);
+      scrollToSection("#integration-diagnostics");
+      return;
+    }
+
+    if (label === "Settings") {
+      scrollToSection("#settings");
+    }
+  };
+
+  const openContextSelection = () => {
+    setShowExistingContext(true);
+    setShowAdvancedCatalog(true);
+    scrollToSection("#context-selection");
+  };
+
   const toggleContextSelection = (entry) => {
     const key = `${entry.object_type}:${entry.id}`;
     setSelectedContext((prev) => {
@@ -1869,14 +1922,7 @@ function App() {
     <button
       key={item.label}
       type="button"
-      onClick={() => {
-        if (item.label === "New Chat") startNewChat();
-        else if (item.label === "Dashboard") appendTimeline("assistant", "Dashboard view coming soon.");
-        else if (item.label === "All Chats") setShowExistingContext(true);
-        else if (item.label === "Integrations") setShowExistingContext(true);
-        else if (item.label === "Settings") appendTimeline("assistant", "Settings panel coming soon.");
-        // Templates and Knowledge Base are future features
-      }}
+      onClick={() => handleSidebarNavigation(item.label)}
       className={`flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition ${
         item.active
           ? darkMode
@@ -1957,7 +2003,7 @@ function App() {
 
         <main className="mx-auto grid max-w-[1480px] gap-6 px-4 pb-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_330px] lg:px-8">
           <section className="min-w-0">
-            <div className={`relative overflow-hidden rounded-2xl border p-5 sm:p-7 ${workspaceCard}`}>
+            <div id="dashboard" className={`relative overflow-hidden rounded-2xl border p-5 sm:p-7 ${workspaceCard}`}>
               <div className="relative z-10 max-w-xl pr-0 sm:pr-8">
                 <h1 className="text-2xl font-bold tracking-normal text-violet-600 sm:text-3xl">Zendesk AI Import</h1>
                 <p className={`mt-3 text-xl font-semibold ${sectionTitle}`}>What would you like to build today?</p>
@@ -1974,7 +2020,7 @@ function App() {
               </div>
             </div>
 
-            <div className="mt-6">
+            <div id="zendesk-templates" className="mt-6">
               <h2 className={`mb-3 text-sm font-semibold ${sectionTitle}`}>Quick Actions</h2>
               <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
                 {QUICK_ACTIONS.map((action) => {
@@ -1995,7 +2041,7 @@ function App() {
               </div>
             </div>
 
-            <div className="mt-4">
+            <div id="knowledge-base" className="mt-4">
               <PromptComposer
                 key={chatSessionId}
                 embedded
@@ -2052,42 +2098,6 @@ function App() {
 })}
               </div>
             </div>
-
-            <Card className={`mt-5 ${workspaceCard}`}>
-              <CardContent className="p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className={`text-sm font-semibold ${sectionTitle}`}>Recent Activity</h2>
-                  <span className={`text-xs ${textSoft}`}>{currentPhaseLabel}</span>
-                </div>
-                <div className="space-y-2">
-                  {timeline.length > 0 ? (
-                    timeline.slice(-4).map((entry) => (
-                      <div key={entry.id} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
-                        <div className="min-w-0 flex-1">
-                          <p className={`${sectionTitle} break-words`}>{entry.text}</p>
-                          <p className={`mt-1 text-xs ${textSoft}`}>{entry.role} - {new Date(entry.at).toLocaleTimeString()}</p>
-                        </div>
-                        <ChevronRight className={`${textSoft} shrink-0`} size={18} />
-                      </div>
-                    ))
-                  ) : (
-                    <div className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-violet-600">
-                          <CirclePlus size={18} />
-                        </span>
-                        <div>
-                          <p className={sectionTitle}>Create trigger for inactive tickets</p>
-                          <p className={`text-xs ${textSoft}`}>Trigger - ready to generate</p>
-                        </div>
-                      </div>
-                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-600">Ready</span>
-                    </div>
-                  )}
-                  <div ref={conversationEndRef} />
-                </div>
-              </CardContent>
-            </Card>
 
             <div className={`mt-5 ${processingPanelBg}`}>
               <button
@@ -2278,18 +2288,6 @@ function App() {
               </Card>
             ) : null}
 
-            <StatusRibbon
-              darkMode={darkMode}
-              batchId={batchId}
-              status={currentStatus}
-              testResult={null}
-              jobData={jobQuery.data}
-              generateMetadata={effectiveGenerateMetadata}
-              approvalResult={approveMutation.data}
-              deployEnabled={Boolean(integrationsQuery.data?.zendesk?.deploy_endpoint_enabled)}
-              deployTarget={zendeskValidationResult?.base_url || ""}
-              onExistingMode={onExistingMode}
-            />
           </section>
 
           <aside className="space-y-4">
@@ -2336,7 +2334,7 @@ function App() {
                 <Button
                   variant="outline"
                   className={`${darkMode ? "" : "border-violet-200 bg-white text-violet-700 hover:bg-violet-50"} mt-4 w-full gap-2`}
-                  onClick={() => setShowExistingContext((prev) => !prev)}
+                  onClick={openContextSelection}
                 >
                   Add Context
                   <CirclePlus size={16} />
@@ -2344,7 +2342,7 @@ function App() {
               </CardContent>
             </Card>
 
-            <Card className={workspaceCard}>
+            <Card id="settings" className={workspaceCard}>
               <CardContent className="space-y-4 p-4">
                 <h2 className={`text-sm font-semibold ${sectionTitle}`}>Advanced Options</h2>
                 <label className="block">
@@ -2398,7 +2396,7 @@ function App() {
 
           <div className="lg:col-span-2">
             {showExistingContext ? (
-              <div className="mb-6">
+              <div id="integration-diagnostics" className="mb-6">
                 <IntegrationPanel
                   darkMode={darkMode}  
                   integrationsStatus={integrationsQuery.data}
@@ -2414,9 +2412,9 @@ function App() {
                   contextLoading={zendeskContextQuery.isFetching}
                   selectedContextCount={selectedRelatedObjects.length}
                 />
-                <Card className={`mt-4 ${workspaceCard}`}>
+                <Card id="recent-requests" className={`mt-4 ${workspaceCard}`}>
                   <CardContent className="grid gap-4 p-4 lg:grid-cols-2">
-                    <div>
+                    <div id="context-selection">
                       <h2 className={`mb-2 text-sm font-semibold ${sectionTitle}`}>Recent Requests</h2>
                       <input
                         value={historySearch}
@@ -2483,6 +2481,41 @@ function App() {
                       ) : (
                         <p className={`text-xs ${textSoft}`}>Open the advanced list to select existing Zendesk objects for context.</p>
                       )}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className={`mt-4 ${workspaceCard}`}>
+                  <CardContent className="p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h2 className={`text-sm font-semibold ${sectionTitle}`}>Recent Activity</h2>
+                      <span className={`text-xs ${textSoft}`}>{currentPhaseLabel}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {timeline.length > 0 ? (
+                        timeline.slice(-4).map((entry) => (
+                          <div key={entry.id} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
+                            <div className="min-w-0 flex-1">
+                              <p className={`${sectionTitle} break-words`}>{entry.text}</p>
+                              <p className={`mt-1 text-xs ${textSoft}`}>{entry.role} - {new Date(entry.at).toLocaleTimeString()}</p>
+                            </div>
+                            <ChevronRight className={`${textSoft} shrink-0`} size={18} />
+                          </div>
+                        ))
+                      ) : (
+                        <div className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                              <CirclePlus size={18} />
+                            </span>
+                            <div>
+                              <p className={sectionTitle}>Create trigger for inactive tickets</p>
+                              <p className={`text-xs ${textSoft}`}>Trigger - ready to generate</p>
+                            </div>
+                          </div>
+                          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-600">Ready</span>
+                        </div>
+                      )}
+                      <div ref={conversationEndRef} />
                     </div>
                   </CardContent>
                 </Card>
