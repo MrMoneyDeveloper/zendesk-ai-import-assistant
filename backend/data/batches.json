@@ -108489,12 +108489,12 @@
       "batch_id": "BATCH-APPROVAL-GATE",
       "status": "partially_approved",
       "created_at": "2026-01-01T00:00:00Z",
-      "updated_at": "2026-07-17T22:11:18.399537+00:00",
+      "updated_at": "2026-07-18T22:02:58.819781+00:00",
       "status_history": [
         {
           "status": "partially_approved",
           "message": "Record-level approval decisions saved.",
-          "at": "2026-07-17T22:11:18.399508+00:00"
+          "at": "2026-07-18T22:02:58.819764+00:00"
         }
       ],
       "records": [
@@ -109076,53 +109076,15 @@
             "estimated_requested_records": 1
           },
           "generator": {
-            "task": "generator",
             "model": "gemini-3.1-flash-lite",
-            "api_key_profile": "gemini_e3931441c2",
-            "final_status": "ok",
             "http_status": 200,
-            "attempt_count": 1,
+            "final_status": "ok",
             "retry_count": 0,
-            "estimated_tokens": 1488,
-            "input_tokens": 1707,
-            "output_tokens": 143,
-            "thought_tokens": 0,
-            "cached_tokens": 0,
-            "tool_use_tokens": 0,
-            "total_tokens": 1850,
-            "elapsed_ms": 3598.61,
             "pre_request_wait_ms": 0.0,
+            "wait_reason": null,
             "error_class": "none",
-            "breaker_state": "closed",
-            "http_statuses": [
-              200
-            ],
-            "provider": "Gemini",
-            "selected_provider": "gemini",
-            "fallback_used": false
-          },
-          "generator_chunks": [
-            {
-              "chunk_index": 1,
-              "chunk_total": 1,
-              "target_records": 1,
-              "generated_records": 1,
-              "deduped_records_added": 1,
-              "duplicates_dropped": 0,
-              "context_profile": "standard",
-              "pre_request_wait_ms": 0.0,
-              "retry_count": 0,
-              "final_status": "ok",
-              "http_status": 200,
-              "model": "gemini-3.1-flash-lite",
-              "mode_order": [
-                "json_object",
-                "no_response_format",
-                "json_schema_best_effort",
-                "json_schema_strict"
-              ]
-            }
-          ]
+            "provider_error_code": null
+          }
         },
         "llm_context": {
           "planner_profile": "standard",
@@ -109405,6 +109367,1961 @@
             "ok": false,
             "action": "write_batch_metadata",
             "error": "Unsupported POST action."
+          }
+        }
+      }
+    },
+    "BATCH-20260718-215321-764CD5": {
+      "batch_id": "BATCH-20260718-215321-764CD5",
+      "status": "preview_ready",
+      "prompt": "Update only the selected trigger. Add the tag codex_update_preview_test. Keep the exact title, active state, every current condition, and every current action unchanged; add only one normalized add-tags action for that tag. This is a preview-only quality test and must not deploy.",
+      "requester": "codex-update-quality-benchmark",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "operation_mode": "update",
+      "created_at": "2026-07-18T21:53:21.120324+00:00",
+      "updated_at": "2026-07-18T21:53:55.041193+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted. Preparing the department manifest, dependency order, and model lanes.",
+          "at": "2026-07-18T21:53:21.120324+00:00",
+          "source": "pipeline"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-07-18T21:53:21.308640+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner bypassed for exact_update_target; using deterministic inference.",
+          "at": "2026-07-18T21:53:21.493927+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-07-18T21:53:21.649702+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-07-18T21:53:21.813364+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-07-18T21:53:21.965104+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Waiting for 1 Gemini supervisor review(s) before single generation finalization.",
+          "at": "2026-07-18T21:53:25.103375+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing triggers chunk 1/1 for safe patches.",
+          "at": "2026-07-18T21:53:25.465326+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for triggers chunk 1/1; applied=0.",
+          "at": "2026-07-18T21:53:28.622910+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini supervisor reviews settled before single generation finalization; records=1 dropped_after_patch=0.",
+          "at": "2026-07-18T21:53:28.967251+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-07-18T21:53:29.294543+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-07-18T21:53:29.704310+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged via combined Apps Script pipeline.",
+          "at": "2026-07-18T21:53:50.775474+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation via combined Apps Script pipeline.",
+          "at": "2026-07-18T21:53:50.923632+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-07-18T21:53:51.072162+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-07-18T21:53:51.234415+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "triggers",
+          "title": "[Out of Office] Ticket: Unassign Trigger",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Deterministic planner bypass applied: exact_update_target. Preserved existing conditions and actions, added codex_update_preview_test tag."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "current_tags",
+              "value": "agent_ooo",
+              "operator": "includes",
+              "scope": "all"
+            },
+            {
+              "field": "status",
+              "value": "open",
+              "operator": "is",
+              "scope": "all"
+            },
+            {
+              "field": "assignee_id",
+              "value": null,
+              "operator": "not_changed",
+              "scope": "all"
+            }
+          ],
+          "actions": [
+            {
+              "field": "assignee_id",
+              "value": ""
+            },
+            {
+              "field": "remove_tags",
+              "value": "agent_ooo"
+            },
+            {
+              "field": "set_tags",
+              "value": "codex_update_preview_test"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": "22579927535004",
+          "execution_message": "",
+          "operation_mode": "update",
+          "target_object_id": "22579927535004",
+          "target_object_type": "trigger",
+          "target_updated_at": "2025-10-01T10:31:10Z",
+          "target_snapshot_hash": "79a82778022d75f0b68ee23362ccec9f2b9f0212e3b78ddfe00ff8885fbc7037",
+          "before_configuration": {
+            "title": "[Out of Office] Ticket: Unassign Trigger",
+            "active": true,
+            "conditions": [
+              {
+                "field": "current_tags",
+                "operator": "includes",
+                "scope": "all",
+                "value": "agent_ooo"
+              },
+              {
+                "field": "status",
+                "operator": "is",
+                "scope": "all",
+                "value": "open"
+              },
+              {
+                "field": "assignee_id",
+                "operator": "not_changed",
+                "scope": "all",
+                "value": null
+              }
+            ],
+            "actions": [
+              {
+                "field": "assignee_id",
+                "value": ""
+              },
+              {
+                "field": "remove_tags",
+                "value": "agent_ooo"
+              }
+            ]
+          },
+          "after_configuration": {
+            "title": "[Out of Office] Ticket: Unassign Trigger",
+            "active": true,
+            "conditions": [
+              {
+                "field": "current_tags",
+                "value": "agent_ooo",
+                "operator": "includes",
+                "scope": "all"
+              },
+              {
+                "field": "status",
+                "value": "open",
+                "operator": "is",
+                "scope": "all"
+              },
+              {
+                "field": "assignee_id",
+                "value": null,
+                "operator": "not_changed",
+                "scope": "all"
+              }
+            ],
+            "actions": [
+              {
+                "field": "assignee_id",
+                "value": ""
+              },
+              {
+                "field": "remove_tags",
+                "value": "agent_ooo"
+              },
+              {
+                "field": "set_tags",
+                "value": "codex_update_preview_test"
+              }
+            ]
+          },
+          "change_summary": [
+            {
+              "field": "title",
+              "label": "Name",
+              "changed": false,
+              "before": "[Out of Office] Ticket: Unassign Trigger",
+              "after": "[Out of Office] Ticket: Unassign Trigger"
+            },
+            {
+              "field": "active",
+              "label": "Status",
+              "changed": false,
+              "before": true,
+              "after": true
+            },
+            {
+              "field": "conditions",
+              "label": "Conditions",
+              "changed": false,
+              "before_count": 3,
+              "after_count": 3
+            },
+            {
+              "field": "actions",
+              "label": "Actions",
+              "changed": true,
+              "before_count": 2,
+              "after_count": 3
+            }
+          ]
+        }
+      ],
+      "generated_counts": {
+        "triggers": 1
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 1,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Update only the selected trigger. Add the tag codex_update_preview_test. Keep the exact title, active state, every current condition, and every current action unchanged; add only one normalized add-tags action for that tag. This is a preview-only quality test and must not deploy.",
+        "operation_mode": "update",
+        "target_object_id": "22579927535004",
+        "target_object_type": "trigger",
+        "target_name": "[Out of Office] Ticket: Unassign Trigger",
+        "target_snapshot_hash": "79a82778022d75f0b68ee23362ccec9f2b9f0212e3b78ddfe00ff8885fbc7037",
+        "instance_sync_id": "SYNC-9CAD3F6CE28327E1AEB5",
+        "confidence": 0.84,
+        "ambiguity_score": 0.18,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [],
+        "dependency_mode": "force_existing_only",
+        "focus_object_types": [
+          "triggers"
+        ],
+        "dependency_notes": "Deterministic planner bypass applied: exact_update_target.",
+        "related_objects_selected": 1,
+        "reference_catalog_counts": {
+          "triggers": 1,
+          "groups": 39,
+          "ticket_forms": 53,
+          "ticket_fields": 80
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 1,
+          "catalog_entries": 7,
+          "recent_batch_context": 0
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "deterministic_inference",
+          "strict_schema": false,
+          "telemetry": {
+            "bypassed": true,
+            "bypass_reason": "exact_update_target",
+            "dependency_mode": "force_existing_only",
+            "estimated_requested_records": 1
+          }
+        },
+        "orchestration_mode": "explicit_fast_path"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "operation": {
+          "operation_mode": "update",
+          "instance_sync_id": "SYNC-9CAD3F6CE28327E1AEB5",
+          "target_object_id": "22579927535004",
+          "target_object_type": "trigger",
+          "target_name": "[Out of Office] Ticket: Unassign Trigger",
+          "target_updated_at": "2025-10-01T10:31:10Z",
+          "target_snapshot_hash": "79a82778022d75f0b68ee23362ccec9f2b9f0212e3b78ddfe00ff8885fbc7037",
+          "target_context_included": true,
+          "target_snapshot_fields": [
+            "actions",
+            "active",
+            "category_id",
+            "conditions",
+            "created_at",
+            "default",
+            "description",
+            "id",
+            "position",
+            "raw_title",
+            "title",
+            "updated_at",
+            "url"
+          ],
+          "applied": true,
+          "source_record_count": 1,
+          "retained_record_count": 1,
+          "changed_fields": [
+            "actions"
+          ],
+          "warnings": []
+        },
+        "planning": {
+          "planner_bypassed": true,
+          "mode": "deterministic",
+          "estimated_requested_records": 1,
+          "force_wave_chunk_path": false,
+          "force_wave_chunk_reason": "exact_update_target"
+        },
+        "orchestration": {
+          "mode": "explicit_fast_path",
+          "activation_reason": "exact_update_target",
+          "waves": [],
+          "reconciliation_summary": {
+            "create": 0,
+            "reuse": 0,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": [],
+          "template_usage": {
+            "applied_count": 0,
+            "template_keys": []
+          },
+          "taxonomy_resolution": {
+            "resolved_links": 0,
+            "unresolved_links": 0,
+            "unresolved_samples": []
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 4,
+          "max_chunks": 12,
+          "trigger_min_records": 3,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "exact_update_target"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "gemini-3.1-flash-lite",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ]
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null,
+          "forced_wave_chunk_path": false,
+          "forced_wave_chunk_reason": "exact_update_target",
+          "deterministic_failover_threshold": 3,
+          "forced_deterministic_object_types": [],
+          "object_failure_counts": {}
+        },
+        "coverage_manifest": {
+          "enabled": false,
+          "reason": "exact_update_target",
+          "departments": []
+        },
+        "department_coverage": {
+          "enabled": false,
+          "status": "skipped",
+          "reason": "exact_update_target",
+          "departments": [],
+          "missing": [],
+          "totals": {
+            "required": 0,
+            "generated": 1
+          }
+        },
+        "quality_gates": {
+          "coverage": {
+            "enabled": false,
+            "status": "skipped",
+            "reason": "exact_update_target",
+            "departments": [],
+            "missing": [],
+            "totals": {
+              "required": 0,
+              "generated": 1
+            }
+          }
+        },
+        "supervisor": {
+          "enabled": true,
+          "available": true,
+          "availability_reason": "ok",
+          "model": "gemini-3.1-flash-lite",
+          "auto_apply_patches": true,
+          "max_concurrency": 2,
+          "approval_threshold": 0.8,
+          "max_regeneration_retries": 1,
+          "review_grouping": "department",
+          "reviews": [
+            {
+              "wave": 4,
+              "wave_position": null,
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "object_type": "triggers",
+              "backlog_id": "",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "status": "reviewed",
+              "model": "gemini-3.1-flash-lite",
+              "approved": true,
+              "quality_score": 1.0,
+              "raw_quality_score": 1.0,
+              "effective_quality_score": 0.49,
+              "effective_approved": false,
+              "approval_gate_reasons": [
+                "Trigger '[Out of Office] Ticket: Unassign Trigger' is missing a group routing action."
+              ],
+              "chunk_assessments": [
+                {
+                  "chunk_id": "triggers:1",
+                  "raw_approved": true,
+                  "raw_quality_score": 1.0,
+                  "effective_quality_score": 0.49,
+                  "effective_approved": false,
+                  "requires_regeneration": true,
+                  "approval_gate_reasons": [
+                    "Trigger '[Out of Office] Ticket: Unassign Trigger' is missing a group routing action."
+                  ],
+                  "model_reported_issues": [],
+                  "record_keys": [
+                    "triggers:1:0"
+                  ]
+                }
+              ],
+              "context_gaps": [],
+              "dependency_issues": [],
+              "requires_regeneration": false,
+              "public_reasoning_summary": "The trigger update was reviewed against the snapshot. The existing conditions and actions were preserved, and the required 'codex_update_preview_test' tag was added as an 'add_tags' action, fulfilling the prompt requirements.",
+              "patches_requested": 1,
+              "patches_applied": 0,
+              "patches_rejected": 1,
+              "patch_results": [
+                {
+                  "operation": "add_action",
+                  "target_index": 0,
+                  "target_title": null,
+                  "record_key": "triggers:1:0",
+                  "reason": "Adding the required preview tag as an action while preserving existing actions.",
+                  "status": "rejected",
+                  "reject_reason": "unsafe_action"
+                }
+              ],
+              "latency_ms": 2838.05,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "input_tokens": 6277,
+              "output_tokens": 312,
+              "thought_tokens": 112,
+              "total_tokens": 6701,
+              "reason": "",
+              "memory_suggestions": [
+                "Added codex_update_preview_test tag to trigger actions."
+              ]
+            }
+          ],
+          "memory": [],
+          "verified_memory": [],
+          "review_units": [],
+          "blocked_chunk_ids": [],
+          "remaining_manifest_coverage": {
+            "status": "skipped",
+            "totals": {
+              "required": 0,
+              "generated": 1
+            },
+            "missing": [],
+            "pending_counts": {}
+          },
+          "call_counts": {
+            "consolidated": 1,
+            "retry": 0,
+            "fallback": 0,
+            "total": 1
+          },
+          "auto_applied_patches": [],
+          "patch_counts": {
+            "applied": 0,
+            "rejected": 1,
+            "skipped": 0
+          },
+          "usage": {
+            "calls": 1,
+            "retries": 0,
+            "input_tokens": 6277,
+            "output_tokens": 312,
+            "thought_tokens": 112,
+            "total_tokens": 6701,
+            "elapsed_ms_sum": 2837.43
+          },
+          "failures": [],
+          "total_duplicates_dropped_after_patch": 0
+        },
+        "progress_narration": {
+          "enabled": true,
+          "mode": "deterministic_events_plus_wave_narration",
+          "provider": "groq",
+          "model": "openai/gpt-oss-20b",
+          "scheduled_calls": 0,
+          "completed_calls": 0,
+          "fallback_count": 0,
+          "appscript_flushes": 0,
+          "appscript_flush_failures": 0,
+          "events": []
+        },
+        "llm_routes": {
+          "default_provider": "gemini",
+          "default_model": "gemini-3.1-flash-lite",
+          "fallback_policy": {
+            "provider": "groq",
+            "gemini_max_retries": 2,
+            "gemini_failure_threshold": 3,
+            "gemini_cooldown_seconds": 180
+          },
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 2400,
+            "strict_schema": false
+          },
+          "generator_wave3": "openai/gpt-oss-20b",
+          "generator_wave4": "openai/gpt-oss-20b",
+          "generator_secondary": "openai/gpt-oss-20b",
+          "generator_tertiary": "openai/gpt-oss-20b",
+          "gemini_supervisor": {
+            "enabled": true,
+            "model": "gemini-3.1-flash-lite",
+            "api_key_configured": true,
+            "auto_apply_patches": true,
+            "max_concurrency": 2,
+            "min_request_interval_seconds": 4.2,
+            "rate_limit_retries": 3
+          },
+          "progress_narrator": {
+            "enabled": true,
+            "provider": "groq",
+            "model": "openai/gpt-oss-20b",
+            "max_calls_per_batch": 6
+          },
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true,
+          "generator_secondary_api_key_configured": true,
+          "generator_tertiary_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "bypassed": true,
+            "bypass_reason": "exact_update_target",
+            "dependency_mode": "force_existing_only",
+            "estimated_requested_records": 1
+          },
+          "generator": {
+            "model": "gemini-3.1-flash-lite",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 0,
+            "pre_request_wait_ms": 0.0,
+            "wait_reason": null,
+            "error_class": "none",
+            "provider_error_code": null
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 1,
+            "catalog_entries": 7,
+            "recent_batch_context": 0
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 1,
+            "catalog_entries": 7,
+            "recent_batch_context": 0
+          },
+          "generator_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          }
+        },
+        "inference_assumptions": [],
+        "base_object_match": null,
+        "inference_confidence": 0.8360000000000001,
+        "context_notes": "EXACT UPDATE MODE. Modify only update_target and return exactly one complete triggers record representing its final state. Preserve every unchanged condition and action from update_target.snapshot. Conditions may include scope=all or scope=any. Do not create a replacement object, invent IDs, or change object type. Preserve the title unless the user explicitly asks to rename it. Read-only synchronized Zendesk context. Preserve the selected object incrementally.",
+        "recent_batch_context": [],
+        "ambiguity_score": 0.18,
+        "ambiguity_threshold": 0.58,
+        "run_control": {
+          "pause_requested": false,
+          "pause_after_wave": false,
+          "cancel_requested": false,
+          "cancel_reason": "",
+          "updated_at": "",
+          "updated_by": ""
+        },
+        "checkpoints": [],
+        "rollback": {},
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [
+            "triggers"
+          ],
+          "generated_types": [
+            "triggers"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.84,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "system_field_references": 0,
+          "unresolved": [],
+          "forms_processed": 0,
+          "inference_hints_count": 0,
+          "inference_sources": []
+        },
+        "canonicalization": {
+          "trigger_article": {
+            "rules_processed": 1,
+            "articles_processed": 0,
+            "alias_mappings": 0,
+            "defaults_applied": 0,
+            "warnings": 0,
+            "blocked_records": 0,
+            "template_applied_count": 0,
+            "template_keys": []
+          }
+        },
+        "staging": {
+          "mode": "appscript_combined",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260718-215321-764CD5",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Brands": 0,
+              "Groups": 0,
+              "Ticket Fields": 0,
+              "Ticket Forms": 0,
+              "Macros": 0,
+              "Triggers": 1,
+              "Automations": 0,
+              "Views": 0,
+              "Categories": 0,
+              "Sections": 0,
+              "Articles": 0,
+              "Tag Dictionary": 0,
+              "Recommendations": 0
+            },
+            "metadata_rows_written": 1,
+            "progress_rows_written": 12,
+            "total_records": 1
+          },
+          "summary": {
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "total_records": 1,
+            "metadata_rows_written": 1,
+            "progress_rows_written": 12,
+            "validated_rows": 1,
+            "preview_records": 1,
+            "validation_summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "timings_ms": {
+              "staging": 10562,
+              "validation": 5058,
+              "preview": 1507,
+              "total": 17127
+            }
+          }
+        },
+        "validation": {
+          "mode": "appscript_combined",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260718-215321-764CD5",
+            "summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-07-18T21:53:47.910Z"
+          },
+          "summary": {
+            "passed": 1,
+            "warnings": 0,
+            "blocked": 0
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript_combined",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "status": "preview_ready",
+            "validation_summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "generated_counts": {
+              "triggers": 1
+            }
+          }
+        },
+        "failure": null,
+        "usage_report": {
+          "schema_version": 1,
+          "label": "import_assistant:codex-update-quality-benchmark",
+          "started_at": "2026-07-18T21:53:21.106050+00:00",
+          "finished_at": "2026-07-18T21:53:54.995813+00:00",
+          "token_source": "provider_response_when_available",
+          "totals": {
+            "calls": 2,
+            "successful_calls": 2,
+            "failed_calls": 0,
+            "retries": 0,
+            "estimated_tokens": 5299,
+            "input_tokens": 8012,
+            "output_tokens": 493,
+            "thought_tokens": 112,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 8617,
+            "model_call_elapsed_ms_sum": 5796.06,
+            "pre_request_wait_ms_sum": 0.0,
+            "pipeline_wall_time_ms": 33886.24,
+            "model_elapsed_to_wall_ratio": 0.171
+          },
+          "phase_timings": {
+            "planning_and_backlog_ms": 859.05,
+            "generation_and_supervision_ms": 7329.44,
+            "post_processing_ms": 409.77,
+            "staging_and_validation_ms": 21530.11
+          },
+          "by_provider": [
+            {
+              "provider": "Gemini",
+              "calls": 2,
+              "retries": 0,
+              "estimated_tokens": 5299,
+              "input_tokens": 8012,
+              "output_tokens": 493,
+              "thought_tokens": 112,
+              "total_tokens": 8617,
+              "elapsed_ms_sum": 5796.06
+            }
+          ],
+          "by_model": [
+            {
+              "model": "gemini-3.1-flash-lite",
+              "calls": 2,
+              "retries": 0,
+              "estimated_tokens": 5299,
+              "input_tokens": 8012,
+              "output_tokens": 493,
+              "thought_tokens": 112,
+              "total_tokens": 8617,
+              "elapsed_ms_sum": 5796.06
+            }
+          ],
+          "by_task": [
+            {
+              "task": "generator",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 1567,
+              "input_tokens": 1735,
+              "output_tokens": 181,
+              "thought_tokens": 0,
+              "total_tokens": 1916,
+              "elapsed_ms_sum": 2958.63
+            },
+            {
+              "task": "supervisor",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 3732,
+              "input_tokens": 6277,
+              "output_tokens": 312,
+              "thought_tokens": 112,
+              "total_tokens": 6701,
+              "elapsed_ms_sum": 2837.43
+            }
+          ],
+          "calls": [
+            {
+              "recorded_at": "2026-07-18T21:53:25.054495+00:00",
+              "provider": "Gemini",
+              "task": "generator",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_e3931441c2",
+              "final_status": "ok",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 1567,
+              "input_tokens": 1735,
+              "output_tokens": 181,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 1916,
+              "elapsed_ms": 2958.63,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-18T21:53:28.582764+00:00",
+              "provider": "Gemini",
+              "task": "supervisor",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_supervisor",
+              "final_status": "reviewed",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 3732,
+              "input_tokens": 6277,
+              "output_tokens": 312,
+              "thought_tokens": 112,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 6701,
+              "elapsed_ms": 2837.43,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            }
+          ]
+        },
+        "appscript_metadata_sync": {
+          "action": "write_batch_metadata",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "data": {
+            "ok": true,
+            "action": "write_batch_metadata",
+            "batch_id": "BATCH-20260718-215321-764CD5",
+            "rows_written": 1
+          }
+        }
+      }
+    },
+    "BATCH-20260718-220340-9213D6": {
+      "batch_id": "BATCH-20260718-220340-9213D6",
+      "status": "preview_ready",
+      "prompt": "Update only the selected trigger. Add the tag codex_update_preview_test. Keep the exact title, active state, every current condition, and every current action unchanged; add only this additive tag action. Preview only; do not deploy.",
+      "requester": "codex-update-quality-recheck",
+      "target_environment": "sandbox",
+      "mode": "generate_validate_preview",
+      "operation_mode": "update",
+      "created_at": "2026-07-18T22:03:40.667570+00:00",
+      "updated_at": "2026-07-18T22:04:26.529997+00:00",
+      "status_history": [
+        {
+          "status": "received",
+          "message": "Batch accepted. Preparing the department manifest, dependency order, and model lanes.",
+          "at": "2026-07-18T22:03:40.667570+00:00",
+          "source": "pipeline"
+        },
+        {
+          "status": "request_validated",
+          "message": "Incoming request validated.",
+          "at": "2026-07-18T22:03:40.838664+00:00"
+        },
+        {
+          "status": "planning",
+          "message": "Planner bypassed for exact_update_target; using deterministic inference.",
+          "at": "2026-07-18T22:03:41.022877+00:00"
+        },
+        {
+          "status": "planned",
+          "message": "Planner output received.",
+          "at": "2026-07-18T22:03:41.180570+00:00"
+        },
+        {
+          "status": "schemas_selected",
+          "message": "Schemas selected from registry.",
+          "at": "2026-07-18T22:03:41.345566+00:00"
+        },
+        {
+          "status": "generating",
+          "message": "Generator call in progress.",
+          "at": "2026-07-18T22:03:41.618787+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Waiting for 1 Gemini supervisor review(s) before single generation finalization.",
+          "at": "2026-07-18T22:03:43.879485+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini reviewing triggers chunk 1/1 for safe patches.",
+          "at": "2026-07-18T22:03:44.167092+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini review completed for triggers chunk 1/1; applied=0.",
+          "at": "2026-07-18T22:03:47.896054+00:00"
+        },
+        {
+          "status": "supervisor_review",
+          "message": "Gemini supervisor reviews settled before single generation finalization; records=1 dropped_after_patch=0.",
+          "at": "2026-07-18T22:03:48.248651+00:00"
+        },
+        {
+          "status": "generated",
+          "message": "Structured records generated.",
+          "at": "2026-07-18T22:03:48.632274+00:00"
+        },
+        {
+          "status": "staging",
+          "message": "Staging batch to Google Sheets.",
+          "at": "2026-07-18T22:03:49.187526+00:00"
+        },
+        {
+          "status": "staged",
+          "message": "Batch staged via combined Apps Script pipeline.",
+          "at": "2026-07-18T22:04:21.591462+00:00"
+        },
+        {
+          "status": "validating",
+          "message": "Running row-level validation via combined Apps Script pipeline.",
+          "at": "2026-07-18T22:04:21.770761+00:00"
+        },
+        {
+          "status": "validated_warning",
+          "message": "Validation passed with warnings.",
+          "at": "2026-07-18T22:04:21.923606+00:00"
+        },
+        {
+          "status": "preview_ready",
+          "message": "Preview payload ready.",
+          "at": "2026-07-18T22:04:22.080135+00:00"
+        }
+      ],
+      "records": [
+        {
+          "record_id": "REC-0001",
+          "object_type": "triggers",
+          "title": "[Out of Office] Ticket: Unassign Trigger",
+          "preview_summary": "Triggers configuration record.",
+          "validation_status": "warning",
+          "warnings": [
+            "Preserved existing conditions and actions from trigger 22579927535004; added codex_update_preview_test tag."
+          ],
+          "blocked_reason": null,
+          "import_decision": "pending_review",
+          "deployable": true,
+          "conditions": [
+            {
+              "field": "current_tags",
+              "value": "agent_ooo",
+              "operator": "includes",
+              "scope": "all"
+            },
+            {
+              "field": "status",
+              "value": "open",
+              "operator": "is",
+              "scope": "all"
+            },
+            {
+              "field": "assignee_id",
+              "value": null,
+              "operator": "not_changed",
+              "scope": "all"
+            }
+          ],
+          "actions": [
+            {
+              "field": "assignee_id",
+              "value": ""
+            },
+            {
+              "field": "remove_tags",
+              "value": "agent_ooo"
+            },
+            {
+              "field": "current_tags",
+              "value": "codex_update_preview_test"
+            }
+          ],
+          "deployment_status": "pending",
+          "zendesk_object_id": "22579927535004",
+          "execution_message": "",
+          "operation_mode": "update",
+          "target_object_id": "22579927535004",
+          "target_object_type": "trigger",
+          "target_updated_at": "2025-10-01T10:31:10Z",
+          "target_snapshot_hash": "79a82778022d75f0b68ee23362ccec9f2b9f0212e3b78ddfe00ff8885fbc7037",
+          "before_configuration": {
+            "title": "[Out of Office] Ticket: Unassign Trigger",
+            "active": true,
+            "conditions": [
+              {
+                "field": "current_tags",
+                "operator": "includes",
+                "scope": "all",
+                "value": "agent_ooo"
+              },
+              {
+                "field": "status",
+                "operator": "is",
+                "scope": "all",
+                "value": "open"
+              },
+              {
+                "field": "assignee_id",
+                "operator": "not_changed",
+                "scope": "all",
+                "value": null
+              }
+            ],
+            "actions": [
+              {
+                "field": "assignee_id",
+                "value": ""
+              },
+              {
+                "field": "remove_tags",
+                "value": "agent_ooo"
+              }
+            ]
+          },
+          "after_configuration": {
+            "title": "[Out of Office] Ticket: Unassign Trigger",
+            "active": true,
+            "conditions": [
+              {
+                "field": "current_tags",
+                "value": "agent_ooo",
+                "operator": "includes",
+                "scope": "all"
+              },
+              {
+                "field": "status",
+                "value": "open",
+                "operator": "is",
+                "scope": "all"
+              },
+              {
+                "field": "assignee_id",
+                "value": null,
+                "operator": "not_changed",
+                "scope": "all"
+              }
+            ],
+            "actions": [
+              {
+                "field": "assignee_id",
+                "value": ""
+              },
+              {
+                "field": "remove_tags",
+                "value": "agent_ooo"
+              },
+              {
+                "field": "current_tags",
+                "value": "codex_update_preview_test"
+              }
+            ]
+          },
+          "change_summary": [
+            {
+              "field": "title",
+              "label": "Name",
+              "changed": false,
+              "before": "[Out of Office] Ticket: Unassign Trigger",
+              "after": "[Out of Office] Ticket: Unassign Trigger"
+            },
+            {
+              "field": "active",
+              "label": "Status",
+              "changed": false,
+              "before": true,
+              "after": true
+            },
+            {
+              "field": "conditions",
+              "label": "Conditions",
+              "changed": false,
+              "before_count": 3,
+              "after_count": 3
+            },
+            {
+              "field": "actions",
+              "label": "Actions",
+              "changed": true,
+              "before_count": 2,
+              "after_count": 3
+            }
+          ]
+        }
+      ],
+      "generated_counts": {
+        "triggers": 1
+      },
+      "validation_summary": {
+        "passed": 0,
+        "warnings": 1,
+        "blocked": 0
+      },
+      "planning_summary": {
+        "object_type": "triggers",
+        "intent": "Update only the selected trigger. Add the tag codex_update_preview_test. Keep the exact title, active state, every current condition, and every current action unchanged; add only this additive tag action. Preview only; do not deploy.",
+        "operation_mode": "update",
+        "target_object_id": "22579927535004",
+        "target_object_type": "trigger",
+        "target_name": "[Out of Office] Ticket: Unassign Trigger",
+        "target_snapshot_hash": "79a82778022d75f0b68ee23362ccec9f2b9f0212e3b78ddfe00ff8885fbc7037",
+        "instance_sync_id": "SYNC-DEC243B46EFD46579EB4",
+        "confidence": 0.84,
+        "ambiguity_score": 0.18,
+        "prompt_explicit": false,
+        "ambiguity_reasons": [],
+        "dependency_mode": "force_existing_only",
+        "focus_object_types": [
+          "triggers"
+        ],
+        "dependency_notes": "Deterministic planner bypass applied: exact_update_target.",
+        "related_objects_selected": 1,
+        "reference_catalog_counts": {
+          "triggers": 1
+        },
+        "llm_context_profile": "standard",
+        "llm_context_counts": {
+          "related_objects": 1,
+          "catalog_entries": 1,
+          "recent_batch_context": 0
+        },
+        "llm_context_limits": {
+          "max_related_objects": 8,
+          "max_entries_per_catalog": 2,
+          "max_total_catalog_entries": 10,
+          "max_recent_items": 1,
+          "max_recent_chars": 90,
+          "max_context_notes_chars": 350
+        },
+        "llm": {
+          "task": "planner",
+          "model": "deterministic_inference",
+          "strict_schema": false,
+          "telemetry": {
+            "bypassed": true,
+            "bypass_reason": "exact_update_target",
+            "dependency_mode": "force_existing_only",
+            "estimated_requested_records": 1
+          }
+        },
+        "orchestration_mode": "explicit_fast_path"
+      },
+      "metadata": {
+        "benchmark": {
+          "enabled": false
+        },
+        "operation": {
+          "operation_mode": "update",
+          "instance_sync_id": "SYNC-DEC243B46EFD46579EB4",
+          "target_object_id": "22579927535004",
+          "target_object_type": "trigger",
+          "target_name": "[Out of Office] Ticket: Unassign Trigger",
+          "target_updated_at": "2025-10-01T10:31:10Z",
+          "target_snapshot_hash": "79a82778022d75f0b68ee23362ccec9f2b9f0212e3b78ddfe00ff8885fbc7037",
+          "target_context_included": true,
+          "target_snapshot_fields": [
+            "actions",
+            "active",
+            "category_id",
+            "conditions",
+            "created_at",
+            "default",
+            "description",
+            "id",
+            "position",
+            "raw_title",
+            "title",
+            "updated_at",
+            "url"
+          ],
+          "applied": true,
+          "source_record_count": 1,
+          "retained_record_count": 1,
+          "changed_fields": [
+            "actions"
+          ],
+          "warnings": []
+        },
+        "planning": {
+          "planner_bypassed": true,
+          "mode": "deterministic",
+          "estimated_requested_records": 1,
+          "force_wave_chunk_path": false,
+          "force_wave_chunk_reason": "exact_update_target"
+        },
+        "orchestration": {
+          "mode": "explicit_fast_path",
+          "activation_reason": "exact_update_target",
+          "waves": [],
+          "reconciliation_summary": {
+            "create": 0,
+            "reuse": 0,
+            "update": 0,
+            "blocked": 0
+          },
+          "assumptions_applied": [],
+          "template_usage": {
+            "applied_count": 0,
+            "template_keys": []
+          },
+          "taxonomy_resolution": {
+            "resolved_links": 0,
+            "unresolved_links": 0,
+            "unresolved_samples": []
+          }
+        },
+        "chunking": {
+          "activated": false,
+          "estimated_requested_records": 1,
+          "chunk_size": 4,
+          "max_chunks": 12,
+          "trigger_min_records": 3,
+          "total_chunks": 1,
+          "chunk_targets": [
+            1
+          ],
+          "exceeds_cap": false,
+          "estimation_sources": [
+            "exact_update_target"
+          ],
+          "numeric_matches": [],
+          "enumerated_items": 0,
+          "chunks": [
+            {
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "target_records": 1,
+              "generated_records": 1,
+              "deduped_records_added": 1,
+              "duplicates_dropped": 0,
+              "context_profile": "standard",
+              "pre_request_wait_ms": 0.0,
+              "retry_count": 0,
+              "final_status": "ok",
+              "http_status": 200,
+              "model": "gemini-3.1-flash-lite",
+              "mode_order": [
+                "json_object",
+                "no_response_format",
+                "json_schema_best_effort",
+                "json_schema_strict"
+              ]
+            }
+          ],
+          "total_generated_before_dedupe": 1,
+          "total_generated_after_dedupe": 1,
+          "total_duplicates_dropped": 0,
+          "total_pacing_wait_ms": 0.0,
+          "final_status": "single_pass",
+          "abort_reason": null,
+          "forced_wave_chunk_path": false,
+          "forced_wave_chunk_reason": "exact_update_target",
+          "deterministic_failover_threshold": 3,
+          "forced_deterministic_object_types": [],
+          "object_failure_counts": {}
+        },
+        "coverage_manifest": {
+          "enabled": false,
+          "reason": "exact_update_target",
+          "departments": []
+        },
+        "department_coverage": {
+          "enabled": false,
+          "status": "skipped",
+          "reason": "exact_update_target",
+          "departments": [],
+          "missing": [],
+          "totals": {
+            "required": 0,
+            "generated": 1
+          }
+        },
+        "quality_gates": {
+          "coverage": {
+            "enabled": false,
+            "status": "skipped",
+            "reason": "exact_update_target",
+            "departments": [],
+            "missing": [],
+            "totals": {
+              "required": 0,
+              "generated": 1
+            }
+          }
+        },
+        "supervisor": {
+          "enabled": true,
+          "available": true,
+          "availability_reason": "ok",
+          "model": "gemini-3.1-flash-lite",
+          "auto_apply_patches": true,
+          "max_concurrency": 2,
+          "approval_threshold": 0.8,
+          "max_regeneration_retries": 1,
+          "review_grouping": "department",
+          "reviews": [
+            {
+              "wave": 4,
+              "wave_position": null,
+              "chunk_index": 1,
+              "chunk_total": 1,
+              "object_type": "triggers",
+              "backlog_id": "",
+              "review_unit_id": "",
+              "bundle_key": "",
+              "call_kind": "consolidated",
+              "status": "reviewed",
+              "model": "gemini-3.1-flash-lite",
+              "approved": true,
+              "quality_score": 1.0,
+              "raw_quality_score": 1.0,
+              "effective_quality_score": 1.0,
+              "effective_approved": true,
+              "approval_gate_reasons": [],
+              "chunk_assessments": [
+                {
+                  "chunk_id": "triggers:1",
+                  "raw_approved": true,
+                  "raw_quality_score": 1.0,
+                  "effective_quality_score": 1.0,
+                  "effective_approved": true,
+                  "requires_regeneration": false,
+                  "approval_gate_reasons": [],
+                  "model_reported_issues": [],
+                  "record_keys": [
+                    "triggers:1:0"
+                  ]
+                }
+              ],
+              "context_gaps": [],
+              "dependency_issues": [],
+              "requires_regeneration": false,
+              "public_reasoning_summary": "The generated trigger record correctly incorporates the requested tag 'codex_update_preview_test' as an additive action while maintaining the integrity of the existing conditions and actions from the update target. No further patches are required.",
+              "patches_requested": 0,
+              "patches_applied": 0,
+              "patches_rejected": 0,
+              "patch_results": [],
+              "latency_ms": 3401.46,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "input_tokens": 1426,
+              "output_tokens": 236,
+              "thought_tokens": 87,
+              "total_tokens": 1749,
+              "reason": "",
+              "memory_suggestions": [
+                "Verified trigger [Out of Office] Ticket: Unassign Trigger (22579927535004) includes the requested additive tag 'codex_update_preview_test' while preserving all existing conditions and actions."
+              ]
+            }
+          ],
+          "memory": [],
+          "verified_memory": [],
+          "review_units": [],
+          "blocked_chunk_ids": [],
+          "remaining_manifest_coverage": {
+            "status": "skipped",
+            "totals": {
+              "required": 0,
+              "generated": 1
+            },
+            "missing": [],
+            "pending_counts": {}
+          },
+          "call_counts": {
+            "consolidated": 1,
+            "retry": 0,
+            "fallback": 0,
+            "total": 1
+          },
+          "auto_applied_patches": [],
+          "patch_counts": {
+            "applied": 0,
+            "rejected": 0,
+            "skipped": 0
+          },
+          "usage": {
+            "calls": 1,
+            "retries": 0,
+            "input_tokens": 1426,
+            "output_tokens": 236,
+            "thought_tokens": 87,
+            "total_tokens": 1749,
+            "elapsed_ms_sum": 3401.09
+          },
+          "failures": [],
+          "total_duplicates_dropped_after_patch": 0
+        },
+        "progress_narration": {
+          "enabled": true,
+          "mode": "deterministic_events_plus_wave_narration",
+          "provider": "groq",
+          "model": "openai/gpt-oss-20b",
+          "scheduled_calls": 0,
+          "completed_calls": 0,
+          "fallback_count": 0,
+          "appscript_flushes": 0,
+          "appscript_flush_failures": 0,
+          "events": []
+        },
+        "llm_routes": {
+          "default_provider": "gemini",
+          "default_model": "gemini-3.1-flash-lite",
+          "fallback_policy": {
+            "provider": "groq",
+            "gemini_max_retries": 2,
+            "gemini_failure_threshold": 3,
+            "gemini_cooldown_seconds": 180
+          },
+          "planner": {
+            "task": "planner",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 220,
+            "strict_schema": false
+          },
+          "clarifier": {
+            "task": "clarifier",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 180,
+            "strict_schema": false
+          },
+          "generator": {
+            "task": "generator",
+            "model": "openai/gpt-oss-20b",
+            "max_output_tokens": 2400,
+            "strict_schema": false
+          },
+          "generator_wave3": "openai/gpt-oss-20b",
+          "generator_wave4": "openai/gpt-oss-20b",
+          "generator_secondary": "openai/gpt-oss-20b",
+          "generator_tertiary": "openai/gpt-oss-20b",
+          "gemini_supervisor": {
+            "enabled": true,
+            "model": "gemini-3.1-flash-lite",
+            "api_key_configured": true,
+            "auto_apply_patches": true,
+            "max_concurrency": 2,
+            "min_request_interval_seconds": 4.2,
+            "rate_limit_retries": 3
+          },
+          "progress_narrator": {
+            "enabled": true,
+            "provider": "groq",
+            "model": "openai/gpt-oss-20b",
+            "max_calls_per_batch": 6
+          },
+          "generator_wave3_api_key_configured": true,
+          "generator_wave4_api_key_configured": true,
+          "generator_secondary_api_key_configured": true,
+          "generator_tertiary_api_key_configured": true
+        },
+        "llm_runtime": {
+          "planner": {
+            "bypassed": true,
+            "bypass_reason": "exact_update_target",
+            "dependency_mode": "force_existing_only",
+            "estimated_requested_records": 1
+          },
+          "generator": {
+            "model": "gemini-3.1-flash-lite",
+            "http_status": 200,
+            "final_status": "ok",
+            "retry_count": 0,
+            "pre_request_wait_ms": 0.0,
+            "wait_reason": null,
+            "error_class": "none",
+            "provider_error_code": null
+          }
+        },
+        "llm_context": {
+          "planner_profile": "standard",
+          "planner_counts": {
+            "related_objects": 1,
+            "catalog_entries": 1,
+            "recent_batch_context": 0
+          },
+          "planner_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          },
+          "generator_profile": "standard",
+          "generator_counts": {
+            "related_objects": 1,
+            "catalog_entries": 1,
+            "recent_batch_context": 0
+          },
+          "generator_limits": {
+            "max_related_objects": 8,
+            "max_entries_per_catalog": 2,
+            "max_total_catalog_entries": 10,
+            "max_recent_items": 1,
+            "max_recent_chars": 90,
+            "max_context_notes_chars": 350
+          }
+        },
+        "inference_assumptions": [],
+        "base_object_match": null,
+        "inference_confidence": 0.8360000000000001,
+        "context_notes": "EXACT UPDATE MODE. Modify only update_target and return exactly one complete triggers record representing its final state. Preserve every unchanged condition and action from update_target.snapshot. Conditions may include scope=all or scope=any. Do not create a replacement object, invent IDs, or change object type. Preserve the title unless the user explicitly asks to rename it. Read-only exact update quality recheck.",
+        "recent_batch_context": [],
+        "ambiguity_score": 0.18,
+        "ambiguity_threshold": 0.58,
+        "run_control": {
+          "pause_requested": false,
+          "pause_after_wave": false,
+          "cancel_requested": false,
+          "cancel_reason": "",
+          "updated_at": "",
+          "updated_by": ""
+        },
+        "checkpoints": [],
+        "rollback": {},
+        "validation_phase_status": "validated_warning",
+        "dependency_resolution": {
+          "resolved_links": 0,
+          "unresolved_links": 0,
+          "unresolved_samples": []
+        },
+        "focus_violations": [],
+        "focus_diagnostics": {
+          "requested_focus": [
+            "triggers"
+          ],
+          "generated_types": [
+            "triggers"
+          ],
+          "mismatch_count": 0,
+          "mismatches": [],
+          "mode": "soft_prefer"
+        },
+        "duplicate_candidates": [],
+        "generation_safety": {
+          "blocked": false,
+          "reasons": [],
+          "confidence": 0.84,
+          "min_confidence": 0.65,
+          "fallback_detected": false,
+          "focus_violations": [],
+          "explicit_constraint_violations": [],
+          "blocked_record_ids": []
+        },
+        "field_inference": {
+          "policy": "infer_warn",
+          "records": [],
+          "total_records": 0
+        },
+        "form_field_resolution": {
+          "resolved_ids": 0,
+          "auto_created_fields": 0,
+          "system_field_references": 0,
+          "unresolved": [],
+          "forms_processed": 0,
+          "inference_hints_count": 0,
+          "inference_sources": []
+        },
+        "canonicalization": {
+          "trigger_article": {
+            "rules_processed": 1,
+            "articles_processed": 0,
+            "alias_mappings": 0,
+            "defaults_applied": 0,
+            "warnings": 0,
+            "blocked_records": 0,
+            "template_applied_count": 0,
+            "template_keys": []
+          }
+        },
+        "staging": {
+          "mode": "appscript_combined",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "write_batch_to_sheets",
+            "batch_id": "BATCH-20260718-220340-9213D6",
+            "spreadsheet_id": "1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo",
+            "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1rO40M82yloS6Cz_h_2RJCBQbXxNR9WMSOWB8bShaxWo/edit",
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "object_rows_written": {
+              "Brands": 0,
+              "Groups": 0,
+              "Ticket Fields": 0,
+              "Ticket Forms": 0,
+              "Macros": 0,
+              "Triggers": 1,
+              "Automations": 0,
+              "Views": 0,
+              "Categories": 0,
+              "Sections": 0,
+              "Articles": 0,
+              "Tag Dictionary": 0,
+              "Recommendations": 0
+            },
+            "metadata_rows_written": 1,
+            "progress_rows_written": 12,
+            "total_records": 1
+          },
+          "summary": {
+            "request_rows_written": 1,
+            "planning_rows_written": 1,
+            "total_records": 1,
+            "metadata_rows_written": 1,
+            "progress_rows_written": 12,
+            "validated_rows": 1,
+            "preview_records": 1,
+            "validation_summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "timings_ms": {
+              "staging": 21795,
+              "validation": 5437,
+              "preview": 1138,
+              "total": 28370
+            }
+          }
+        },
+        "validation": {
+          "mode": "appscript_combined",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "ok": true,
+            "action": "validate_batch",
+            "batch_id": "BATCH-20260718-220340-9213D6",
+            "summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "validated_rows": 1,
+            "validated_at": "2026-07-18T22:04:18.702Z"
+          },
+          "summary": {
+            "passed": 1,
+            "warnings": 0,
+            "blocked": 0
+          }
+        },
+        "preview_roundtrip": {
+          "mode": "appscript_combined",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "result": {
+            "status": "preview_ready",
+            "validation_summary": {
+              "passed": 1,
+              "warnings": 0,
+              "blocked": 0
+            },
+            "generated_counts": {
+              "triggers": 1
+            }
+          }
+        },
+        "failure": null,
+        "usage_report": {
+          "schema_version": 1,
+          "label": "import_assistant:codex-update-quality-recheck",
+          "started_at": "2026-07-18T22:03:40.667015+00:00",
+          "finished_at": "2026-07-18T22:04:26.481025+00:00",
+          "token_source": "provider_response_when_available",
+          "totals": {
+            "calls": 2,
+            "successful_calls": 2,
+            "failed_calls": 0,
+            "retries": 0,
+            "estimated_tokens": 2609,
+            "input_tokens": 2868,
+            "output_tokens": 432,
+            "thought_tokens": 87,
+            "cached_tokens": 0,
+            "tool_use_tokens": 0,
+            "total_tokens": 3387,
+            "model_call_elapsed_ms_sum": 5466.7,
+            "pre_request_wait_ms_sum": 0.0,
+            "pipeline_wall_time_ms": 45809.5,
+            "model_elapsed_to_wall_ratio": 0.119
+          },
+          "phase_timings": {
+            "planning_and_backlog_ms": 951.77,
+            "generation_and_supervision_ms": 7013.49,
+            "post_processing_ms": 555.25,
+            "staging_and_validation_ms": 32892.61
+          },
+          "by_provider": [
+            {
+              "provider": "Gemini",
+              "calls": 2,
+              "retries": 0,
+              "estimated_tokens": 2609,
+              "input_tokens": 2868,
+              "output_tokens": 432,
+              "thought_tokens": 87,
+              "total_tokens": 3387,
+              "elapsed_ms_sum": 5466.7
+            }
+          ],
+          "by_model": [
+            {
+              "model": "gemini-3.1-flash-lite",
+              "calls": 2,
+              "retries": 0,
+              "estimated_tokens": 2609,
+              "input_tokens": 2868,
+              "output_tokens": 432,
+              "thought_tokens": 87,
+              "total_tokens": 3387,
+              "elapsed_ms_sum": 5466.7
+            }
+          ],
+          "by_task": [
+            {
+              "task": "generator",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 1375,
+              "input_tokens": 1442,
+              "output_tokens": 196,
+              "thought_tokens": 0,
+              "total_tokens": 1638,
+              "elapsed_ms_sum": 2065.61
+            },
+            {
+              "task": "supervisor",
+              "calls": 1,
+              "retries": 0,
+              "estimated_tokens": 1234,
+              "input_tokens": 1426,
+              "output_tokens": 236,
+              "thought_tokens": 87,
+              "total_tokens": 1749,
+              "elapsed_ms_sum": 3401.09
+            }
+          ],
+          "calls": [
+            {
+              "recorded_at": "2026-07-18T22:03:43.831380+00:00",
+              "provider": "Gemini",
+              "task": "generator",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_e3931441c2",
+              "final_status": "ok",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 1375,
+              "input_tokens": 1442,
+              "output_tokens": 196,
+              "thought_tokens": 0,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 1638,
+              "elapsed_ms": 2065.61,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            },
+            {
+              "recorded_at": "2026-07-18T22:03:47.844533+00:00",
+              "provider": "Gemini",
+              "task": "supervisor",
+              "model": "gemini-3.1-flash-lite",
+              "api_key_profile": "gemini_supervisor",
+              "final_status": "reviewed",
+              "http_status": 200,
+              "attempt_count": 1,
+              "retry_count": 0,
+              "estimated_tokens": 1234,
+              "input_tokens": 1426,
+              "output_tokens": 236,
+              "thought_tokens": 87,
+              "cached_tokens": 0,
+              "tool_use_tokens": 0,
+              "total_tokens": 1749,
+              "elapsed_ms": 3401.09,
+              "pre_request_wait_ms": 0.0,
+              "error_class": "none"
+            }
+          ]
+        },
+        "appscript_metadata_sync": {
+          "action": "write_batch_metadata",
+          "status": "ok",
+          "detail": null,
+          "http_status": 200,
+          "data": {
+            "ok": true,
+            "action": "write_batch_metadata",
+            "batch_id": "BATCH-20260718-220340-9213D6",
+            "rows_written": 1
           }
         }
       }

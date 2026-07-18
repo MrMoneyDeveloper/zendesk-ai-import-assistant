@@ -460,7 +460,7 @@ def get_settings() -> Settings:
         ),
         appscript_web_app_url=os.getenv("APPS_SCRIPT_WEB_APP_URL", "").strip(),
         appscript_api_key=os.getenv("APPS_SCRIPT_API_KEY", "").strip(),
-        appscript_timeout_seconds=float(os.getenv("APPS_SCRIPT_TIMEOUT_SECONDS", "20")),
+        appscript_timeout_seconds=float(os.getenv("APPS_SCRIPT_TIMEOUT_SECONDS", "90")),
         appscript_health_timeout_seconds=max(
             _as_float(os.getenv("APPS_SCRIPT_HEALTH_TIMEOUT_SECONDS"), 3.0),
             0.5,

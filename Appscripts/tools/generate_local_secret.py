@@ -44,7 +44,7 @@ def main() -> int:
 
     lines = ensure_env_line(lines, 'APPS_SCRIPT_API_KEY', api_key)
     lines = ensure_env_line(lines, 'APPS_SCRIPT_WEB_APP_URL', '')
-    lines = ensure_env_line(lines, 'APPS_SCRIPT_TIMEOUT_SECONDS', '20')
+    lines = ensure_env_line(lines, 'APPS_SCRIPT_TIMEOUT_SECONDS', '90')
     ENV_FILE.write_text('\n'.join(lines).strip() + '\n', encoding='utf-8')
 
     print(f'Generated Apps Script API key at: {key_file}')

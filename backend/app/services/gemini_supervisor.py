@@ -119,6 +119,7 @@ _SAFE_ACTION_FIELDS = {
     "sort_order",
     "priority",
     "status",
+    "current_tags",
     "set_tags",
     "body",
 }
@@ -534,7 +535,7 @@ def _apply_patch(
         actions = _ensure_actions(row)
         tokens: list[str] = []
         for action in actions:
-            if str(action.get("field", "")).strip().lower() == "set_tags":
+            if str(action.get("field", "")).strip().lower() == "current_tags":
                 existing = action.get("value", "")
                 existing_values = existing if isinstance(existing, list) else str(existing).split()
                 for item in existing_values:
@@ -544,7 +545,7 @@ def _apply_patch(
         for tag in requested_tags:
             if tag not in tokens:
                 tokens.append(tag)
-        _replace_action(row, "set_tags", " ".join(tokens))
+        _replace_action(row, "current_tags", " ".join(tokens))
         return True, "applied"
 
     if operation == "add_action":
@@ -810,9 +811,11 @@ def _chunk_gate_reasons(
         elif expected_type == "triggers":
             if not condition_fields or not action_fields:
                 reasons.append(f"Trigger '{row.get('title')}' requires conditions and actions.")
-            if "group_id" not in action_fields:
+            require_group_routing = bool(spec.get("require_group_routing", True))
+            require_routing_tag = bool(spec.get("require_routing_tag", True))
+            if require_group_routing and "group_id" not in action_fields:
                 reasons.append(f"Trigger '{row.get('title')}' is missing a group routing action.")
-            if "set_tags" not in action_fields:
+            if require_routing_tag and not ({"current_tags", "set_tags"} & set(action_fields)):
                 reasons.append(f"Trigger '{row.get('title')}' is missing a routing tag action.")
         elif expected_type == "automations":
             if not condition_fields or not action_fields:
@@ -1004,6 +1007,7 @@ class GeminiSupervisor:
         remaining_manifest_coverage: dict[str, Any] | None = None,
         allowed_references: dict[str, list[str]] | None = None,
         reserved_titles: dict[str, list[str]] | None = None,
+        update_target: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self.enabled:
             reason = "missing_api_key" if self.settings.gemini_supervisor_enabled else "disabled"
@@ -1031,6 +1035,7 @@ class GeminiSupervisor:
             review_scope=review_scope,
             cumulative_records=cumulative_records,
             remaining_manifest_coverage=remaining_manifest_coverage,
+            update_target=update_target,
         )
         telemetry = review.pop("_telemetry", {})
         patched_rows, patch_summary = apply_supervisor_patches(
@@ -1066,6 +1071,7 @@ class GeminiSupervisor:
         review_scope: dict[str, Any] | None,
         cumulative_records: list[dict] | None,
         remaining_manifest_coverage: dict[str, Any] | None,
+        update_target: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         payload_context = {
             "task": "review_and_patch_zendesk_generation_chunk",
@@ -1080,6 +1086,8 @@ class GeminiSupervisor:
                 "If proposed safe patches fully resolve an issue, approve that chunk and do not request regeneration for the resolved issue.",
                 "Set approved=false and requires_regeneration=true for a chunk when required current-wave coverage is missing or cannot be fixed safely.",
                 "Do not claim that an object exists unless it appears in cumulative_records or the current records.",
+                "When update_target is present, treat its snapshot as the authoritative before state. Reject any update that changes the target ID or silently drops unchanged logic.",
+                "Use current_tags for additive tag patches. set_tags replaces every existing ticket tag and is unsafe unless the user explicitly requests full tag replacement.",
                 "For macros, replace generic response copy with concise department-specific next steps and evidence requests.",
                 f"For articles, provide at least {MIN_ARTICLE_BODY_CHARS} characters of concrete preparation, process, escalation, and outcome guidance.",
             ],
@@ -1108,6 +1116,7 @@ class GeminiSupervisor:
             "review_scope": review_scope or {},
             "cumulative_records": cumulative_records or [],
             "remaining_manifest_coverage": remaining_manifest_coverage or {},
+            "update_target": update_target or None,
             "records": records,
         }
         chunk_requirements = list((review_scope or {}).get("chunk_requirements", []) or [])

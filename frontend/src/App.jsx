@@ -2222,7 +2222,7 @@ function App() {
                 selectedExistingItems={selectedExistingItems}
                 selectedExistingItemKeySet={selectedExistingItemKeySet}
                 articleHelpCenterHint={articleHelpCenterHint}
-                 externalPrompt={externalPrompt}                        // ← new
+                externalPrompt={externalPrompt}
                 onExternalPromptConsumed={() => setExternalPrompt("")}
               />
             </div>

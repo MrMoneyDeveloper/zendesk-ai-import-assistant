@@ -173,7 +173,9 @@ def test_update_binding_preserves_id_title_and_any_condition_scope():
     assert row["zendesk_object_id"] == "321"
     assert row["before_configuration"]["conditions"][1]["scope"] == "any"
     assert row["after_configuration"]["actions"][-1]["value"] == "vip"
+    assert row["after_configuration"]["actions"][-1]["field"] == "current_tags"
     assert metadata["changed_fields"] == ["actions"]
+    assert any("cannot erase existing ticket tags" in warning for warning in metadata["warnings"])
 
     preview, summary = _build_preview_records({"object_type": "triggers"}, rows)
     assert preview[0]["operation_mode"] == "update"
@@ -814,7 +816,7 @@ def test_canonicalize_generated_rows_normalizes_trigger_aliases_and_blocks_empty
     condition_map = {item["field"]: item["value"] for item in trigger["conditions"]}
 
     assert action_map["group_id"] == "Finance"
-    assert action_map["set_tags"] == "billing urgent"
+    assert action_map["current_tags"] == "billing urgent"
     assert condition_map["brand_id"] == "EPPF"
     assert any("Dropped" in note for note in trigger.get("dependency_notes", []))
     assert canonicalization["trigger_article"]["rules_processed"] == 1
@@ -1057,7 +1059,7 @@ def test_clearsky_explicit_trigger_specs_compile_exact_routing_actions():
     ]
     assert specs[0]["actions"] == [
         {"field": "group_id", "value": "Claims"},
-        {"field": "set_tags", "value": "hv_claim_submission"},
+        {"field": "current_tags", "value": "hv_claim_submission"},
         {"field": "priority", "value": "urgent"},
     ]
     assert _should_use_explicit_template_first(
@@ -1386,7 +1388,7 @@ def test_department_hybrid_content_draft_overlays_body_without_replacing_structu
     assert applied == 3
     assert len(rows) == 3
     assert all(row["object_type"] == "macros" for row in rows)
-    assert all(any(action["field"] == "set_tags" for action in row["actions"]) for row in rows)
+    assert all(any(action["field"] == "current_tags" for action in row["actions"]) for row in rows)
     assert all(
         any(
             action["field"] == "comment_value" and "account reference" in action["value"]
@@ -1417,7 +1419,7 @@ def test_build_deterministic_chunk_rows_generates_valid_trigger_rule_payload():
     assert row["object_type"] == "triggers"
     assert row["conditions"]
     assert row["actions"]
-    assert any(str(action.get("field")) == "set_tags" for action in row["actions"])
+    assert any(str(action.get("field")) == "current_tags" for action in row["actions"])
     assert any(str(action.get("value", "")).find("escalated_now") >= 0 for action in row["actions"])
 
 
@@ -1435,7 +1437,7 @@ def test_build_deterministic_chunk_rows_generates_valid_macro_payload():
     row = rows[0]
     assert row["object_type"] == "macros"
     assert row["actions"]
-    assert any(str(action.get("field")) == "set_tags" for action in row["actions"])
+    assert any(str(action.get("field")) == "current_tags" for action in row["actions"])
 
 
 def test_business_blueprint_prompt_classifier_routes_multi_object_intent():

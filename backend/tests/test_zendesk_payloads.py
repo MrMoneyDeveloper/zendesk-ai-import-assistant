@@ -5,6 +5,7 @@ from app.services import zendesk
 from app.services.zendesk import (
     _build_article_payload,
     _build_macro_payload,
+    _build_rule_payload,
     _build_ticket_field_payload,
     _build_ticket_form_payload,
     _build_view_payload,
@@ -88,6 +89,48 @@ def test_build_macro_payload_preserves_private_internal_note_mode():
         {"field": "comment_value", "value": "Assign a senior assessor."},
         {"field": "comment_mode_is_public", "value": False},
         {"field": "group_id", "value": "123"},
+    ]
+
+
+def test_additive_tag_alias_uses_current_tags_without_replacing_ticket_tags():
+    payload = _build_rule_payload(
+        {
+            "title": "Add quality marker",
+            "conditions": [{"field": "status", "operator": "less_than", "value": "solved"}],
+            "actions": [{"field": "add_tags", "value": ["quality_checked", "support"]}],
+        },
+        "trigger",
+    )
+
+    assert payload["trigger"]["actions"] == [
+        {"field": "current_tags", "value": "quality_checked support"}
+    ]
+
+
+def test_exact_update_payload_preserves_trusted_native_actions():
+    before_actions = [
+        {"field": "remove_tags", "value": "agent_ooo"},
+        {"field": "custom_field_123", "value": "legacy_value"},
+    ]
+    payload = _build_rule_payload(
+        {
+            "title": "Unassign out of office agent",
+            "operation_mode": "update",
+            "before_configuration": {"actions": before_actions},
+            "conditions": [{"field": "current_tags", "operator": "includes", "value": "agent_ooo"}],
+            "actions": [
+                *before_actions,
+                {"field": "current_tags", "value": "quality_checked"},
+                {"field": "custom_field_999", "value": "untrusted_new_value"},
+            ],
+        },
+        "trigger",
+    )
+
+    assert payload["trigger"]["actions"] == [
+        {"field": "remove_tags", "value": "agent_ooo"},
+        {"field": "custom_field_123", "value": "legacy_value"},
+        {"field": "current_tags", "value": "quality_checked"},
     ]
 
 
@@ -275,6 +318,22 @@ class _PaginatedCatalogClient:
             "/api/v2/custom_objects": "custom_objects",
         }
         root = roots.get(path)
+        if root == "brands":
+            return _FakeResponse(
+                200,
+                {
+                    "brands": [
+                        {
+                            "id": 77,
+                            "name": "Main",
+                            "subdomain": "acme",
+                            "default": True,
+                            "has_help_center": True,
+                            "help_center_state": "enabled",
+                        }
+                    ]
+                },
+            )
         if root == "sla_policies":
             return _FakeResponse(200, {root: [{"id": 88, "title": "VIP SLA", "policy_metrics": []}]})
         if root:
@@ -469,6 +528,10 @@ def test_reference_catalog_paginates_and_keeps_editable_snapshots(monkeypatch):
     assert result["catalogs"]["triggers"][0]["snapshot"]["conditions"]["all"]
     assert result["catalogs"]["triggers"][0]["editable"] is True
     assert result["catalogs"]["sla_policies"][0]["editable"] is False
+    assert result["catalogs"]["help_centers"][0]["name"] == "Main Help Center"
+    assert result["catalogs"]["help_centers"][0]["snapshot"]["help_center_url"] == (
+        "https://acme.zendesk.com/hc/en-us"
+    )
     assert result["sync_id"].startswith("SYNC-")
 
 
@@ -690,16 +753,12 @@ def test_help_center_readiness_passes_authenticated_brand_and_guide_checks(monke
     assert _HelpCenterReadinessClient.requested_hosts[-1] == "brand-one.zendesk.com"
 
 
-def test_help_center_fallback_404_paths_are_suppressed_after_first_failure(monkeypatch):
-    monkeypatch.setenv("ZENDESK_FALLBACK_404_COOLDOWN_SECONDS", "3600")
-    get_settings.cache_clear()
+def test_reference_catalog_does_not_probe_unsupported_help_center_endpoints(monkeypatch):
     _Fallback404Client.fallback_hits = {
         "/api/v2/help_center/help_center.json": 0,
         "/api/v2/help_center.json": 0,
     }
     monkeypatch.setattr(zendesk.httpx, "AsyncClient", _Fallback404Client)
-    zendesk._HELP_CENTER_FALLBACK_404_COOLDOWN.clear()
-
     first = asyncio.run(
         zendesk.fetch_zendesk_reference_catalog(
             subdomain="acme",
@@ -717,6 +776,6 @@ def test_help_center_fallback_404_paths_are_suppressed_after_first_failure(monke
 
     assert first["ok"] is False
     assert second["ok"] is False
-    assert _Fallback404Client.fallback_hits["/api/v2/help_center/help_center.json"] == 1
-    assert _Fallback404Client.fallback_hits["/api/v2/help_center.json"] == 1
-    assert any("cooldown active" in warning.lower() for warning in second.get("warnings", []))
+    assert _Fallback404Client.fallback_hits["/api/v2/help_center/help_center.json"] == 0
+    assert _Fallback404Client.fallback_hits["/api/v2/help_center.json"] == 0
+    assert not any("cooldown active" in warning.lower() for warning in second.get("warnings", []))

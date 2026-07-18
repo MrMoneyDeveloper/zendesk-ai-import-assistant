@@ -190,9 +190,10 @@ RULE_FIELD_ALIASES = {
     "ticket_form_name": "ticket_form_id",
     "brand": "brand_id",
     "brand_name": "brand_id",
-    "tag": "set_tags",
-    "tags": "set_tags",
-    "add_tag": "set_tags",
+    "tag": "current_tags",
+    "tags": "current_tags",
+    "add_tag": "current_tags",
+    "add_tags": "current_tags",
     "set_tag": "set_tags",
     "add_note": "comment_value",
     "comment": "comment_value",
@@ -2121,7 +2122,7 @@ def _extract_trigger_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
         if group_name:
             actions.append({"field": "group_id", "value": group_name})
         if tag_match:
-            actions.append({"field": "set_tags", "value": tag_match.group("tag").lower()})
+            actions.append({"field": "current_tags", "value": tag_match.group("tag").lower()})
         if priority_match:
             actions.append({"field": "priority", "value": priority_match.group("priority").lower()})
 
@@ -2267,7 +2268,7 @@ def _extract_view_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
                         str(action.get("value", "")).strip()
                         for action in list(trigger_spec.get("actions", []) or [])
                         if isinstance(action, dict)
-                        and str(action.get("field", "")).strip().lower() == "set_tags"
+                        and str(action.get("field", "")).strip().lower() in {"current_tags", "set_tags"}
                     ),
                     "",
                 )
@@ -3552,7 +3553,7 @@ def _department_coverage_row_templates(
                 ],
                 [
                     {"field": "group_id", "value": department_name},
-                    {"field": "set_tags", "value": tag_value},
+                    {"field": "current_tags", "value": tag_value},
                 ],
             ),
             (
@@ -3563,18 +3564,18 @@ def _department_coverage_row_templates(
                 ],
                 [
                     {"field": "group_id", "value": department_name},
-                    {"field": "set_tags", "value": f"{tag_value} {tag_value}_escalated"},
+                    {"field": "current_tags", "value": f"{tag_value} {tag_value}_escalated"},
                 ],
             ),
             (
                 f"Signal: {department_name} Tagged Follow-Up",
                 [
-                    {"field": "set_tags", "operator": "includes", "value": tag_value},
+                    {"field": "current_tags", "operator": "includes", "value": tag_value},
                     {"field": "status", "operator": "less_than", "value": "solved"},
                 ],
                 [
                     {"field": "group_id", "value": department_name},
-                    {"field": "set_tags", "value": f"{tag_value} {tag_value}_routed"},
+                    {"field": "current_tags", "value": f"{tag_value} {tag_value}_routed"},
                 ],
             ),
         ]
@@ -3603,7 +3604,7 @@ def _department_coverage_row_templates(
                     {"field": "hours_since_update", "operator": "greater_than", "value": "24"},
                 ],
                 [
-                    {"field": "set_tags", "value": f"{tag_value} stale_follow_up"},
+                    {"field": "current_tags", "value": f"{tag_value} stale_follow_up"},
                     {"field": "priority", "value": "high"},
                 ],
             ),
@@ -3615,7 +3616,7 @@ def _department_coverage_row_templates(
                     {"field": "hours_since_update", "operator": "greater_than", "value": "12"},
                 ],
                 [
-                    {"field": "set_tags", "value": f"{tag_value} escalation_reminder"},
+                    {"field": "current_tags", "value": f"{tag_value} escalation_reminder"},
                     {"field": "status", "value": "open"},
                 ],
             ),
@@ -3671,7 +3672,7 @@ def _department_coverage_row_templates(
                     "conditions": [],
                     "actions": [
                         {"field": "comment_value", "value": body},
-                        {"field": "set_tags", "value": f"{tag_value} macro_response"},
+                        {"field": "current_tags", "value": f"{tag_value} macro_response"},
                     ],
                     "dependency_notes": notes,
                 }
@@ -3858,7 +3859,7 @@ def _build_deterministic_chunk_rows(
                     actions.append({"field": "priority", "value": priority})
                 tags = [str(item).strip() for item in list(spec.get("tags", []) or []) if str(item).strip()]
                 if tags:
-                    actions.append({"field": "set_tags", "value": " ".join(tags)})
+                    actions.append({"field": "current_tags", "value": " ".join(tags)})
                 rows.append(
                     {
                         "object_type": "macros",
@@ -4301,7 +4302,7 @@ def _build_deterministic_chunk_rows(
             base_condition = {"field": "status", "operator": "less_than", "value": "solved"}
 
         for index in range(1, requested_count + 1):
-            actions = [{"field": "set_tags", "value": normalized_tag}]
+            actions = [{"field": "current_tags", "value": normalized_tag}]
             if requested_status:
                 actions.append({"field": "status", "value": requested_status})
             rows.append(
@@ -4680,9 +4681,9 @@ def _prepare_update_request(
     if not target_focus:
         raise ValueError(f"Update is not supported for object type '{target.object_type}'.")
     instruction = (
-        "EXACT UPDATE MODE. Modify only the selected related object and return exactly one complete "
+        "EXACT UPDATE MODE. Modify only update_target and return exactly one complete "
         f"{target_focus} record representing its final state. Preserve every unchanged condition and "
-        "action from related_objects[0].snapshot. Conditions may include scope=all or scope=any. "
+        "action from update_target.snapshot. Conditions may include scope=all or scope=any. "
         "Do not create a replacement object, invent IDs, or change object type. Preserve the title "
         "unless the user explicitly asks to rename it."
     )
@@ -4707,6 +4708,8 @@ def _prepare_update_request(
         "target_name": target.name,
         "target_updated_at": target.updated_at,
         "target_snapshot_hash": target.snapshot_hash,
+        "target_context_included": True,
+        "target_snapshot_fields": sorted((target.snapshot or {}).keys()),
     }
 
 
@@ -4870,6 +4873,46 @@ def _bind_update_target_to_generated_rows(
         row["actions"] = list(before.get("actions", []) or [])
     if "active" not in row and before.get("active") is not None:
         row["active"] = before.get("active")
+
+    additive_tag_requested = bool(
+        re.search(
+            r"\badd(?:s|ed|ing)?\b[^.\n]{0,80}\btags?\b",
+            request.prompt,
+            flags=re.IGNORECASE,
+        )
+    )
+    replace_tags_requested = bool(
+        re.search(
+            r"\b(?:replace|overwrite|reset|set)\s+(?:all\s+)?(?:the\s+)?tags?\b",
+            request.prompt,
+            flags=re.IGNORECASE,
+        )
+    )
+    if additive_tag_requested and not replace_tags_requested:
+        baseline_action_signatures = {
+            json.dumps(action, sort_keys=True, default=str)
+            for action in list(before.get("actions", []) or [])
+            if isinstance(action, dict)
+        }
+        normalized_actions: list[dict] = []
+        converted = 0
+        for action in list(row.get("actions", []) or []):
+            if not isinstance(action, dict):
+                continue
+            normalized_action = dict(action)
+            if (
+                str(normalized_action.get("field", "")).strip().lower() == "set_tags"
+                and json.dumps(normalized_action, sort_keys=True, default=str)
+                not in baseline_action_signatures
+            ):
+                normalized_action["field"] = "current_tags"
+                converted += 1
+            normalized_actions.append(normalized_action)
+        if converted:
+            row["actions"] = normalized_actions
+            binding_warnings.append(
+                "Converted a generated set_tags action to current_tags so the additive update cannot erase existing ticket tags."
+            )
 
     after = {
         "title": str(row.get("title") or "").strip(),
@@ -5499,12 +5542,12 @@ def _normalize_rule_entries(
             ) + 1
 
         value = entry.get("value")
-        if normalized_field == "set_tags":
+        if normalized_field in {"current_tags", "set_tags"}:
             value = _normalize_set_tags_value(value)
             if not value:
                 dropped_invalid += 1
                 warnings.append(
-                    f"Dropped empty tag action from {bucket_name}; set_tags requires at least one tag."
+                    f"Dropped empty tag entry from {bucket_name}; {normalized_field} requires at least one tag."
                 )
                 continue
         if (
@@ -6221,7 +6264,7 @@ def _evaluate_generation_safety(
             for action in row.get("actions", []) or []:
                 field = str(action.get("field", "")).strip().lower()
                 value = str(action.get("value", "")).strip().lower()
-                if field in {"set_tags", "tags"} and requested_tag in value:
+                if field in {"current_tags", "set_tags", "tags"} and requested_tag in value:
                     tag_match = True
                     break
             if tag_match:
@@ -7637,6 +7680,8 @@ def _build_planning_summary(
         "target_object_id": request.update_target.id if request.update_target else None,
         "target_object_type": request.update_target.object_type if request.update_target else None,
         "target_name": request.update_target.name if request.update_target else None,
+        "target_snapshot_hash": request.update_target.snapshot_hash if request.update_target else None,
+        "instance_sync_id": request.instance_sync_id if request.update_target else None,
         "confidence": plan.get("confidence", 0.7),
         "ambiguity_score": plan.get("ambiguity_score", 0.0),
         "prompt_explicit": prompt_explicit,
@@ -8452,6 +8497,14 @@ async def _generate_import_assistant_batch_impl(
                     remaining_manifest_coverage=remaining_coverage,
                     allowed_references=allowed_references,
                     reserved_titles=reserved_titles,
+                    update_target=(
+                        _compact_related_objects(
+                            [request.update_target.model_dump()],
+                            max_items=1,
+                        )[0]
+                        if request.operation_mode == "update" and request.update_target is not None
+                        else None
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001
                 failure = {
@@ -8570,6 +8623,9 @@ async def _generate_import_assistant_batch_impl(
         normalized_specs = list(chunk_specs or [])
         if not normalized_specs:
             fallback_chunk_id = f"{backlog_id or object_type}:{chunk_index}"
+            exact_update = bool(
+                request.operation_mode == "update" and request.update_target is not None
+            )
             for index, row in enumerate(rows):
                 row.setdefault("_supervisor_chunk_id", fallback_chunk_id)
                 row.setdefault("_supervisor_record_key", f"{fallback_chunk_id}:{index}")
@@ -8578,6 +8634,9 @@ async def _generate_import_assistant_batch_impl(
                     "chunk_id": fallback_chunk_id,
                     "object_type": object_type,
                     "target_count": len(rows) or 1,
+                    "operation_mode": "update" if exact_update else "create",
+                    "require_group_routing": not exact_update,
+                    "require_routing_tag": not exact_update,
                 }
             ]
         task = asyncio.create_task(
@@ -8641,6 +8700,9 @@ async def _generate_import_assistant_batch_impl(
             "coverage_kind": str(item.get("coverage_kind", "")),
             "fields": list(item.get("fields", []) or []),
             "expected_titles": expected_titles,
+            "operation_mode": "create",
+            "require_group_routing": object_type == "triggers",
+            "require_routing_tag": object_type == "triggers",
         }
         supervisor_pending_chunks.append(
             {
@@ -10972,7 +11034,7 @@ async def _generate_import_assistant_batch_impl(
                 )
                 next_step_message = (
                     "Retry with narrower scope and explicit Zendesk action fields "
-                    "(status/group_id/set_tags/field_type/custom_field_options)."
+                    "(status/group_id/current_tags/field_type/custom_field_options)."
                 )
                 status_message_prefix = "Generator JSON validation failed"
                 if isinstance(exc, GeneratorStructuredOutputError) and not benchmark_mode and exc.corrective_example:
@@ -10984,7 +11046,7 @@ async def _generate_import_assistant_batch_impl(
                 )
                 next_step_message = (
                     "Retry with narrower scope and explicit Zendesk action fields "
-                    "(status/group_id/set_tags/field_type/custom_field_options)."
+                    "(status/group_id/current_tags/field_type/custom_field_options)."
                 )
                 status_message_prefix = "Generator JSON validation failed"
                 if not benchmark_mode and exc.corrective_example:

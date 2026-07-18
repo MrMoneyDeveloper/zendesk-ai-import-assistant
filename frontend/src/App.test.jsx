@@ -246,6 +246,12 @@ test("submits an exact synchronized target for update mode", async () => {
   });
   fireEvent.click(screen.getByRole("button", { name: /Update existing/i }));
 
+  const typeSelect = await screen.findByRole("combobox", { name: "Zendesk object type" });
+  await waitFor(() => {
+    expect(screen.getByRole("option", { name: "Triggers (1)" })).toBeInTheDocument();
+  });
+  fireEvent.change(typeSelect, { target: { value: "triggers" } });
+
   const targetSelect = await screen.findByRole("combobox", { name: "Existing Zendesk object" });
   await waitFor(() => {
     expect(screen.getByRole("option", { name: "Route Claims (ID 44)" })).toBeInTheDocument();

@@ -266,7 +266,7 @@ def test_supervisor_applies_safe_tag_and_dependency_note():
             "object_type": "triggers",
             "title": "Route Claims",
             "conditions": [],
-            "actions": [{"field": "set_tags", "value": "claims"}],
+            "actions": [{"field": "current_tags", "value": "claims"}],
             "dependency_notes": [],
         }
     ]
@@ -291,7 +291,10 @@ def test_supervisor_applies_safe_tag_and_dependency_note():
 
     assert summary["applied"] == 2
     assert summary["rejected"] == 0
-    assert patched[0]["actions"][0]["value"] == "claims vip_claims"
+    assert patched[0]["actions"][0] == {
+        "field": "current_tags",
+        "value": "claims vip_claims",
+    }
     assert patched[0]["dependency_notes"] == [
         "Gemini supervisor: Depends on the VIP field created earlier."
     ]
@@ -456,7 +459,7 @@ def test_supervisor_accepts_list_tags_and_replaces_article_body():
             "conditions": [],
             "actions": [
                 {"field": "body", "value": "old"},
-                {"field": "set_tags", "value": "payments"},
+                {"field": "current_tags", "value": "payments"},
             ],
         }
     ]
@@ -473,8 +476,8 @@ def test_supervisor_accepts_list_tags_and_replaces_article_body():
     assert [item for item in patched[0]["actions"] if item["field"] == "body"] == [
         {"field": "body", "value": replacement_body}
     ]
-    assert [item for item in patched[0]["actions"] if item["field"] == "set_tags"] == [
-        {"field": "set_tags", "value": "payments billing_support"}
+    assert [item for item in patched[0]["actions"] if item["field"] == "current_tags"] == [
+        {"field": "current_tags", "value": "payments billing_support"}
     ]
 
 
@@ -581,6 +584,58 @@ def test_supervisor_gate_caps_high_score_when_mandatory_structure_is_missing():
     assert assessment["effective_quality_score"] == 0.49
     assert assessment["effective_approved"] is False
     assert any("group routing action" in reason for reason in assessment["approval_gate_reasons"])
+
+
+def test_supervisor_gate_does_not_impose_department_routing_on_exact_update():
+    rows = [
+        {
+            "object_type": "triggers",
+            "title": "Unassign Out Of Office Agent",
+            "conditions": [{"field": "current_tags", "operator": "includes", "value": "agent_ooo"}],
+            "actions": [
+                {"field": "assignee_id", "value": ""},
+                {"field": "remove_tags", "value": "agent_ooo"},
+                {"field": "current_tags", "value": "quality_checked"},
+            ],
+            "_supervisor_chunk_id": "UPDATE:1",
+            "_supervisor_record_key": "UPDATE:1:0",
+        }
+    ]
+    review = {
+        "approved": True,
+        "quality_score": 0.96,
+        "requires_regeneration": False,
+        "chunk_assessments": [
+            {
+                "chunk_id": "UPDATE:1",
+                "approved": True,
+                "quality_score": 0.96,
+                "blocking_issues": [],
+                "requires_regeneration": False,
+            }
+        ],
+    }
+
+    gate = evaluate_supervisor_bundle(
+        rows=rows,
+        chunk_specs=[
+            {
+                "chunk_id": "UPDATE:1",
+                "object_type": "triggers",
+                "target_count": 1,
+                "operation_mode": "update",
+                "require_group_routing": False,
+                "require_routing_tag": False,
+            }
+        ],
+        review=review,
+        approval_threshold=0.8,
+    )
+
+    assessment = gate["chunk_assessments"][0]
+    assert assessment["effective_approved"] is True
+    assert assessment["effective_quality_score"] == 0.96
+    assert assessment["approval_gate_reasons"] == []
 
 
 def test_supervisor_gate_treats_approved_pre_patch_issue_as_resolved():

@@ -99,7 +99,7 @@ Add or update these in `backend/.env`:
 
 - `APPS_SCRIPT_WEB_APP_URL=`
 - `APPS_SCRIPT_API_KEY=`
-- `APPS_SCRIPT_TIMEOUT_SECONDS=20`
+- `APPS_SCRIPT_TIMEOUT_SECONDS=90`
 
 ## Notes
 

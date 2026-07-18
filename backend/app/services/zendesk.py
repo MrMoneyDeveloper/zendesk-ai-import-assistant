@@ -52,6 +52,8 @@ _HELP_CENTER_FALLBACK_404_COOLDOWN: dict[str, float] = {}
 RULE_ACTION_ALLOWLIST = {
     "group_id",
     "assignee_id",
+    "current_tags",
+    "remove_tags",
     "set_tags",
     "status",
     "priority",
@@ -156,11 +158,11 @@ def _normalize_action(action: dict) -> dict:
         "group_name": "group_id",
         "assignee": "assignee_id",
         "team": "group_id",
-        "add_tags": "set_tags",
-        "add_tag": "set_tags",
-        "tag": "set_tags",
-        "tags": "set_tags",
-        "request_type": "set_tags",
+        "add_tags": "current_tags",
+        "add_tag": "current_tags",
+        "tag": "current_tags",
+        "tags": "current_tags",
+        "request_type": "current_tags",
         "add_note": "comment_value",
         "comment": "comment_value",
         "comment_body": "comment_value",
@@ -168,7 +170,7 @@ def _normalize_action(action: dict) -> dict:
     }
     normalized_field = field_aliases.get(raw_field, raw_field)
     raw_value = action.get("value")
-    if normalized_field == "set_tags":
+    if normalized_field in {"current_tags", "remove_tags", "set_tags"}:
         if isinstance(raw_value, list):
             normalized_tokens = [str(item).strip() for item in raw_value if str(item).strip()]
             raw_value = " ".join(normalized_tokens)
@@ -187,15 +189,47 @@ def _normalize_action(action: dict) -> dict:
     }
 
 
-def _sanitize_rule_actions(actions: list[dict]) -> list[dict]:
+def _action_signature(action: dict) -> str:
+    return json.dumps(
+        {
+            "field": str(action.get("field", "")).strip().lower(),
+            "value": action.get("value"),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+def _trusted_update_actions(record: dict) -> list[dict]:
+    if str(record.get("operation_mode", "")).strip().lower() != "update":
+        return []
+    before = record.get("before_configuration", {})
+    if not isinstance(before, dict):
+        return []
+    actions = before.get("actions", [])
+    return [dict(item) for item in actions if isinstance(item, dict)] if isinstance(actions, list) else []
+
+
+def _sanitize_rule_actions(
+    actions: list[dict],
+    *,
+    trusted_actions: list[dict] | None = None,
+) -> list[dict]:
     sanitized: list[dict] = []
+    trusted_signatures = {
+        _action_signature(item)
+        for item in list(trusted_actions or [])
+        if isinstance(item, dict)
+    }
     for item in actions or []:
         if not isinstance(item, dict):
             continue
         normalized = _normalize_action(item)
         field = str(normalized.get("field", "")).strip().lower()
         value = normalized.get("value")
-        if not field or field not in RULE_ACTION_ALLOWLIST:
+        trusted_unchanged_action = _action_signature(item) in trusted_signatures
+        if not field or (field not in RULE_ACTION_ALLOWLIST and not trusted_unchanged_action):
             continue
         if value is None or (isinstance(value, str) and not value.strip()):
             continue
@@ -254,16 +288,16 @@ async def fetch_zendesk_reference_catalog(
         "views": ("/api/v2/views.json?per_page=100", "views", "view", ("title", "name"), True),
         "ticket_fields": ("/api/v2/ticket_fields.json?per_page=100", "ticket_fields", "ticket_field", ("title", "name"), True),
         "articles": ("/api/v2/help_center/articles.json?per_page=100", "articles", "article", ("title", "name"), True),
-        "help_centers": ("/api/v2/help_center/help_centers.json?per_page=100", "help_centers", "help_center", ("name", "title"), False),
         "categories": ("/api/v2/help_center/categories.json?per_page=100", "categories", "category", ("name", "title"), True),
         "sections": ("/api/v2/help_center/sections.json?per_page=100", "sections", "section", ("name", "title"), True),
         "sla_policies": ("/api/v2/slas/policies.json?per_page=100", "sla_policies", "sla_policy", ("title", "name"), False),
         "schedules": ("/api/v2/business_hours/schedules.json?per_page=100", "schedules", "schedule", ("name", "title"), False),
         "user_fields": ("/api/v2/user_fields.json?per_page=100", "user_fields", "user_field", ("title", "name"), False),
         "organization_fields": ("/api/v2/organization_fields.json?per_page=100", "organization_fields", "organization_field", ("title", "name"), False),
-        "custom_objects": ("/api/v2/custom_objects?page[size]=100", "custom_objects", "custom_object", ("title", "name", "key"), False),
+        "custom_objects": ("/api/v2/custom_objects", "custom_objects", "custom_object", ("title", "name", "key"), False),
     }
     catalogs: dict[str, list[dict]] = {key: [] for key in endpoint_specs}
+    catalogs["help_centers"] = []
     raw_entries_by_key: dict[str, list[dict]] = {key: [] for key in endpoint_specs}
 
     async with httpx.AsyncClient(timeout=25) as client:
@@ -322,12 +356,14 @@ async def fetch_zendesk_reference_catalog(
                 if next_ref in seen:
                     warnings.append(f"{key}: repeated pagination link; stopped to avoid a loop.")
                     complete = False
+                    next_ref = None
                     break
                 seen.add(next_ref)
                 payload, status_code = await _safe_get(next_ref)
                 pages += 1
                 if status_code is None or not (200 <= status_code < 300):
                     complete = False
+                    next_ref = None
                     break
                 raw_items = payload.get(root_key, []) if isinstance(payload, dict) else []
                 if isinstance(raw_items, list):
@@ -347,39 +383,6 @@ async def fetch_zendesk_reference_catalog(
             raw_entries_by_key[key] = entries
             page_counts[key] = pages
             endpoint_complete[key] = complete
-
-        help_center_entries = raw_entries_by_key.get("help_centers", [])
-
-        if not help_center_entries:
-            fallback_paths = [
-                "/api/v2/help_center/help_center.json",
-                "/api/v2/help_center.json",
-            ]
-            settings = get_settings()
-            cooldown_seconds = max(int(settings.zendesk_fallback_404_cooldown_seconds), 0)
-            for fallback_path in fallback_paths:
-                if not _fallback_probe_allowed(fallback_path, cooldown_seconds):
-                    warnings.append(
-                        f"{fallback_path}: skipped due to recent 404 (cooldown active)."
-                    )
-                    continue
-                fallback_payload, fallback_status = await _safe_get(fallback_path)
-                if fallback_status == 404:
-                    _mark_fallback_404(fallback_path, cooldown_seconds)
-                if not isinstance(fallback_payload, dict):
-                    continue
-                raw_list = fallback_payload.get("help_centers")
-                if isinstance(raw_list, list) and raw_list:
-                    raw_entries_by_key["help_centers"] = raw_list
-                    help_center_entries = raw_list
-                    endpoint_complete["help_centers"] = True
-                    break
-                raw_single = fallback_payload.get("help_center")
-                if isinstance(raw_single, dict) and raw_single.get("id") and raw_single.get("name"):
-                    raw_entries_by_key["help_centers"] = [raw_single]
-                    help_center_entries = [raw_single]
-                    endpoint_complete["help_centers"] = True
-                    break
 
         def _description(item: dict, key: str) -> str:
             actions = item.get("actions", [])
@@ -433,11 +436,75 @@ async def fetch_zendesk_reference_catalog(
                     }
                 )
 
-        if not catalogs["help_centers"]:
-            warnings.append(
-                "No Help Center was confirmed by Zendesk Guide endpoints. Verify the target brand "
-                "before attempting category, section, or article deployment."
+        guide_content_exists = any(
+            raw_entries_by_key.get(key)
+            for key in ("categories", "sections", "articles")
+        )
+        raw_brands = raw_entries_by_key.get("brands", [])
+        help_center_brands = [
+            item
+            for item in raw_brands
+            if item.get("has_help_center") is True
+            or str(item.get("help_center_state") or "").strip().lower()
+            in {"active", "enabled", "live"}
+        ]
+        if not help_center_brands and guide_content_exists:
+            default_brands = [item for item in raw_brands if item.get("default") is True]
+            if len(default_brands) == 1:
+                help_center_brands = default_brands
+            elif len(raw_brands) == 1:
+                help_center_brands = list(raw_brands)
+
+        for brand in help_center_brands:
+            brand_id = str(brand.get("id") or "").strip()
+            brand_name = str(brand.get("name") or "").strip()
+            if not brand_id or not brand_name:
+                continue
+            host = (
+                str(brand.get("host_mapping") or "").strip()
+                or str(urlparse(str(brand.get("brand_url") or "")).hostname or "").strip()
+                or (
+                    f"{str(brand.get('subdomain') or '').strip()}.zendesk.com"
+                    if str(brand.get("subdomain") or "").strip()
+                    else urlparse(base_url).hostname or ""
+                )
             )
+            snapshot = {
+                "brand_id": brand_id,
+                "brand_name": brand_name,
+                "has_help_center": brand.get("has_help_center"),
+                "help_center_state": brand.get("help_center_state"),
+                "help_center_url": f"https://{host}/hc/en-us" if host else "",
+                "locale": "en-us",
+            }
+            serialized = json.dumps(snapshot, sort_keys=True, separators=(",", ":"), default=str)
+            catalogs["help_centers"].append(
+                {
+                    "object_type": "help_center",
+                    "id": brand_id,
+                    "name": f"{brand_name} Help Center",
+                    "description": f"Help Center for Zendesk brand {brand_name}.",
+                    "catalog_key": "help_centers",
+                    "updated_at": str(brand.get("updated_at") or "").strip() or None,
+                    "snapshot_hash": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+                    "snapshot": snapshot,
+                    "editable": False,
+                }
+            )
+        page_counts["help_centers"] = 0
+        endpoint_complete["help_centers"] = bool(catalogs["help_centers"] or guide_content_exists)
+
+        if not catalogs["help_centers"]:
+            if guide_content_exists:
+                warnings.append(
+                    "Zendesk Guide content is readable, but it could not be mapped to one brand. "
+                    "Select the target brand and verify its Help Center URL before deployment."
+                )
+            else:
+                warnings.append(
+                    "No Help Center was confirmed from Zendesk brand or Guide data. Verify the target "
+                    "brand before attempting category, section, or article deployment."
+                )
 
     fetched_total = sum(len(v) for v in catalogs.values())
     catalog_counts = {key: len(values) for key, values in catalogs.items()}
@@ -502,7 +569,10 @@ def _build_rule_payload(record: dict, root_key: str) -> dict:
         target.append(_normalize_condition(item))
     if not all_conditions and not any_conditions:
         all_conditions = [{"field": "status", "operator": "less_than", "value": "solved"}]
-    normalized_actions = _sanitize_rule_actions(actions)
+    normalized_actions = _sanitize_rule_actions(
+        actions,
+        trusted_actions=_trusted_update_actions(record),
+    )
     active = _coerce_bool(record.get("active"))
     return {
         root_key: {
@@ -663,7 +733,10 @@ def _extract_ticket_form_field_references(record: dict) -> list[str]:
 
 
 def _build_macro_payload(record: dict) -> dict:
-    actions = _sanitize_rule_actions(record.get("actions", []) or [])
+    actions = _sanitize_rule_actions(
+        record.get("actions", []) or [],
+        trusted_actions=_trusted_update_actions(record),
+    )
     active = _coerce_bool(record.get("active"))
     return {
         "macro": {

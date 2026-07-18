@@ -32,7 +32,7 @@ The four supplied `Validation.gs` attachments are identical, so only one replace
 7. Open `<existing-web-app-url>?action=health`. Confirm:
    - `api_version` is `2026-07-18-operating-model-v2`;
    - `capabilities` includes `stage_validate_preview` and `write_batch_metadata`.
-8. Restart the local backend after setting `APPS_SCRIPT_TIMEOUT_SECONDS=45`. The URL and API key do not need
+8. Restart the local backend after setting `APPS_SCRIPT_TIMEOUT_SECONDS=90`. The URL and API key do not need
    to change when the existing deployment is updated.
 
 ## Expected spreadsheet changes
