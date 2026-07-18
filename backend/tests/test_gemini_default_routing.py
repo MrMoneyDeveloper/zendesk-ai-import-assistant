@@ -35,6 +35,8 @@ def test_gemini_default_client_returns_structured_output_and_usage(monkeypatch):
         },
     }
 
+    captured_request = {}
+
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs):
             pass
@@ -46,6 +48,8 @@ def test_gemini_default_client_returns_structured_output_and_usage(monkeypatch):
             return False
 
         async def post(self, *args, **kwargs):
+            captured_request["url"] = args[0]
+            captured_request["json"] = kwargs["json"]
             return httpx.Response(200, json=response_payload)
 
     GeminiInteractionClient.reset_runtime_state()
@@ -58,6 +62,8 @@ def test_gemini_default_client_returns_structured_output_and_usage(monkeypatch):
             [{"role": "user", "content": "Return JSON"}],
             task="generator",
             require_json=True,
+            max_output_tokens=2400,
+            temperature=0.2,
         )
     )
 
@@ -66,6 +72,50 @@ def test_gemini_default_client_returns_structured_output_and_usage(monkeypatch):
     assert metrics["final_status"] == "ok"
     assert metrics["attempt_count"] == 1
     assert metrics["total_tokens"] == 125
+    assert captured_request["url"].endswith("/v1/interactions")
+    assert captured_request["json"]["generation_config"] == {
+        "temperature": 0.2,
+        "thinking_level": "minimal",
+        "max_output_tokens": 2400,
+    }
+
+
+def test_gemini_malformed_structured_output_hands_off_without_identical_retry(monkeypatch):
+    calls = 0
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, *args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return httpx.Response(200, json={"output_text": "{not-json"})
+
+    GeminiInteractionClient.reset_runtime_state()
+    monkeypatch.setattr("app.api.gemini.client.httpx.AsyncClient", FakeAsyncClient)
+    client = GeminiInteractionClient()
+    client.settings = _gemini_settings(gemini_default_max_retries=2)
+
+    try:
+        asyncio.run(
+            client.chat(
+                [{"role": "user", "content": "Return JSON"}],
+                task="generator",
+                require_json=True,
+            )
+        )
+    except GeminiRequestError as exc:
+        assert exc.error_class == "malformed_output"
+    else:
+        raise AssertionError("Expected malformed-output handoff")
+    assert calls == 1
 
 
 def test_gemini_circuit_opens_after_three_transient_failures(monkeypatch):

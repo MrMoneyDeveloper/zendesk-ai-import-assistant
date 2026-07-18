@@ -17,6 +17,7 @@
       }
       ensureHeader_(sheet, tabDef.headers);
     });
+    markRequiredTabsReady_(spreadsheet);
 
     if (folderState.root_folder_id) {
       props.setProperty(APP_CONFIG.ROOT_FOLDER_ID_PROPERTY, folderState.root_folder_id);

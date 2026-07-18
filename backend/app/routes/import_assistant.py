@@ -185,6 +185,16 @@ def _normalize_context_object_type(value: object) -> str:
         "ticket_fields": "ticket_field",
         "article": "article",
         "articles": "article",
+        "sla_policy": "sla_policy",
+        "sla_policies": "sla_policy",
+        "schedule": "schedule",
+        "schedules": "schedule",
+        "user_field": "user_field",
+        "user_fields": "user_field",
+        "organization_field": "organization_field",
+        "organization_fields": "organization_field",
+        "custom_object": "custom_object",
+        "custom_objects": "custom_object",
     }
     return mapping.get(text, text)
 
@@ -219,6 +229,21 @@ def _sanitize_generate_payload(
 ) -> tuple[dict, dict]:
     source = raw_payload if isinstance(raw_payload, dict) else {}
     sanitized = dict(source)
+    update_target_source = (
+        source.get("update_target")
+        if isinstance(source.get("update_target"), dict)
+        else {}
+    )
+    update_target_id = str(update_target_source.get("id") or "").strip()
+    update_target_type = _normalize_context_object_type(
+        update_target_source.get("object_type")
+    )
+    if update_target_source:
+        sanitized["update_target"] = {
+            **update_target_source,
+            "object_type": update_target_type,
+            "id": update_target_id,
+        }
     related_limit = max(int(settings.llm_context_max_related_objects), 1)
     per_catalog_limit = max(int(settings.llm_context_max_entries_per_catalog), 1)
     total_catalog_limit = max(int(settings.llm_context_max_catalog_entries), 1)
@@ -321,6 +346,13 @@ def _sanitize_generate_payload(
             entry["id"] = entry_id
             entry["name"] = entry_name
             entry["description"] = entry_description
+            is_update_target = bool(
+                str(sanitized.get("operation_mode") or "").strip().lower() == "update"
+                and entry_id == update_target_id
+                and entry.get("object_type") == update_target_type
+            )
+            if not is_update_target:
+                entry.pop("snapshot", None)
             if not entry_id or not entry_name:
                 compaction["dropped_counts"]["invalid_related_objects"] += 1
                 compaction["applied"] = True
@@ -374,6 +406,7 @@ def _sanitize_generate_payload(
                 entry["id"] = entry_id
                 entry["name"] = entry_name
                 entry["description"] = entry_description
+                entry.pop("snapshot", None)
                 if not entry_id or not entry_name:
                     compaction["dropped_counts"]["invalid_catalog_entries"] += 1
                     compaction["applied"] = True

@@ -742,6 +742,8 @@ class GrokClient:
                     require_json=require_json,
                     model=str(getattr(self.settings, "gemini_default_model", "") or "").strip()
                     or None,
+                    max_output_tokens=max_output_tokens,
+                    temperature=temperature,
                 )
                 gemini_metrics = GeminiInteractionClient.get_last_call_metrics(task_name)
                 gemini_metrics.update(

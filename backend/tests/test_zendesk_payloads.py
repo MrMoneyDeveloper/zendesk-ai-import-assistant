@@ -4,8 +4,10 @@ from urllib.parse import urlparse
 from app.services import zendesk
 from app.services.zendesk import (
     _build_article_payload,
+    _build_macro_payload,
     _build_ticket_field_payload,
     _build_ticket_form_payload,
+    _build_view_payload,
 )
 from app.core.settings import get_settings
 
@@ -69,6 +71,54 @@ def test_build_article_payload_defaults_to_draft_and_accepts_section_name():
     assert publish_payload["article"]["draft"] is False
 
 
+def test_build_macro_payload_preserves_private_internal_note_mode():
+    payload = _build_macro_payload(
+        {
+            "title": "Escalate High Value Claim",
+            "conditions": [],
+            "actions": [
+                {"field": "comment_value", "value": "Assign a senior assessor."},
+                {"field": "comment_mode_is_public", "value": False},
+                {"field": "group_id", "value": "123"},
+            ],
+        }
+    )
+
+    assert payload["macro"]["actions"] == [
+        {"field": "comment_value", "value": "Assign a senior assessor."},
+        {"field": "comment_mode_is_public", "value": False},
+        {"field": "group_id", "value": "123"},
+    ]
+
+
+def test_build_view_payload_preserves_unassigned_filter_and_sorting():
+    payload = _build_view_payload(
+        {
+            "title": "All Unassigned Tickets",
+            "conditions": [
+                {"field": "status", "operator": "is", "value": "open"},
+                {"field": "assignee_id", "operator": "is", "value": ""},
+            ],
+            "actions": [
+                {"field": "output_columns", "value": ["status", "created", "description"]},
+                {"field": "sort_by", "value": "created"},
+                {"field": "sort_order", "value": "asc"},
+            ],
+        }
+    )
+
+    assert payload["view"]["all"][-1] == {
+        "field": "assignee_id",
+        "operator": "is",
+        "value": "",
+    }
+    assert payload["view"]["output"] == {
+        "columns": ["status", "created", "description"],
+        "sort_by": "created",
+        "sort_order": "asc",
+    }
+
+
 class _FakeResponse:
     def __init__(self, status_code: int, payload: dict | None = None):
         self.status_code = status_code
@@ -116,6 +166,120 @@ class _FakeAsyncClient:
 
     async def put(self, url, **kwargs):
         return _FakeResponse(200, {})
+
+
+class _ExactUpdateClient:
+    put_urls: list[str] = []
+    post_urls: list[str] = []
+    put_payloads: list[dict] = []
+    live_updated_at = "2026-07-18T10:00:00Z"
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url, **kwargs):
+        if url.endswith("/api/v2/triggers/321.json"):
+            return _FakeResponse(
+                200,
+                {
+                    "trigger": {
+                        "id": 321,
+                        "title": "Route Enterprise Tickets",
+                        "updated_at": self.live_updated_at,
+                    }
+                },
+            )
+        return _FakeResponse(200, {"triggers": []})
+
+    async def post(self, url, **kwargs):
+        self.post_urls.append(url)
+        return _FakeResponse(500, {"error": "Exact update must not POST"})
+
+    async def put(self, url, **kwargs):
+        self.put_urls.append(url)
+        self.put_payloads.append(kwargs.get("json", {}))
+        return _FakeResponse(200, {"trigger": {"id": 321, "title": "Route Enterprise Tickets"}})
+
+
+class _PaginatedCatalogClient:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url, **kwargs):
+        parsed = urlparse(url)
+        path = parsed.path
+        query = parsed.query
+        if path == "/api/v2/triggers.json":
+            if "page=2" in query:
+                return _FakeResponse(
+                    200,
+                    {
+                        "triggers": [
+                            {
+                                "id": 2,
+                                "title": "Second trigger",
+                                "active": True,
+                                "conditions": {"all": [], "any": []},
+                                "actions": [{"field": "set_tags", "value": "second"}],
+                            }
+                        ],
+                        "next_page": None,
+                    },
+                )
+            return _FakeResponse(
+                200,
+                {
+                    "triggers": [
+                        {
+                            "id": 1,
+                            "title": "First trigger",
+                            "active": True,
+                            "conditions": {
+                                "all": [{"field": "status", "operator": "is", "value": "new"}],
+                                "any": [],
+                            },
+                            "actions": [{"field": "set_tags", "value": "first"}],
+                        }
+                    ],
+                    "next_page": "https://acme.zendesk.com/api/v2/triggers.json?page=2",
+                },
+            )
+        roots = {
+            "/api/v2/brands.json": "brands",
+            "/api/v2/groups.json": "groups",
+            "/api/v2/ticket_forms.json": "ticket_forms",
+            "/api/v2/automations.json": "automations",
+            "/api/v2/macros.json": "macros",
+            "/api/v2/views.json": "views",
+            "/api/v2/ticket_fields.json": "ticket_fields",
+            "/api/v2/help_center/articles.json": "articles",
+            "/api/v2/help_center/help_centers.json": "help_centers",
+            "/api/v2/help_center/categories.json": "categories",
+            "/api/v2/help_center/sections.json": "sections",
+            "/api/v2/slas/policies.json": "sla_policies",
+            "/api/v2/business_hours/schedules.json": "schedules",
+            "/api/v2/user_fields.json": "user_fields",
+            "/api/v2/organization_fields.json": "organization_fields",
+            "/api/v2/custom_objects": "custom_objects",
+        }
+        root = roots.get(path)
+        if root == "sla_policies":
+            return _FakeResponse(200, {root: [{"id": 88, "title": "VIP SLA", "policy_metrics": []}]})
+        if root:
+            return _FakeResponse(200, {root: []})
+        return _FakeResponse(404, {"error": "Not Found"})
 
 
 class _Fallback404Client:
@@ -284,6 +448,103 @@ def test_deploy_records_auto_creates_missing_group_dependency(monkeypatch):
         and str(event.get("title", "")).lower() == "billing"
         for event in result["dependency_auto_create"]["events"]
     )
+
+
+def test_reference_catalog_paginates_and_keeps_editable_snapshots(monkeypatch):
+    monkeypatch.setattr(zendesk.httpx, "AsyncClient", _PaginatedCatalogClient)
+    zendesk._HELP_CENTER_FALLBACK_404_COOLDOWN.clear()
+
+    result = asyncio.run(
+        zendesk.fetch_zendesk_reference_catalog(
+            subdomain="acme",
+            email="admin@acme.com",
+            api_token="tok_test",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["complete"] is True
+    assert result["page_counts"]["triggers"] == 2
+    assert result["catalog_counts"]["triggers"] == 2
+    assert result["catalogs"]["triggers"][0]["snapshot"]["conditions"]["all"]
+    assert result["catalogs"]["triggers"][0]["editable"] is True
+    assert result["catalogs"]["sla_policies"][0]["editable"] is False
+    assert result["sync_id"].startswith("SYNC-")
+
+
+def test_exact_update_uses_bound_id_and_never_posts(monkeypatch):
+    _ExactUpdateClient.put_urls = []
+    _ExactUpdateClient.post_urls = []
+    _ExactUpdateClient.put_payloads = []
+    _ExactUpdateClient.live_updated_at = "2026-07-18T10:00:00Z"
+    monkeypatch.setattr(zendesk.httpx, "AsyncClient", _ExactUpdateClient)
+    records = [
+        {
+            "record_id": "REC-UPDATE",
+            "object_type": "triggers",
+            "title": "Route Enterprise Tickets",
+            "operation_mode": "update",
+            "target_object_id": "321",
+            "target_object_type": "trigger",
+            "target_updated_at": "2026-07-18T10:00:00Z",
+            "import_decision": "approved",
+            "deployable": True,
+            "conditions": [{"field": "status", "operator": "is", "value": "new", "scope": "all"}],
+            "actions": [{"field": "set_tags", "value": "enterprise vip"}],
+        }
+    ]
+
+    result = asyncio.run(
+        zendesk.deploy_records_to_zendesk(
+            subdomain="acme",
+            email="admin@acme.com",
+            api_token="tok_test",
+            records=records,
+            on_existing="overwrite_existing",
+        )
+    )
+
+    assert result["summary"]["deployed"] == 1
+    assert result["results"][0]["zendesk_object_id"] == "321"
+    assert _ExactUpdateClient.post_urls == []
+    assert _ExactUpdateClient.put_urls[0].endswith("/api/v2/triggers/321.json")
+
+
+def test_exact_update_blocks_when_live_object_changed_after_sync(monkeypatch):
+    _ExactUpdateClient.put_urls = []
+    _ExactUpdateClient.post_urls = []
+    _ExactUpdateClient.put_payloads = []
+    _ExactUpdateClient.live_updated_at = "2026-07-18T10:05:00Z"
+    monkeypatch.setattr(zendesk.httpx, "AsyncClient", _ExactUpdateClient)
+    records = [
+        {
+            "record_id": "REC-UPDATE",
+            "object_type": "triggers",
+            "title": "Route Enterprise Tickets",
+            "operation_mode": "update",
+            "target_object_id": "321",
+            "target_object_type": "trigger",
+            "target_updated_at": "2026-07-18T10:00:00Z",
+            "import_decision": "approved",
+            "deployable": True,
+            "conditions": [{"field": "status", "operator": "is", "value": "new"}],
+            "actions": [{"field": "set_tags", "value": "enterprise vip"}],
+        }
+    ]
+
+    result = asyncio.run(
+        zendesk.deploy_records_to_zendesk(
+            subdomain="acme",
+            email="admin@acme.com",
+            api_token="tok_test",
+            records=records,
+            on_existing="overwrite_existing",
+        )
+    )
+
+    assert result["summary"]["failed"] == 1
+    assert "changed after synchronization" in result["results"][0]["execution_message"]
+    assert _ExactUpdateClient.put_urls == []
 
 
 def test_deploy_records_fails_with_explicit_fix_for_non_creatable_dependency(monkeypatch):

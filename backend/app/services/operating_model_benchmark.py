@@ -454,6 +454,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--variants", default="template,hybrid")
+    parser.add_argument(
+        "--prompt-file",
+        default="",
+        help="UTF-8 prompt file to benchmark instead of the built-in Apex prompt.",
+    )
     parser.add_argument("--timeout-seconds-per-variant", type=int, default=900)
     parser.add_argument(
         "--compare-result",
@@ -478,9 +483,16 @@ async def _async_main(args: argparse.Namespace) -> int:
         return 0
 
     variants = tuple(item.strip() for item in str(args.variants).split(",") if item.strip())
+    prompt = APEX_OPERATING_MODEL_PROMPT
+    if str(args.prompt_file or "").strip():
+        prompt_path = Path(args.prompt_file).resolve()
+        prompt = prompt_path.read_text(encoding="utf-8").strip()
+        if not prompt:
+            raise ValueError(f"Prompt file is empty: {prompt_path}")
     config = OperatingModelBenchmarkConfig(
         output_root=Path(args.output_root).resolve(),
         variants=variants or ("template", "hybrid"),
+        prompt=prompt,
         timeout_seconds_per_variant=max(int(args.timeout_seconds_per_variant), 60),
     )
     result = await run_operating_model_benchmark(config)
@@ -490,3 +502,7 @@ async def _async_main(args: argparse.Namespace) -> int:
 
 def main() -> int:
     return asyncio.run(_async_main(build_arg_parser().parse_args()))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -80,6 +80,9 @@ Batch staging is idempotent by `batch_id` and `record_id`, so retrying a run rep
 object rows instead of duplicating them. Progress events and batch metadata use upsert keys and are safe to
 send more than once.
 
+For projects maintained by copying files in the Apps Script editor instead of `clasp`, follow the
+copy-safe checklist in `Appscripts/manual-install/README.md`.
+
 Manual editor helper:
 - `rotateApiKeyFromEditor()` generates a fresh key, stores it in Script Properties, and writes it to the `Integration Secrets` sheet.
 

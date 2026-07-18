@@ -96,11 +96,37 @@ vi.mock("./services/api", () => ({
     detail: "Zendesk catalogs fetched.",
     base_url: "https://example.zendesk.com",
     fetched_at: "2026-01-01T00:00:00Z",
+    sync_id: "SYNC-TEST-001",
+    complete: true,
+    catalog_counts: { groups: 1, ticket_forms: 1, brands: 1, triggers: 1 },
+    page_counts: { groups: 1, ticket_forms: 1, brands: 1, triggers: 1 },
     warnings: [],
     catalogs: {
       groups: [{ object_type: "group", id: "1", name: "Support" }],
       ticket_forms: [{ object_type: "ticket_form", id: "2", name: "Default form" }],
       brands: [{ object_type: "brand", id: "3", name: "Main brand" }],
+      triggers: [
+        {
+          object_type: "trigger",
+          id: "44",
+          name: "Route Claims",
+          catalog_key: "triggers",
+          editable: true,
+          updated_at: "2026-01-01T00:00:00Z",
+          snapshot_hash: "sha256:test-trigger",
+          snapshot: {
+            id: 44,
+            title: "Route Claims",
+            active: true,
+            updated_at: "2026-01-01T00:00:00Z",
+            conditions: {
+              all: [{ field: "status", operator: "is", value: "new" }],
+              any: [{ field: "tags", operator: "includes", value: "claim" }],
+            },
+            actions: [{ field: "group_id", value: "1" }],
+          },
+        },
+      ],
       help_centers: [],
       categories: [],
       sections: [],
@@ -189,6 +215,69 @@ test("hides main workspace until Zendesk credentials are validated", async () =>
   expect(screen.queryByText("What would you like to build today?")).not.toBeInTheDocument();
 });
 
+test("keeps the prompt locked until an operation mode is selected", async () => {
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+
+  await waitFor(() => {
+    expect(screen.getByText("Choose Create new or Update existing first.")).toBeInTheDocument();
+  });
+  const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
+  expect(input).toBeDisabled();
+
+  fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
+  await waitFor(() => {
+    expect(screen.getByPlaceholderText(/Create a trigger that closes tickets/i)).not.toBeDisabled();
+  });
+});
+
+test("submits an exact synchronized target for update mode", async () => {
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /Update existing/i })).toBeInTheDocument();
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Update existing/i }));
+
+  const targetSelect = await screen.findByRole("combobox", { name: "Existing Zendesk object" });
+  await waitFor(() => {
+    expect(screen.getByRole("option", { name: "Route Claims (ID 44)" })).toBeInTheDocument();
+  });
+  fireEvent.change(targetSelect, { target: { value: "trigger:44" } });
+
+  const input = screen.getByPlaceholderText(/Keep the current routing logic/i);
+  await waitFor(() => expect(input).not.toBeDisabled());
+  expect(screen.getByRole("combobox", { name: "Dependency Behavior" })).toHaveValue("force_existing_only");
+  expect(screen.getByRole("combobox", { name: "Dependency Behavior" })).toBeDisabled();
+  expect(screen.getByRole("combobox", { name: "Existing Object Behavior" })).toHaveValue("overwrite_existing");
+  expect(screen.getByRole("combobox", { name: "Existing Object Behavior" })).toBeDisabled();
+  fireEvent.change(input, { target: { value: "Add the VIP tag while preserving all current routing logic." } });
+  fireEvent.submit(input.closest("form"));
+
+  await waitFor(() => expect(api.generateBatch).toHaveBeenCalled());
+  const payload = api.generateBatch.mock.calls.at(-1)?.[0] || {};
+  expect(payload.operation_mode).toBe("update");
+  expect(payload.instance_sync_id).toBe("SYNC-TEST-001");
+  expect(payload.dependency_mode).toBe("force_existing_only");
+  expect(payload.focus_object_types).toEqual(["triggers"]);
+  expect(payload.update_target).toMatchObject({
+    object_type: "trigger",
+    id: "44",
+    name: "Route Claims",
+    snapshot_hash: "sha256:test-trigger",
+  });
+  expect(payload.update_target.snapshot.conditions.any).toHaveLength(1);
+  expect(payload.related_objects).toHaveLength(1);
+  expect(payload.related_objects[0].id).toBe("44");
+});
+
 test("runs generation flow from prompt submit", async () => {
   renderApp();
   const subdomainInput = screen.getByPlaceholderText("example: acme");
@@ -202,6 +291,7 @@ test("runs generation flow from prompt submit", async () => {
   await waitFor(() => {
     expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
   });
+  fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
   const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
   await waitFor(() => {
     expect(input).not.toBeDisabled();
@@ -251,6 +341,7 @@ test("shows verified live wave activity while the async batch is running", async
   await waitFor(() => {
     expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
   });
+  fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
   const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
   fireEvent.change(input, { target: { value: "Build the claims operating model." } });
   fireEvent.submit(input.closest("form"));
@@ -278,6 +369,7 @@ test("sends selected object focus in generate payload", async () => {
     expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
   });
 
+  fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
   fireEvent.click(screen.getByRole("button", { name: "Triggers" }));
   fireEvent.click(screen.getByRole("button", { name: "Macros" }));
   const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
@@ -314,6 +406,7 @@ test("approve with client saves skipped decisions and does not deploy when no ro
     expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
   });
 
+  fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
   const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
   fireEvent.change(input, { target: { value: "Create claims trigger flow for broker routing" } });
   fireEvent.submit(input.closest("form"));
@@ -342,6 +435,7 @@ test("new chat resets active batch workspace state", async () => {
     expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
   });
 
+  fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
   const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
   fireEvent.change(input, { target: { value: "Create claims trigger flow for broker routing" } });
   fireEvent.submit(input.closest("form"));

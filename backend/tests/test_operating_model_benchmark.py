@@ -6,6 +6,7 @@ from app.core.settings import get_settings
 from app.services.batch_store import get_batch_store
 from app.services.operating_model_benchmark import (
     OperatingModelBenchmarkConfig,
+    build_arg_parser,
     compare_saved_benchmark_results,
     run_operating_model_benchmark,
 )
@@ -113,3 +114,13 @@ def test_operating_model_benchmark_writes_isolated_comparison_artifacts(monkeypa
     assert (saved_output / "comparison.csv").exists()
     assert "gemini_tokens" in saved["comparison"][0]
     assert "duplicate_action_fields" in saved["comparison"][1]
+
+
+def test_operating_model_benchmark_accepts_external_prompt_file(tmp_path):
+    prompt_file = tmp_path / "customer-prompt.txt"
+    prompt_file.write_text("Build the exact customer operating model.", encoding="utf-8")
+    args = build_arg_parser().parse_args(
+        ["--prompt-file", str(prompt_file), "--variants", "hybrid"]
+    )
+    assert args.prompt_file == str(prompt_file)
+    assert args.variants == "hybrid"

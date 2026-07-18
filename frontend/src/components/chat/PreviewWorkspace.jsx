@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import {
+  ArrowRight,
   BookOpen,
   CheckCircle2,
   CircleAlert,
+  GitCompareArrows,
+  PencilLine,
+  Plus,
   ExternalLink,
   RefreshCw,
   Send,
@@ -31,6 +35,105 @@ function deployBadge(value) {
   if (value === "failed") return <Badge variant="danger">failed</Badge>;
   if (value === "skipped") return <Badge variant="warning">skipped</Badge>;
   return <Badge variant="neutral">pending</Badge>;
+}
+
+function humanize(value) {
+  return String(value || "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function readableValue(value) {
+  if (value === null || value === undefined || value === "") return "Empty";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (item && typeof item === "object") return item.name || item.title || item.value || "Configured item";
+      return String(item);
+    }).join(", ");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, child]) => `${humanize(key)}: ${readableValue(child)}`)
+      .join("; ");
+  }
+  return String(value).replaceAll("_", " ");
+}
+
+function LogicList({ entries = [], kind }) {
+  if (!entries.length) {
+    return <p className="text-xs text-slate-500">No {kind.toLowerCase()} configured.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {entries.map((entry, index) => {
+        const isCondition = kind === "Conditions";
+        const scope = String(entry?.scope || entry?.condition_scope || "all").toUpperCase();
+        return (
+          <div key={`${entry?.field || kind}-${index}`} className="flex min-w-0 items-start gap-2 border-l-2 border-violet-500/35 pl-2.5 text-xs leading-5 text-slate-300">
+            <span className="mt-0.5 shrink-0 text-[10px] font-semibold text-violet-300">
+              {isCondition ? scope : `${index + 1}`}
+            </span>
+            <p className="min-w-0 break-words">
+              <span className="font-medium text-slate-100">{humanize(entry?.field)}</span>
+              {isCondition ? ` ${String(entry?.operator || "is").replaceAll("_", " ")} ` : " becomes "}
+              <span>{readableValue(entry?.value)}</span>
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ConfigurationLogic({ configuration, label }) {
+  const source = configuration || {};
+  return (
+    <section className="min-w-0">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold text-slate-100">{label}</h4>
+        {source.active !== null && source.active !== undefined ? (
+          <Badge variant={source.active ? "success" : "neutral"}>{source.active ? "active" : "inactive"}</Badge>
+        ) : null}
+      </div>
+      <div>
+        <p className="mb-2 text-[11px] font-semibold uppercase text-slate-500">Conditions</p>
+        <LogicList entries={source.conditions || []} kind="Conditions" />
+      </div>
+      <div className="mt-4 border-t border-white/10 pt-3">
+        <p className="mb-2 text-[11px] font-semibold uppercase text-slate-500">Actions</p>
+        <LogicList entries={source.actions || []} kind="Actions" />
+      </div>
+    </section>
+  );
+}
+
+function UpdateComparison({ record }) {
+  const changed = (record.change_summary || []).filter((item) => item.changed);
+  return (
+    <div className="mt-4 border-t border-[#7B1FFF]/25 pt-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+          <GitCompareArrows size={17} className="text-violet-300" />
+          Current vs proposed
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {changed.map((item) => (
+            <Badge key={item.field} variant="warning">{item.label} changed</Badge>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div className="rounded-md border border-slate-700/70 bg-[#07030F]/35 p-4">
+          <ConfigurationLogic configuration={record.before_configuration} label="Current in Zendesk" />
+        </div>
+        <div className="hidden items-center text-violet-300 lg:flex"><ArrowRight size={20} /></div>
+        <div className="rounded-md border border-violet-500/35 bg-violet-500/10 p-4">
+          <ConfigurationLogic configuration={record.after_configuration} label="Proposed final state" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DecisionPills({ value, onChange, deployable = true }) {
@@ -90,6 +193,7 @@ export default function PreviewWorkspace({
   const [includeHelpCenter, setIncludeHelpCenter] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const records = useMemo(() => previewData?.records || [], [previewData?.records]);
+  const isUpdatePreview = records.some((record) => record.operation_mode === "update");
 
   const filteredRecords = useMemo(() => {
     const query = recordSearch.trim().toLowerCase();
@@ -210,9 +314,13 @@ export default function PreviewWorkspace({
     <Card className="mt-8 border-[#7B1FFF]/30 bg-[#120522]/70">
       <CardHeader className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-slate-200">Review and Confirm</p>
+          <p className="text-sm font-medium text-slate-200">
+            {isUpdatePreview ? "Review exact update" : "Review and Confirm"}
+          </p>
           <p className="mt-1 text-xs text-slate-400">
-            Confirm the records, deploy Support objects first, then choose whether to create Help Center content.
+            {isUpdatePreview
+              ? "Compare the synchronized object with its proposed final state before approving the replacement."
+              : "Confirm the records, deploy Support objects first, then choose whether to create Help Center content."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -226,8 +334,8 @@ export default function PreviewWorkspace({
             onClick={onApproveAndDeploy || onDeployToZendesk}
             disabled={isDeploying || isApproving}
           >
-            <Send size={15} />
-            {isDeploying ? "Deploying..." : "Deploy Support Objects"}
+            {isUpdatePreview ? <PencilLine size={15} /> : <Send size={15} />}
+            {isDeploying ? "Deploying..." : isUpdatePreview ? "Apply Approved Update" : "Deploy Support Objects"}
           </Button>
         </div>
       </CardHeader>
@@ -293,15 +401,42 @@ export default function PreviewWorkspace({
         </div>
 
         {total === 1 && filteredRecords[0] ? (
-          <div className="rounded border border-[#7B1FFF]/25 bg-[#07030F]/55 p-3 text-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="font-semibold text-slate-100">{filteredRecords[0].title}</p>
+          <div className="rounded-md border border-[#7B1FFF]/25 bg-[#07030F]/55 p-4 text-sm">
+            <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${filteredRecords[0].operation_mode === "update" ? "bg-violet-500/15 text-violet-300" : "bg-emerald-500/15 text-emerald-300"}`}>
+                  {filteredRecords[0].operation_mode === "update" ? <PencilLine size={17} /> : <Plus size={18} />}
+                </span>
+                <div className="min-w-0">
+                  <p className="break-words font-semibold text-slate-100">{filteredRecords[0].title}</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {filteredRecords[0].operation_mode === "update" ? "Updating" : "Creating"} {humanize(filteredRecords[0].object_type)}
+                    {filteredRecords[0].target_object_id ? ` | Zendesk ID ${filteredRecords[0].target_object_id}` : ""}
+                  </p>
+                </div>
+              </div>
               {statusBadge(filteredRecords[0].validation_status)}
             </div>
-            <p className="text-xs text-slate-400">
-              {filteredRecords[0].record_id} | {filteredRecords[0].object_type}
-            </p>
-            <div className="mt-3 flex items-center gap-2">
+            {filteredRecords[0].operation_mode === "update" ? (
+              <UpdateComparison record={filteredRecords[0]} />
+            ) : (
+              <div className="mt-4 border-t border-[#7B1FFF]/20 pt-4">
+                <ConfigurationLogic
+                  configuration={{
+                    title: filteredRecords[0].title,
+                    conditions: filteredRecords[0].conditions || [],
+                    actions: filteredRecords[0].actions || [],
+                  }}
+                  label="Will be created"
+                />
+              </div>
+            )}
+            {(filteredRecords[0].warnings || []).length > 0 ? (
+              <div className="mt-4 border-l-2 border-amber-500 bg-amber-950/15 px-3 py-2 text-xs text-amber-100">
+                {filteredRecords[0].warnings.map((warning) => <p key={warning}>{warning}</p>)}
+              </div>
+            ) : null}
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#7B1FFF]/20 pt-3">
               <span className="text-xs text-slate-400">Decision</span>
               <DecisionPills
                 value={decisions[filteredRecords[0].record_id] || filteredRecords[0].import_decision || "pending_review"}
@@ -311,8 +446,29 @@ export default function PreviewWorkspace({
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
+          <div>
+            <div className="mb-4 space-y-2">
+              {filteredRecords.map((record) => (
+                <details key={`${record.record_id}-logic`} className="rounded-md border border-[#7B1FFF]/20 bg-[#07030F]/40 px-3 py-2">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs">
+                    <span className="min-w-0 truncate font-medium text-slate-100">{record.title}</span>
+                    <span className="shrink-0 text-slate-400">{humanize(record.object_type)}</span>
+                  </summary>
+                  <div className="mt-3 border-t border-[#7B1FFF]/15 pt-3">
+                    {record.operation_mode === "update" ? (
+                      <UpdateComparison record={record} />
+                    ) : (
+                      <ConfigurationLogic
+                        configuration={{ conditions: record.conditions || [], actions: record.actions || [] }}
+                        label="Configuration logic"
+                      />
+                    )}
+                  </div>
+                </details>
+              ))}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse">
               <thead>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id} className="border-b border-[#7B1FFF]/20">
@@ -337,7 +493,8 @@ export default function PreviewWorkspace({
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         )}
 
@@ -353,6 +510,10 @@ export default function PreviewWorkspace({
           {showTechnical ? (
             <div className="mt-2 rounded border border-[#7B1FFF]/25 bg-[#07030F]/55 p-3 text-xs text-slate-300">
               <p>Intent: {planning.intent || "-"}</p>
+              <p className="mt-1">Operation: {planning.operation_mode || "create"}</p>
+              {planning.target_object_id ? (
+                <p className="mt-1">Bound target: {planning.target_object_type} ID {planning.target_object_id}</p>
+              ) : null}
               <p className="mt-1">Confidence: {planning.confidence ?? "-"}</p>
               <p className="mt-1">Dependency mode: {planning.dependency_mode || "-"}</p>
             </div>

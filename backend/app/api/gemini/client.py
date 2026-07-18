@@ -18,7 +18,7 @@ from app.services.perf_capture import emit_perf_event
 from app.services.usage_telemetry import record_model_call
 
 
-GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1/interactions"
 _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
 
@@ -214,6 +214,8 @@ class GeminiInteractionClient:
         response_schema: dict[str, Any] | None = None,
         require_json: bool = False,
         model: str | None = None,
+        max_output_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> str:
         api_key = str(self.settings.gemini_api_key or "").strip()
         selected_model = str(model or self.settings.gemini_default_model or "").strip()
@@ -264,7 +266,16 @@ class GeminiInteractionClient:
             "model": selected_model,
             "input": json.dumps(input_payload, ensure_ascii=False),
             "store": False,
+            "generation_config": {
+                "temperature": min(max(float(temperature if temperature is not None else 0.1), 0.0), 2.0),
+                "thinking_level": "minimal" if task == "generator" else "low",
+            },
         }
+        if max_output_tokens is not None:
+            request_body["generation_config"]["max_output_tokens"] = max(
+                int(max_output_tokens),
+                64,
+            )
         if response_schema is not None:
             request_body["response_format"] = {
                 "type": "text",
@@ -414,6 +425,18 @@ class GeminiInteractionClient:
                     return output_text
 
                 self._record_failure(task)
+                # A second identical structured-output request rarely repairs a
+                # syntactically malformed result. Hand control back to the
+                # provider router so it can use the configured Groq fallback.
+                if last_error_class == "malformed_output":
+                    final_metrics = metrics("error", attempt + 1)
+                    self._record_metrics(task, final_metrics)
+                    raise GeminiRequestError(
+                        f"Gemini returned malformed output after {attempt + 1} attempt(s).",
+                        error_class="malformed_output",
+                        http_status=response.status_code,
+                        telemetry=final_metrics,
+                    )
                 if attempt >= max_retries or self._circuit_open(task):
                     final_metrics = metrics("error", attempt + 1)
                     self._record_metrics(task, final_metrics)

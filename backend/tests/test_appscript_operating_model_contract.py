@@ -45,3 +45,32 @@ def test_apps_script_enforces_approval_and_reports_pipeline_timing():
     assert "requestedDecision === 'approved'" in approval
     assert "importDecision = 'blocked'" in approval
     assert "latestByRecord" in execution
+
+
+def test_apps_script_upgrade_is_batch_scoped_and_preserves_custom_sheet_content():
+    utils = (APPSCRIPT / "Utils.gs").read_text(encoding="utf-8-sig")
+
+    assert "function replaceBatchRows_" in utils
+    assert "existingByRecordId" in utils
+    assert "rowValuesWithFormulas_" in utils
+    assert "getFormulas()" in utils
+    assert "clearContent" not in utils
+    assert "deleteSheet" not in utils
+    assert "deleteRows" not in utils
+
+
+def test_apps_script_upgrade_has_editor_installer_and_deployment_version_probe():
+    api = (APPSCRIPT / "Api.gs").read_text(encoding="utf-8-sig")
+    config = (APPSCRIPT / "Config.gs").read_text(encoding="utf-8-sig")
+    operating_model = (APPSCRIPT / "OperatingModel.gs").read_text(encoding="utf-8-sig")
+    manual_guide = (ROOT / "Appscripts" / "manual-install" / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "API_VERSION: '2026-07-18-operating-model-v2'" in config
+    assert "api_version: APP_CONFIG.API_VERSION" in api
+    assert "function inspectOperatingModelUpgradeFromEditor" in operating_model
+    assert "function installOperatingModelUpgradeFromEditor" in operating_model
+    assert "ensureRequiredTabs_(spreadsheet, true)" in operating_model
+    assert "Do not replace `Secrets.gs`" in manual_guide
+    assert "Deploy > Manage deployments" in manual_guide

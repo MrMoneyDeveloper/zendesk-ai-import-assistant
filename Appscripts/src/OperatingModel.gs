@@ -165,3 +165,74 @@ function getBatchOperationalState(payload) {
     progress_events: progressRows.slice(-100)
   };
 }
+
+function inspectOperatingModelUpgradeFromEditor() {
+  const spreadsheet = openManagedSpreadsheet_();
+  return inspectOperatingModelSpreadsheet_(spreadsheet);
+}
+
+function installOperatingModelUpgradeFromEditor() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const spreadsheet = openManagedSpreadsheet_();
+    const before = inspectOperatingModelSpreadsheet_(spreadsheet);
+    ensureRequiredTabs_(spreadsheet, true);
+    const after = inspectOperatingModelSpreadsheet_(spreadsheet);
+    return {
+      ok: after.ready,
+      action: 'install_operating_model_upgrade',
+      api_version: APP_CONFIG.API_VERSION || 'legacy',
+      spreadsheet_id: spreadsheet.getId(),
+      spreadsheet_url: spreadsheet.getUrl(),
+      created_tabs: before.missing_tabs,
+      appended_headers: before.missing_headers,
+      ready: after.ready,
+      remaining_missing_tabs: after.missing_tabs,
+      remaining_missing_headers: after.missing_headers,
+      data_policy: 'Existing rows, formulas, formatting, and Script Properties were not cleared.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function inspectOperatingModelSpreadsheet_(spreadsheet) {
+  const existingByName = {};
+  spreadsheet.getSheets().forEach(function eachSheet(sheet) {
+    existingByName[sheet.getName()] = sheet;
+  });
+
+  const missingTabs = [];
+  const missingHeaders = {};
+  REQUIRED_TABS.forEach(function eachTab(tabDef) {
+    const sheet = existingByName[tabDef.name];
+    if (!sheet) {
+      missingTabs.push(tabDef.name);
+      return;
+    }
+    const width = Math.max(sheet.getLastColumn(), 1);
+    const currentHeaders = sheet.getRange(1, 1, 1, width).getValues()[0].map(
+      function mapHeader(value) {
+        return asString_(value).trim();
+      }
+    );
+    const missing = tabDef.headers.filter(function eachHeader(header) {
+      return currentHeaders.indexOf(header) < 0;
+    });
+    if (missing.length > 0) {
+      missingHeaders[tabDef.name] = missing;
+    }
+  });
+
+  return {
+    ok: true,
+    action: 'inspect_operating_model_upgrade',
+    api_version: APP_CONFIG.API_VERSION || 'legacy',
+    spreadsheet_id: spreadsheet.getId(),
+    spreadsheet_url: spreadsheet.getUrl(),
+    ready: missingTabs.length === 0 && Object.keys(missingHeaders).length === 0,
+    missing_tabs: missingTabs,
+    missing_headers: missingHeaders
+  };
+}

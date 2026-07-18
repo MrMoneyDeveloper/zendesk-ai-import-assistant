@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 import PromptComposer from "./components/chat/PromptComposer";
+import OperationModeSelector from "./components/chat/OperationModeSelector";
 import PreviewWorkspace from "./components/chat/PreviewWorkspace";
 import StatusRibbon from "./components/chat/StatusRibbon";
 import IntegrationPanel from "./components/chat/IntegrationPanel";
@@ -435,6 +436,44 @@ const FOCUS_TO_CATALOG_KEYS = {
   articles: ["articles", "help_centers", "categories", "sections"],
 };
 
+const UPDATE_FOCUS_BY_OBJECT_TYPE = {
+  brand: "brands",
+  category: "categories",
+  section: "sections",
+  trigger: "triggers",
+  automation: "automations",
+  macro: "macros",
+  view: "views",
+  group: "groups",
+  ticket_form: "ticket_forms",
+  ticket_field: "ticket_fields",
+  article: "articles",
+};
+
+function compactContextReference(entry, { includeSnapshot = false } = {}) {
+  if (!entry) return null;
+  return {
+    object_type: entry.object_type,
+    id: String(entry.id),
+    name: entry.name,
+    description: entry.description || null,
+    catalog_key: entry.catalog_key || null,
+    updated_at: entry.updated_at || null,
+    snapshot_hash: entry.snapshot_hash || null,
+    editable: entry.editable !== false,
+    ...(includeSnapshot ? { snapshot: entry.snapshot || null } : {}),
+  };
+}
+
+function compactReferenceCatalog(catalog) {
+  return Object.fromEntries(
+    Object.entries(catalog || {}).map(([key, entries]) => [
+      key,
+      (entries || []).map((entry) => compactContextReference(entry)).filter(Boolean),
+    ])
+  );
+}
+
 const NAV_ITEMS = [
   { label: "New Chat", icon: Plus, active: true },
   { label: "Dashboard", icon: Gauge },
@@ -520,6 +559,8 @@ function App() {
   const [chatHistory, setChatHistory] = useState([]);
   const [externalPrompt, setExternalPrompt] = useState("");
   const [selectedContext, setSelectedContext] = useState({});
+  const [operationMode, setOperationMode] = useState(null);
+  const [updateTarget, setUpdateTarget] = useState(null);
   const [dependencyMode, setDependencyMode] = useState("match_existing_or_create_new");
   const [onExistingMode, setOnExistingMode] = useState("create_new");
   const [existingItemBehavior, setExistingItemBehavior] = useState("relate_or_update");
@@ -1161,7 +1202,16 @@ function App() {
 
   const submitPrompt = async (value) => {
     if (!zendeskValidated) return false;
-    if (dependencyMode === "force_existing_only" && existingItemBehavior === "create_new") {
+    if (!operationMode) {
+      appendActivity("error", "Choose Create new or Update existing before entering a request.");
+      return false;
+    }
+    if (operationMode === "update" && (!resolvedUpdateTarget || !zendeskContextQuery.data?.sync_id)) {
+      appendActivity("error", "Select one synchronized Zendesk object before requesting an update.");
+      appendTimeline("assistant", "Choose the exact existing object that this update may change.");
+      return false;
+    }
+    if (operationMode === "create" && dependencyMode === "force_existing_only" && existingItemBehavior === "create_new") {
       appendActivity(
         "error",
         "Switch Existing item behavior to 'Use existing as base' when dependency mode is 'Use existing only (strict)'."
@@ -1172,7 +1222,7 @@ function App() {
       );
       return false;
     }
-    if (dependencyMode === "force_existing_only" && selectedRelatedObjects.length === 0) {
+    if (operationMode === "create" && dependencyMode === "force_existing_only" && selectedRelatedObjects.length === 0) {
       appendActivity(
         "error",
         "Dependency mode requires existing context. Select one or more groups/forms/brands/sections first."
@@ -1190,12 +1240,17 @@ function App() {
     const localHistory = [...chatHistory.slice(-10), `user: ${promptText}`];
     setChatHistory(localHistory);
 
-    const referenceCatalog = contextCatalog || {};
+    const referenceCatalog = compactReferenceCatalog(contextCatalog || {});
     const recentBatchContext = localHistory.slice(-8);
     const promptForModel = buildPromptWithAttachments(promptText);
-    const selectedRelatedObjectsForRequest = existingItemBehavior === "create_new"
-      ? []
-      : selectedRelatedObjects;
+    const selectedRelatedObjectsForRequest = operationMode === "update"
+      ? [compactContextReference(resolvedUpdateTarget, { includeSnapshot: true })]
+      : existingItemBehavior === "create_new"
+        ? []
+        : selectedRelatedObjects.map((item) => compactContextReference(item));
+    const effectiveFocusObjectTypes = operationMode === "update"
+      ? [UPDATE_FOCUS_BY_OBJECT_TYPE[resolvedUpdateTarget.object_type]]
+      : focusObjectTypes;
     const attachmentNote = attachments.length
       ? `Attachment context included from ${attachments.length} file(s): ${attachments.map((item) => item.filename).join(", ")}.`
       : "";
@@ -1205,13 +1260,21 @@ function App() {
       target_environment: "sandbox",
       mode: "generate_validate_preview",
       requester: "local-user",
-      dependency_mode: dependencyMode,
-      focus_object_types: focusObjectTypes,
+      operation_mode: operationMode,
+      update_target: operationMode === "update"
+        ? compactContextReference(resolvedUpdateTarget, { includeSnapshot: true })
+        : null,
+      instance_sync_id: operationMode === "update" ? zendeskContextQuery.data?.sync_id : null,
+      dependency_mode: operationMode === "update" ? "force_existing_only" : dependencyMode,
+      focus_object_types: effectiveFocusObjectTypes,
       related_objects: selectedRelatedObjectsForRequest,
       reference_catalog: referenceCatalog,
       recent_batch_context: recentBatchContext,
       context_notes: [
-        `Existing item behavior: ${existingItemBehavior === "create_new" ? "ignore_selected_existing_and_create_new" : "use_selected_existing_as_base_or_reference"}.`,
+        `Operation mode: ${operationMode}.`,
+        operationMode === "update"
+          ? `Only update ${resolvedUpdateTarget.object_type}:${resolvedUpdateTarget.name} (Zendesk ID ${resolvedUpdateTarget.id}).`
+          : `Existing item behavior: ${existingItemBehavior === "create_new" ? "ignore_selected_existing_and_create_new" : "use_selected_existing_as_base_or_reference"}.`,
         selectedRelatedObjectsForRequest.length
           ? `Selected context objects: ${selectedRelatedObjectsForRequest.map((obj) => `${obj.object_type}:${obj.name}`).join(", ")}`
           : "No explicit object selections were included in generation context.",
@@ -1238,6 +1301,10 @@ function App() {
     .map((err) => parseFailureDetail(err));
 
   const previewData = previewQuery.data;
+  const activeOperationMode = previewData?.planning_summary?.operation_mode || operationMode || "create";
+  const deploymentExistingMode = activeOperationMode === "update"
+    ? "overwrite_existing"
+    : onExistingMode;
   const generatedData = jobQuery.data
     ? {
         ...(generateMutation.data || {}),
@@ -1249,6 +1316,69 @@ function App() {
   const effectiveGenerateMetadata = jobQuery.data?.metadata || generatedData?.metadata || {};
   const historyItems = jobsQuery.data?.jobs || [];
   const contextCatalog = zendeskContextQuery.data?.catalogs || null;
+  const resolvedUpdateTarget = operationMode === "update" && updateTarget && contextCatalog
+    ? Object.values(contextCatalog)
+      .flatMap((entries) => entries || [])
+      .find((entry) => (
+        entry.object_type === updateTarget.object_type
+        && String(entry.id) === String(updateTarget.id)
+      )) || null
+    : updateTarget;
+
+  const handleOperationModeChange = (nextMode) => {
+    if (nextMode === operationMode) return;
+    setOperationMode(nextMode);
+    setUpdateTarget(null);
+    setSelectedContext({});
+    setFocusObjectTypes([]);
+    setExternalPrompt("");
+    setDecisions({});
+    setChatSessionId((value) => value + 1);
+    generateMutation.reset();
+    resetFlow();
+    if (nextMode === "update") {
+      setDependencyMode("force_existing_only");
+      setExistingItemBehavior("relate_or_update");
+      setOnExistingMode("overwrite_existing");
+      zendeskContextQuery.refetch();
+    } else {
+      setDependencyMode("match_existing_or_create_new");
+      setExistingItemBehavior("create_new");
+      setOnExistingMode("create_new");
+    }
+  };
+
+  const handleUpdateTargetChange = (target) => {
+    setUpdateTarget(target);
+    if (!target) {
+      setSelectedContext({});
+      setFocusObjectTypes([]);
+      return;
+    }
+    const key = `${target.object_type}:${target.id}`;
+    setSelectedContext({ [key]: target });
+    const focus = UPDATE_FOCUS_BY_OBJECT_TYPE[target.object_type];
+    setFocusObjectTypes(focus ? [focus] : []);
+  };
+
+  const promptLocked = Boolean(
+    !zendeskValidated
+    || !operationMode
+    || (operationMode === "update" && (
+      zendeskContextQuery.isFetching
+      || !zendeskContextQuery.data?.sync_id
+      || !resolvedUpdateTarget
+    ))
+  );
+  const promptLockReason = !zendeskValidated
+    ? "Validate Zendesk credentials first in Integration Status."
+    : !operationMode
+      ? "Choose Create new or Update existing first."
+      : operationMode === "update" && zendeskContextQuery.isFetching
+        ? "Wait for the Zendesk configuration snapshot to finish synchronizing."
+        : operationMode === "update" && !resolvedUpdateTarget
+          ? "Choose the exact existing Zendesk object to update."
+          : "";
   const selectedExistingItems = selectedRelatedObjects;
   const selectedExistingItemKeySet = new Set(
     selectedExistingItems.map((item) => `${item.object_type}:${item.id}`)
@@ -1305,6 +1435,8 @@ function App() {
     setChatHistory([]);
     setHistorySearch("");
     setSelectedContext({});
+    setOperationMode(null);
+    setUpdateTarget(null);
     setDependencyMode("match_existing_or_create_new");
     setOnExistingMode("create_new");
     setExistingItemBehavior("relate_or_update");
@@ -1332,6 +1464,10 @@ function App() {
     setTimeline([]);
     setHistorySearch("");
     setChatHistory([]);
+    setOperationMode(null);
+    setUpdateTarget(null);
+    setSelectedContext({});
+    setDependencyMode("match_existing_or_create_new");
     setExistingItemBehavior("relate_or_update");
     setOnExistingMode("create_new");
     setFocusObjectTypes([]);
@@ -1412,7 +1548,7 @@ function App() {
         email: zendeskCredentials.email,
         api_token: zendeskCredentials.api_token,
         dry_run: false,
-        on_existing: onExistingMode,
+        on_existing: deploymentExistingMode,
         deployment_scope: "support",
       });
     };
@@ -1498,7 +1634,7 @@ function App() {
         email: zendeskCredentials.email,
         api_token: zendeskCredentials.api_token,
         dry_run: false,
-        on_existing: onExistingMode,
+        on_existing: deploymentExistingMode,
         deployment_scope: "support",
       });
     } catch (error) {
@@ -1542,7 +1678,9 @@ function App() {
       email: zendeskCredentials.email,
       api_token: zendeskCredentials.api_token,
       dry_run: false,
-      on_existing: onExistingMode === "create_new" ? "skip_existing" : onExistingMode,
+      on_existing: activeOperationMode === "update"
+        ? "overwrite_existing"
+        : onExistingMode === "create_new" ? "skip_existing" : onExistingMode,
       deployment_scope: "help_center",
       help_center_url: helpCenterReadiness.help_center_url || helpCenterUrl,
       brand_id: helpCenterReadiness.brand?.id || null,
@@ -1974,6 +2112,19 @@ function App() {
               </div>
             </div>
 
+            <div className="mt-6 overflow-hidden rounded-lg">
+              <OperationModeSelector
+                darkMode={darkMode}
+                operationMode={operationMode}
+                onOperationModeChange={handleOperationModeChange}
+                contextStatus={zendeskContextQuery.data}
+                contextLoading={zendeskContextQuery.isFetching}
+                onRefreshContext={() => zendeskContextQuery.refetch()}
+                updateTarget={resolvedUpdateTarget}
+                onUpdateTargetChange={handleUpdateTargetChange}
+              />
+            </div>
+
             <div className="mt-6">
               <h2 className={`mb-3 text-sm font-semibold ${sectionTitle}`}>Quick Actions</h2>
               <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
@@ -1984,7 +2135,8 @@ function App() {
       key={action.label}
       type="button"
       onClick={() => setExternalPrompt(action.prompt)}
-      className={`min-h-[142px] rounded-lg border p-4 text-left transition ${hoverCard}`}
+      disabled={operationMode !== "create"}
+      className={`min-h-[142px] rounded-lg border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${hoverCard}`}
     >
       <Icon className={`h-8 w-8 ${action.color}`} />
       <p className={`mt-3 text-sm font-semibold ${sectionTitle}`}>{action.label}</p>
@@ -2008,8 +2160,9 @@ function App() {
                 onRemoveExistingContext={removeExistingContextSelection}
                 attachments={attachments}
                 isLoading={generateMutation.isPending || attachmentExtractMutation.isPending}
-                isLocked={!zendeskValidated}
-                lockReason="Validate Zendesk credentials first in Integration Status."
+                isLocked={promptLocked}
+                lockReason={promptLockReason}
+                operationMode={operationMode}
                 dependencyMode={dependencyMode}
                 onDependencyModeChange={setDependencyMode}
                 onExistingMode={onExistingMode}
@@ -2041,7 +2194,8 @@ function App() {
       key={item.label}
       type="button"
       onClick={() => setExternalPrompt(item.prompt)}
-      className={`flex items-center gap-3 rounded-lg border p-3 text-left text-sm transition ${hoverCard}`}
+      disabled={operationMode !== "create"}
+      className={`flex items-center gap-3 rounded-lg border p-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-45 ${hoverCard}`}
     >
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${darkMode ? "bg-[#7B1FFF]/18" : "bg-violet-50"}`}>
         <Icon className={`h-5 w-5 ${item.color}`} />
@@ -2349,7 +2503,12 @@ function App() {
                 <h2 className={`text-sm font-semibold ${sectionTitle}`}>Advanced Options</h2>
                 <label className="block">
                   <span className={`text-xs ${textSoft}`}>Dependency Behavior</span>
-                  <select value={dependencyMode} onChange={(event) => setDependencyMode(event.target.value)} className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-slate-100" : "border-slate-200 bg-white text-slate-700"}`}>
+                  <select
+                    value={dependencyMode}
+                    onChange={(event) => setDependencyMode(event.target.value)}
+                    disabled={operationMode === "update"}
+                    className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${darkMode ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-slate-100" : "border-slate-200 bg-white text-slate-700"}`}
+                  >
                     <option value="match_existing_or_create_new">Match existing or create new</option>
                     <option value="force_existing_only">Existing only</option>
                     <option value="force_create_new">Always create new</option>
@@ -2357,16 +2516,26 @@ function App() {
                 </label>
                 <label className="block">
                   <span className={`text-xs ${textSoft}`}>Existing Object Behavior</span>
-                  <select value={onExistingMode} onChange={(event) => setOnExistingMode(event.target.value)} className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-slate-100" : "border-slate-200 bg-white text-slate-700"}`}>
-                    <option value="create_new_anyway">Create new anyway</option>
+                  <select
+                    value={onExistingMode}
+                    onChange={(event) => setOnExistingMode(event.target.value)}
+                    disabled={operationMode === "update"}
+                    className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${darkMode ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-slate-100" : "border-slate-200 bg-white text-slate-700"}`}
+                  >
+                    <option value="create_new">Create new anyway</option>
                     <option value="skip_existing">Skip existing</option>
-                    <option value="update_existing">Update existing</option>
+                    <option value="overwrite_existing">Update existing</option>
                   </select>
                 </label>
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <span className={`text-xs ${textSoft}`}>Focus Objects</span>
-                    <button type="button" onClick={() => setFocusObjectTypes([])} className={`rounded-full px-3 py-1 text-xs font-medium ${focusObjectTypes.length === 0 ? "bg-violet-100 text-violet-700" : textSoft}`}>
+                    <button
+                      type="button"
+                      onClick={() => setFocusObjectTypes([])}
+                      disabled={operationMode === "update"}
+                      className={`rounded-full px-3 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60 ${focusObjectTypes.length === 0 ? "bg-violet-100 text-violet-700" : textSoft}`}
+                    >
                       Auto
                     </button>
                   </div>
@@ -2378,7 +2547,8 @@ function App() {
                           key={option.key}
                           type="button"
                           onClick={() => toggleFocusObjectType(option.key)}
-                          className={`rounded-lg border px-3 py-1.5 text-xs ${
+                          disabled={operationMode === "update"}
+                          className={`rounded-lg border px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60 ${
                             active
                               ? "border-violet-300 bg-violet-50 text-violet-700"
                               : darkMode

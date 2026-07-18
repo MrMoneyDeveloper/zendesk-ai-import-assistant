@@ -1,0 +1,113 @@
+We are setting up Zendesk for a company called ClearSky Insurance Group.
+They provide short-term insurance products including vehicle, home contents,
+building, and business insurance to individual and corporate clients across
+South Africa. They have five support teams: Personal Lines Support,
+Commercial Lines Support, Claims, Underwriting, and Client Retention.
+
+Please create the following:
+
+1. Five ticket fields:
+   - A dropdown called "Query Type" with options: New Quote Request,
+     Policy Amendment, Claim Submission, Claim Status Update,
+     Policy Cancellation, Premium Query, Document Request,
+     Complaint, General Inquiry
+   - A dropdown called "Policy Type" with options: Vehicle Insurance,
+     Home Contents, Building Insurance, Business Insurance,
+     All Risk Cover, Liability Cover
+   - A dropdown called "Client Segment" with options: Individual,
+     Small Business, Corporate, High Value Client, Broker Referred
+   - A dropdown called "Claim Status" with options: Not Yet Submitted,
+     Submitted Awaiting Assessment, Under Investigation,
+     Approved Awaiting Payment, Rejected, Closed
+   - A text field called "Policy Number"
+
+2. Six triggers:
+   - When a ticket is created and Query Type is "Claim Submission"
+     and Client Segment is "High Value Client", assign to Claims,
+     add tag "hv_claim_submission", and set priority to Urgent
+   - When a ticket is created and Query Type is "Claim Submission",
+     assign to Claims, add tag "claim_submission", and set priority to High
+   - When a ticket is created and Query Type is "Policy Cancellation",
+     assign to Client Retention, add tag "cancellation_risk",
+     and set priority to High
+   - When a ticket is created and Query Type is "Complaint",
+     assign to Personal Lines Support, add tag "client_complaint",
+     and set priority to High
+   - When a ticket is created and Query Type is "New Quote Request"
+     and Client Segment is "Corporate", assign to Commercial Lines Support,
+     add tag "corporate_quote", and set priority to Normal
+   - When a ticket is created and Query Type is "Underwriting"
+     and Client Segment is "Broker Referred", assign to Underwriting,
+     add tag "broker_referral", and set priority to Normal
+
+3. Five views:
+   - All open Claim Submission tickets assigned to Claims
+     sorted by priority descending
+   - All open Policy Cancellation tickets assigned to Client Retention
+     sorted by oldest first
+   - All open Complaint tickets assigned to Personal Lines Support
+     sorted by oldest first
+   - All open Corporate Quote tickets assigned to Commercial Lines Support
+     sorted by creation date
+   - All unassigned tickets across all teams sorted by oldest first
+
+4. Four macros:
+   - A macro called "Acknowledge Claim Submission" that sends a reply:
+     "Thank you for submitting your claim with ClearSky Insurance Group.
+     Your claim has been received and assigned to our Claims team.
+     A claims assessor will contact you within 2 business days to
+     confirm receipt and advise on next steps. Please keep all supporting
+     documents and evidence available for your assessor."
+     and adds tag "claim_acknowledged"
+   - A macro called "Request Policy Number" that sends a reply:
+     "To locate your policy and assist you accurately, please provide
+     your ClearSky policy number which can be found on your policy
+     schedule or any previous correspondence from us."
+     and adds tag "awaiting_policy_number"
+   - A macro called "Retention Offer Outreach" that sends a reply:
+     "We are sorry to hear you are considering cancelling your ClearSky
+     policy. Before we process your request, we would love the opportunity
+     to review your cover and explore options that may better suit your
+     current needs and budget. A retention specialist will call you
+     within 24 hours." and adds tag "retention_offer_sent"
+   - A macro called "Escalate High Value Claim" that assigns the ticket
+     to Claims, sets priority to Urgent, adds tag "hv_claim_escalated",
+     and adds an internal note: "This claim belongs to a High Value Client
+     and requires senior assessor assignment. SLA is 4 hours for first
+     contact. Do not process through standard claims queue."
+
+5. Three ticket forms:
+   - A form called "ClearSky Personal Lines Form" that includes fields
+     in order: Subject, Description, Query Type, Policy Type,
+     Client Segment, Policy Number, Priority
+   - A form called "ClearSky Claims Form" that includes fields
+     in order: Subject, Description, Query Type, Policy Type,
+     Client Segment, Claim Status, Policy Number, Priority
+   - A form called "ClearSky Commercial Lines Form" that includes
+     fields in order: Subject, Description, Query Type, Policy Type,
+     Client Segment, Policy Number, Priority
+
+6. Five knowledge base articles:
+   - An article called "How to Submit a Claim with ClearSky Insurance"
+     in the category Claims that explains the step by step process
+     for submitting a vehicle, home, or business insurance claim
+     including required documents, timeframes, and what to expect
+     after submission
+   - An article called "Understanding Your ClearSky Policy Schedule"
+     in the category Policy Management that explains what a policy
+     schedule contains, how to read your cover limits, excess amounts,
+     and how to request amendments
+   - An article called "How to Get a Quote for Business Insurance"
+     in the category New Business that explains the information
+     required for a commercial insurance quote, typical turnaround
+     times, and how broker referrals work
+   - An article called "What to Do After a Vehicle Accident"
+     in the category Claims that provides a step by step emergency
+     guide including what information to collect at the scene,
+     how to open a claim within 24 hours, and when to contact
+     the police
+   - An article called "ClearSky Cancellation Policy and Your Options"
+     in the category Policy Management that explains the notice
+     period required to cancel a policy, potential pro-rata refund
+     calculations, and retention options available before cancellation
+     is processed

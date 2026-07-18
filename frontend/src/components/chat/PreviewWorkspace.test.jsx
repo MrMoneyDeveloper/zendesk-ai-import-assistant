@@ -36,6 +36,64 @@ const helpCenterRecords = [
   },
 ];
 
+test("renders an exact update as a readable before-and-after comparison", () => {
+  render(
+    <PreviewWorkspace
+      previewData={{
+        records: [
+          {
+            record_id: "REC-UPDATE-1",
+            object_type: "triggers",
+            title: "Route Claims",
+            operation_mode: "update",
+            target_zendesk_id: "44",
+            validation_status: "passed",
+            import_decision: "pending_review",
+            deployment_status: "pending",
+            deployable: true,
+            warnings: [],
+            change_summary: [{ field: "actions", label: "Actions", changed: true }],
+            before_configuration: {
+              active: true,
+              conditions: [{ scope: "all", field: "status", operator: "is", value: "new" }],
+              actions: [{ field: "group_id", value: "Claims" }],
+            },
+            after_configuration: {
+              active: true,
+              conditions: [{ scope: "all", field: "status", operator: "is", value: "new" }],
+              actions: [
+                { field: "group_id", value: "Claims" },
+                { field: "add_tags", value: "vip_claim" },
+              ],
+            },
+          },
+        ],
+        planning_summary: { object_type: "triggers", operation_mode: "update" },
+        generated_counts: { triggers: 1 },
+        validation_summary: { passed: 1, warnings: 0, blocked: 0 },
+      }}
+      generatedData={null}
+      decisions={{}}
+      onDecisionChange={vi.fn()}
+      onApproveDecisions={vi.fn()}
+      onApproveAndDeploy={vi.fn()}
+      isApproving={false}
+      onDeployToZendesk={vi.fn()}
+      isDeploying={false}
+      deployResult={null}
+      deploymentMetadata={{}}
+    />
+  );
+
+  expect(screen.getByText("Review exact update")).toBeInTheDocument();
+  expect(screen.getByText("Current in Zendesk")).toBeInTheDocument();
+  expect(screen.getByText("Proposed final state")).toBeInTheDocument();
+  expect(screen.getByText("Actions changed")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Apply Approved Update" })).toBeInTheDocument();
+  expect(screen.getAllByText("Status").length).toBeGreaterThan(0);
+  expect(screen.getByText("vip claim")).toBeInTheDocument();
+});
+
 test("shows the verified Help Center deployment phase after Support deployment", () => {
   const onVerify = vi.fn();
   const onDeploy = vi.fn();

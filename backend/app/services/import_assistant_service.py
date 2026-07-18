@@ -80,6 +80,20 @@ TAB_OBJECT_TYPES = {
     "tag_dictionary": "tag_dictionary",
 }
 
+UPDATE_FOCUS_BY_CONTEXT_TYPE = {
+    "brand": "brands",
+    "category": "categories",
+    "section": "sections",
+    "trigger": "triggers",
+    "automation": "automations",
+    "macro": "macros",
+    "view": "views",
+    "group": "groups",
+    "ticket_form": "ticket_forms",
+    "ticket_field": "ticket_fields",
+    "article": "articles",
+}
+
 REFERENCE_OBJECT_BY_FIELD = {
     "group_id": "group",
     "ticket_form_id": "ticket_form",
@@ -148,6 +162,22 @@ TICKET_FORM_REFERENCE_FIELDS = {
     "fields",
     "ticket_field_names",
 }
+ZENDESK_SYSTEM_TICKET_FIELD_NAMES = frozenset(
+    {
+        "subject",
+        "description",
+        "status",
+        "priority",
+        "type",
+        "assignee",
+        "group",
+        "requester",
+        "organization",
+        "tags",
+        "cc",
+        "followers",
+    }
+)
 RULE_FIELD_ALIASES = {
     "assign": "group_id",
     "group": "group_id",
@@ -732,13 +762,14 @@ def _resolve_object_chunk_profile(
         return base_chunk_size, base_trigger_min_records
     normalized = _normalize_object_type(str(object_type or ""))
 
-    # Balanced-fast profile for object-specific chunking.
+    # Keep explicit object sets large enough to avoid review-call inflation,
+    # while bounding long-form content so one response remains repairable.
     if normalized == "ticket_fields":
-        return max(1, min(base_chunk_size, 3)), 2
+        return max(1, min(base_chunk_size, 5)), 2
     if normalized in {"ticket_forms", "views", "articles"}:
-        return max(1, min(base_chunk_size, 2)), 2
+        return max(1, min(base_chunk_size, 3)), 2
     if normalized in {"triggers", "macros", "automations"}:
-        return max(1, min(base_chunk_size, 3)), min(base_trigger_min_records, 3)
+        return max(1, min(base_chunk_size, 4)), min(base_trigger_min_records, 3)
 
     return base_chunk_size, base_trigger_min_records
 
@@ -764,6 +795,7 @@ def _build_received_batch(
         "requester": request.requester,
         "target_environment": request.target_environment,
         "mode": request.mode,
+        "operation_mode": request.operation_mode,
         "created_at": created_at,
         "updated_at": created_at,
         "status_history": [
@@ -782,6 +814,13 @@ def _build_received_batch(
         "validation_summary": {"passed": 0, "warnings": 0, "blocked": 0},
         "planning_summary": {},
         "metadata": {
+            "operation": {
+                "operation_mode": request.operation_mode,
+                "instance_sync_id": request.instance_sync_id,
+                "target_object_id": request.update_target.id if request.update_target else None,
+                "target_object_type": request.update_target.object_type if request.update_target else None,
+                "target_name": request.update_target.name if request.update_target else None,
+            },
             "run_control": _normalize_run_control({}),
             "checkpoints": [],
             "rollback": {},
@@ -1398,6 +1437,8 @@ def _normalize_object_type(raw: str) -> str:
         "views": "views",
         "group": "groups",
         "groups": "groups",
+        "team": "groups",
+        "teams": "groups",
         "ticket_field": "ticket_fields",
         "ticket_fields": "ticket_fields",
         "field": "ticket_fields",
@@ -1482,7 +1523,7 @@ def _estimate_requested_record_count(prompt: str) -> dict:
         r"\b(\d{1,4})\s+"
         r"(?:(?:[a-z][\w/-]{0,30})\s+){0,3}?"
         r"("
-        r"triggers?|automations?|macros?|views?|groups?|brands?|categories?|sections?|"
+        r"triggers?|automations?|macros?|views?|groups?|teams?|brands?|categories?|sections?|"
         r"ticket\s*forms?|forms?|ticket\s*fields?|fields?|articles?"
         r")\b",
         flags=re.IGNORECASE,
@@ -1510,7 +1551,7 @@ def _estimate_requested_record_count(prompt: str) -> dict:
         rf"\b({number_word_pattern})\s+"
         r"(?:(?:[a-z][\w/-]{0,30})\s+){0,3}?"
         r"("
-        r"triggers?|automations?|macros?|views?|groups?|brands?|categories?|sections?|"
+        r"triggers?|automations?|macros?|views?|groups?|teams?|brands?|categories?|sections?|"
         r"ticket\s*forms?|forms?|ticket\s*fields?|fields?|articles?"
         r")\b",
         flags=re.IGNORECASE,
@@ -1616,6 +1657,12 @@ def _extract_object_type_targets(
         if any(re.search(pattern, lowered) for pattern in patterns):
             targets[object_type] = 1
 
+    article_categories = _extract_article_category_names(text)
+    if article_categories and targets.get("articles", 0) > 0:
+        dependency_count = len(article_categories)
+        targets["categories"] = max(int(targets.get("categories", 0) or 0), dependency_count)
+        targets["sections"] = max(int(targets.get("sections", 0) or 0), dependency_count)
+
     if not targets and focus_object_types:
         for item in focus_object_types:
             canonical = _normalize_object_type(item)
@@ -1709,6 +1756,28 @@ def _should_force_wave_chunk_path(
     return False, "standard_prompt"
 
 
+def _should_bypass_planner_for_explicit_manifest(
+    *,
+    prompt: str,
+    object_targets: dict[str, int],
+    force_wave_chunk_reason: str,
+) -> bool:
+    if str(force_wave_chunk_reason or "").strip() != "create_following_numbered_prompt":
+        return False
+    object_type_count = sum(1 for value in object_targets.values() if int(value or 0) > 0)
+    named_specs = len(
+        re.findall(
+            r"\b(?:called|named)\s+[\"'][^\"']{2,180}[\"']",
+            str(prompt or ""),
+            flags=re.IGNORECASE,
+        )
+    )
+    numbered_sections = len(
+        re.findall(r"(?m)^\s*\d+\.\s+", str(prompt or ""))
+    )
+    return bool(object_type_count >= 4 and named_specs >= 8 and numbered_sections >= 4)
+
+
 def _resolve_wave_for_object_type(object_type: str) -> int:
     return int(ORCHESTRATION_WAVE_BY_OBJECT.get(object_type, 3))
 
@@ -1772,6 +1841,46 @@ def _normalize_blueprint_target_objects(
     return sorted(
         normalized,
         key=lambda item: (int(item.get("wave", 9)), int(item.get("priority", 9)), item.get("object_type", "")),
+    )
+
+
+def _merge_blueprint_targets_with_explicit_counts(
+    targets: list[dict],
+    explicit_counts: dict[str, int],
+) -> list[dict]:
+    merged = [dict(item) for item in targets if isinstance(item, dict)]
+    by_type = {
+        _normalize_object_type(str(item.get("object_type", ""))): item
+        for item in merged
+        if str(item.get("object_type", "")).strip()
+    }
+    for raw_type, raw_count in explicit_counts.items():
+        object_type = _normalize_object_type(str(raw_type))
+        count = max(int(raw_count or 0), 0)
+        if count <= 0:
+            continue
+        if object_type in by_type:
+            by_type[object_type]["target_count"] = max(
+                int(by_type[object_type].get("target_count", 0) or 0),
+                count,
+            )
+            continue
+        item = {
+            "object_type": object_type,
+            "target_count": count,
+            "priority": _resolve_wave_for_object_type(object_type),
+            "wave": _resolve_wave_for_object_type(object_type),
+            "source": "explicit_prompt",
+        }
+        merged.append(item)
+        by_type[object_type] = item
+    return sorted(
+        merged,
+        key=lambda item: (
+            int(item.get("wave", 9)),
+            int(item.get("priority", 9)),
+            str(item.get("object_type", "")),
+        ),
     )
 
 
@@ -1850,6 +1959,360 @@ def _extract_department_specs_from_prompt(prompt: str) -> list[dict[str, str]]:
             }
         )
     return specs[:20]
+
+
+def _extract_inline_support_team_names(prompt: str) -> list[str]:
+    text = re.sub(r"\s+", " ", str(prompt or "")).strip()
+    if not text:
+        return []
+    match = re.search(
+        r"\b(?:has|have)\s+(?:(?:\d+|[a-z]+)\s+)?(?:named\s+)?"
+        r"(?:support\s+)?teams?\s*:\s*(?P<items>[^.]+)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return []
+    return _split_prompt_list(match.group("items"))[:20]
+
+
+def _extract_article_category_names(prompt: str) -> list[str]:
+    text = re.sub(r"\s+", " ", str(prompt or "")).strip()
+    if not text:
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    pattern = re.compile(
+        r"\bin\s+(?:the\s+)?category\s+[\"']?"
+        r"(?P<name>[a-z0-9][a-z0-9 &/\-]{1,80}?)[\"']?"
+        r"(?=\s+that\b|\s+which\b|[,.;]|$)",
+        flags=re.IGNORECASE,
+    )
+    for match in pattern.finditer(text):
+        name = str(match.group("name") or "").strip(" .,:;\"'")
+        key = _coverage_key(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    return names[:40]
+
+
+def _extract_article_specs_from_prompt(prompt: str) -> list[dict[str, str]]:
+    text = str(prompt or "")
+    if not text.strip():
+        return []
+    pattern = re.compile(
+        r"[-*]\s+(?:an?\s+)?article\s+called\s+[\"'](?P<title>[^\"']{2,180})[\"']"
+        r"\s+in\s+(?:the\s+)?category\s+[\"']?(?P<category>[a-z0-9][a-z0-9 &/\-]{1,80}?)[\"']?"
+        r"\s+(?:that|which)\s+(?P<requirements>.*?)"
+        r"(?=\n\s*[-*]\s+(?:an?\s+)?article\s+called\b|\n\s*\d+\.\s|\Z)",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    specs: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(text):
+        title = re.sub(r"\s+", " ", str(match.group("title") or "")).strip()
+        category = re.sub(r"\s+", " ", str(match.group("category") or "")).strip(" .,:;\"'")
+        requirements = re.sub(
+            r"\s+",
+            " ",
+            str(match.group("requirements") or ""),
+        ).strip(" .")
+        key = _coverage_key(title)
+        if not key or key in seen or not category:
+            continue
+        seen.add(key)
+        specs.append(
+            {
+                "title": title,
+                "category": category,
+                "requirements": requirements,
+            }
+        )
+    return specs[:80]
+
+
+def _extract_ticket_form_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
+    text = str(prompt or "")
+    if not text.strip():
+        return []
+    pattern = re.compile(
+        r"[-*]\s+(?:a\s+)?form\s+called\s+[\"'](?P<title>[^\"']{2,120})[\"']"
+        r"\s+that\s+includes\s+fields?\s+in\s+order\s*:\s*(?P<fields>.*?)"
+        r"(?=\n\s*[-*]\s+(?:a\s+)?form\s+called\b|\n\s*\d+\.\s|\Z)",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    specs: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(text):
+        title = re.sub(r"\s+", " ", str(match.group("title") or "")).strip()
+        key = _coverage_key(title)
+        if not key or key in seen:
+            continue
+        raw_fields = re.sub(r"\s+", " ", str(match.group("fields") or "")).strip(" .")
+        fields = _split_prompt_list(raw_fields)
+        if not fields:
+            continue
+        seen.add(key)
+        specs.append({"title": title, "fields": fields[:30]})
+    return specs[:40]
+
+
+def _extract_trigger_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
+    text = str(prompt or "")
+    if not text.strip():
+        return []
+    pattern = re.compile(
+        r"[-*]\s+(?P<body>When\s+.*?)"
+        r"(?=\n\s*[-*]\s+When\b|\n\s*\d+\.\s|\Z)",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    field_titles = [
+        str(spec.get("title", "")).strip()
+        for spec in _extract_ticket_field_specs_from_prompt(text)
+        if str(spec.get("title", "")).strip()
+    ]
+    specs: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(text):
+        body = re.sub(r"\s+", " ", str(match.group("body") or "")).strip(" .")
+        conditions: list[dict[str, str]] = []
+        if re.search(r"\bticket\s+is\s+created\b", body, flags=re.IGNORECASE):
+            conditions.append({"field": "status", "operator": "is", "value": "new"})
+
+        title_parts: list[str] = []
+        for field_title in field_titles:
+            value_match = re.search(
+                rf"\b{re.escape(field_title)}\s+is\s+[\"'](?P<value>[^\"']+)[\"']",
+                body,
+                flags=re.IGNORECASE,
+            )
+            if not value_match:
+                continue
+            display_value = re.sub(r"\s+", " ", value_match.group("value")).strip()
+            conditions.append(
+                {
+                    "field": f"custom_field_{_slugify_option_value(field_title)}",
+                    "operator": "is",
+                    "value": _slugify_option_value(display_value),
+                }
+            )
+            title_parts.append(display_value)
+
+        group_match = re.search(
+            r"\bassign(?:s)?(?:\s+the\s+ticket)?\s+to\s+"
+            r"(?P<group>[^,.]+?)(?=\s*,|\s+and\s+(?:add|set)\b|\.|$)",
+            body,
+            flags=re.IGNORECASE,
+        )
+        tag_match = re.search(
+            r"\badd(?:s)?\s+(?:the\s+)?tag\s+[\"'](?P<tag>[a-z0-9_-]+)[\"']",
+            body,
+            flags=re.IGNORECASE,
+        )
+        priority_match = re.search(
+            r"\bset(?:s)?\s+priority\s+to\s+(?P<priority>low|normal|high|urgent)\b",
+            body,
+            flags=re.IGNORECASE,
+        )
+        actions: list[dict[str, str]] = []
+        group_name = re.sub(r"\s+", " ", group_match.group("group")).strip() if group_match else ""
+        if group_name:
+            actions.append({"field": "group_id", "value": group_name})
+        if tag_match:
+            actions.append({"field": "set_tags", "value": tag_match.group("tag").lower()})
+        if priority_match:
+            actions.append({"field": "priority", "value": priority_match.group("priority").lower()})
+
+        title = " - ".join(title_parts) if title_parts else (group_name or "Ticket")
+        title = f"{title} Routing"
+        title_key = _normalize_title_for_dedupe(title)
+        if not title_key or title_key in seen:
+            title = f"{title} {len(specs) + 1}"
+            title_key = _normalize_title_for_dedupe(title)
+        seen.add(title_key)
+        specs.append(
+            {
+                "title": title,
+                "conditions": conditions,
+                "actions": actions,
+                "source_text": body,
+            }
+        )
+    return specs[:80]
+
+
+def _extract_macro_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
+    text = str(prompt or "")
+    if not text.strip():
+        return []
+    pattern = re.compile(
+        r"[-*]\s+(?:a\s+)?macro\s+called\s+[\"'](?P<title>[^\"']{2,160})[\"']"
+        r"(?P<body>.*?)"
+        r"(?=\n\s*[-*]\s+(?:a\s+)?macro\s+called\b|\n\s*\d+\.\s|\Z)",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    specs: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(text):
+        title = re.sub(r"\s+", " ", str(match.group("title") or "")).strip()
+        title_key = _normalize_title_for_dedupe(title)
+        if not title_key or title_key in seen:
+            continue
+        body = str(match.group("body") or "")
+        reply_match = re.search(
+            r"\bsends?\s+(?:a\s+)?reply\s*:\s*[\"'](?P<text>.*?)[\"']",
+            body,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        note_match = re.search(
+            r"\b(?:adds?\s+)?(?:an\s+)?internal\s+note\s*:\s*[\"'](?P<text>.*?)[\"']",
+            body,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        comment_match = reply_match or note_match
+        comment = (
+            re.sub(r"\s+", " ", str(comment_match.group("text") or "")).strip()
+            if comment_match
+            else ""
+        )
+        group_match = re.search(
+            r"\bassign(?:s)?(?:\s+the\s+ticket)?\s+to\s+"
+            r"(?P<group>[^,.]+?)(?=\s*,|\s+and\s+(?:add|set)\b|\.|$)",
+            body,
+            flags=re.IGNORECASE,
+        )
+        priority_match = re.search(
+            r"\bset(?:s)?\s+priority\s+to\s+(?P<priority>low|normal|high|urgent)\b",
+            body,
+            flags=re.IGNORECASE,
+        )
+        tags = [
+            value.lower()
+            for value in re.findall(
+                r"\badd(?:s)?\s+(?:the\s+)?tag\s+[\"']([a-z0-9_-]+)[\"']",
+                body,
+                flags=re.IGNORECASE,
+            )
+        ]
+        seen.add(title_key)
+        specs.append(
+            {
+                "title": title,
+                "comment": comment,
+                "comment_is_public": True if reply_match else (False if note_match else None),
+                "group": (
+                    re.sub(r"\s+", " ", group_match.group("group")).strip()
+                    if group_match
+                    else ""
+                ),
+                "priority": priority_match.group("priority").lower() if priority_match else "",
+                "tags": list(dict.fromkeys(tags)),
+            }
+        )
+    return specs[:80]
+
+
+def _extract_view_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
+    text = str(prompt or "")
+    section_match = re.search(
+        r"\n\s*\d+\.\s+[^\n:]*\bviews?\s*:\s*(?P<section>.*?)"
+        r"(?=\n\s*\d+\.\s|\Z)",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not section_match:
+        return []
+    trigger_specs = _extract_trigger_specs_from_prompt(text)
+    specs: list[dict[str, object]] = []
+    for match in re.finditer(
+        r"[-*]\s+(?P<body>.*?)(?=\n\s*[-*]\s+|\Z)",
+        section_match.group("section"),
+        flags=re.DOTALL,
+    ):
+        body = re.sub(r"\s+", " ", str(match.group("body") or "")).strip(" .")
+        if not re.search(r"\btickets?\b", body, flags=re.IGNORECASE):
+            continue
+        unassigned = bool(re.search(r"\bunassigned\b", body, flags=re.IGNORECASE))
+        descriptor_match = re.search(
+            r"\bopen\s+(?P<descriptor>.*?)\s+tickets?\b",
+            body,
+            flags=re.IGNORECASE,
+        )
+        descriptor = (
+            re.sub(r"\s+", " ", descriptor_match.group("descriptor")).strip()
+            if descriptor_match
+            else ("Unassigned" if unassigned else "Support")
+        )
+        if unassigned:
+            descriptor = "Unassigned"
+        conditions: list[dict[str, str]] = [
+            {"field": "status", "operator": "is", "value": "open"}
+        ]
+
+        if unassigned:
+            conditions.append({"field": "assignee_id", "operator": "is", "value": ""})
+        else:
+            descriptor_tokens = set(_coverage_key(descriptor).split())
+            best_tag = ""
+            best_score = -10_000
+            for trigger_spec in trigger_specs:
+                title_tokens = set(_coverage_key(str(trigger_spec.get("title", ""))).split())
+                overlap = len(descriptor_tokens & title_tokens)
+                extra = len(title_tokens - descriptor_tokens - {"routing"})
+                score = (overlap * 10) - extra
+                tag = next(
+                    (
+                        str(action.get("value", "")).strip()
+                        for action in list(trigger_spec.get("actions", []) or [])
+                        if isinstance(action, dict)
+                        and str(action.get("field", "")).strip().lower() == "set_tags"
+                    ),
+                    "",
+                )
+                if tag and overlap > 0 and score > best_score:
+                    best_tag = tag
+                    best_score = score
+            if best_tag:
+                conditions.append(
+                    {"field": "current_tags", "operator": "includes", "value": best_tag}
+                )
+
+            group_match = re.search(
+                r"\bassigned\s+to\s+(?P<group>.+?)(?=\s+sorted\b|$)",
+                body,
+                flags=re.IGNORECASE,
+            )
+            group_name = (
+                re.sub(r"\s+", " ", group_match.group("group")).strip(" ,.")
+                if group_match
+                else ""
+            )
+            if group_name:
+                conditions.append({"field": "group_id", "operator": "is", "value": group_name})
+
+        if re.search(r"\bpriority\s+descending\b", body, flags=re.IGNORECASE):
+            sort_by, sort_order = "priority", "desc"
+        elif re.search(r"\b(?:oldest\s+first|creation\s+date)\b", body, flags=re.IGNORECASE):
+            sort_by, sort_order = "created", "asc"
+        else:
+            sort_by, sort_order = "updated", "desc"
+        columns = ["status", "priority", "description", "requester", "assignee", "updated"]
+        if sort_by == "created":
+            columns = ["status", "created", "description", "requester", "assignee", "updated"]
+        specs.append(
+            {
+                "title": "All Unassigned Tickets" if unassigned else f"Open {descriptor} Tickets",
+                "conditions": conditions,
+                "actions": [
+                    {"field": "output_columns", "value": columns},
+                    {"field": "sort_by", "value": sort_by},
+                    {"field": "sort_order", "value": sort_order},
+                ],
+            }
+        )
+    return specs[:80]
 
 
 def _extract_explicit_ticket_fields_from_prompt(prompt: str) -> list[str]:
@@ -2225,6 +2688,21 @@ def _build_department_coverage_backlog(
     return rows
 
 
+def _supervisor_review_bundle_key(item: dict) -> str:
+    wave = int(item.get("wave", 0) or 0)
+    department = str(item.get("department_name", "")).strip()
+    topic = str(item.get("topic", "")).strip()
+    object_type = _normalize_object_type(str(item.get("object_type", "")))
+    coverage_kind = str(item.get("coverage_kind", "")).strip()
+    if wave == 1:
+        return f"topic:{_coverage_key(topic or item.get('title_hint') or object_type)}"
+    if wave == 2 and coverage_kind == "shared_ticket_fields":
+        return "shared:ticket_fields"
+    if department:
+        return f"department:{_coverage_key(department)}"
+    return f"type:{object_type}"
+
+
 def _build_department_supervisor_review_manifest(backlog: list[dict]) -> list[dict]:
     units: dict[tuple[int, str], dict] = {}
     for item in backlog:
@@ -2234,15 +2712,7 @@ def _build_department_supervisor_review_manifest(backlog: list[dict]) -> list[di
         department = str(item.get("department_name", "")).strip()
         topic = str(item.get("topic", "")).strip()
         object_type = _normalize_object_type(str(item.get("object_type", "")))
-        coverage_kind = str(item.get("coverage_kind", "")).strip()
-        if wave == 1:
-            bundle_key = f"topic:{_coverage_key(topic or item.get('title_hint') or object_type)}"
-        elif wave == 2 and coverage_kind == "shared_ticket_fields":
-            bundle_key = "shared:ticket_fields"
-        elif department:
-            bundle_key = f"department:{_coverage_key(department)}"
-        else:
-            bundle_key = f"type:{object_type}"
+        bundle_key = _supervisor_review_bundle_key(item)
         key = (wave, bundle_key)
         unit = units.setdefault(
             key,
@@ -2271,6 +2741,7 @@ async def _run_business_blueprint_compiler(
     focus_object_types: list[str],
     object_targets: dict[str, int],
     planner_route,
+    deterministic_only: bool = False,
 ) -> tuple[dict, dict]:
     coverage_manifest = _build_department_coverage_manifest(
         prompt=prompt,
@@ -2296,6 +2767,11 @@ async def _run_business_blueprint_compiler(
         return fallback_blueprint, {
             "bypassed": True,
             "reason": "department_coverage_manifest",
+        }
+    if deterministic_only:
+        return fallback_blueprint, {
+            "bypassed": True,
+            "reason": "explicit_numbered_operating_model",
         }
 
     client = GrokClient()
@@ -2342,6 +2818,10 @@ async def _run_business_blueprint_compiler(
         target_objects = _normalize_blueprint_target_objects(
             payload.get("target_objects"),
             fallback_targets=object_targets,
+        )
+        target_objects = _merge_blueprint_targets_with_explicit_counts(
+            target_objects,
+            object_targets,
         )
         target_objects = _merge_blueprint_targets_with_manifest(
             target_objects,
@@ -2599,6 +3079,7 @@ def _extract_company_name_from_prompt(prompt: str) -> str | None:
     if not text:
         return None
     patterns = (
+        r"\bcompany\s+(?:called|named)\s+([A-Z][A-Za-z0-9&' .-]{2,80})\b",
         r"\b(?:for|about)\s+([A-Z][A-Za-z0-9&' .-]{2,80})\b",
         r"\bcompany\s*(?:name)?\s*(?:is|=|:)\s*([A-Za-z0-9&' .-]{2,80})\b",
     )
@@ -2773,6 +3254,31 @@ def _should_use_department_template_first(
     return True
 
 
+def _should_use_explicit_template_first(
+    *,
+    prompt: str,
+    object_type: str,
+    target_count: int,
+) -> bool:
+    normalized = _normalize_object_type(object_type)
+    required = max(int(target_count or 1), 1)
+    if normalized == "groups":
+        return len(_extract_inline_support_team_names(prompt)) >= required
+    if normalized == "categories" or normalized == "sections":
+        return len(_extract_article_category_names(prompt)) >= required
+    if normalized == "ticket_fields":
+        return len(_extract_ticket_field_specs_from_prompt(prompt)) >= required
+    if normalized == "ticket_forms":
+        return len(_extract_ticket_form_specs_from_prompt(prompt)) >= required
+    if normalized == "views":
+        return len(_extract_view_specs_from_prompt(prompt)) >= required
+    if normalized == "triggers":
+        return len(_extract_trigger_specs_from_prompt(prompt)) >= required
+    if normalized == "macros":
+        return len(_extract_macro_specs_from_prompt(prompt)) >= required
+    return False
+
+
 def _field_options_for_department_manifest(field_title: str, departments: list[str]) -> list[str]:
     key = _coverage_key(field_title)
     if key == "department":
@@ -2881,11 +3387,13 @@ def _department_coverage_row_templates(
     backlog_item: dict,
     fallback_note: str,
     make_unique_title,
+    company_name: str | None = None,
 ) -> list[dict]:
     if str(backlog_item.get("source", "")).strip() != DEPARTMENT_COVERAGE_SOURCE:
         return []
     normalized = _normalize_object_type(object_type)
     requested_count = max(int(target_count or 1), 1)
+    company_label = str(company_name or "the company").strip()
     department = backlog_item.get("department") if isinstance(backlog_item.get("department"), dict) else {}
     department_name = str(backlog_item.get("department_name") or department.get("name") or "").strip()
     department_description = str(department.get("description", "")).strip()
@@ -3133,7 +3641,7 @@ def _department_coverage_row_templates(
             (
                 f"{department_name} First Response",
                 (
-                    f"Thanks for contacting Apex Mobility Finance. The {department_name} team has received your request and will "
+                    f"Thanks for contacting {company_label}. The {department_name} team has received your request and will "
                     f"{guidance['process']}. To avoid delays, reply with {guidance['evidence']}. We will keep progress and decisions in this ticket."
                 ),
             ),
@@ -3177,7 +3685,7 @@ def _department_coverage_row_templates(
             (
                 f"{article_topic}: What to Expect",
                 _html_paragraphs(
-                    f"This article explains how Apex Mobility Finance handles {article_topic.lower()} requests.",
+                    f"This article explains how {company_label} handles {article_topic.lower()} requests.",
                     f"Before contacting support, gather {guidance['evidence']}. Describe the business or customer impact and the outcome you need.",
                     f"The assigned team will {guidance['process']}. It will record evidence checks, ownership changes, and the resolution decision on the same ticket.",
                     f"{guidance['urgent']} Add new evidence to the existing ticket instead of opening duplicates, because duplicate requests can split context and delay ownership.",
@@ -3224,24 +3732,34 @@ def _build_deterministic_chunk_rows(
     generated_rows: list[dict] | None,
     reason: str,
     backlog_item: dict | None = None,
+    excluded_chunk_id: str = "",
 ) -> list[dict]:
     normalized_object_type = _normalize_object_type(object_type)
     requested_count = max(int(target_count or 1), 1)
     prompt_text = str(prompt or "").strip()
-    if str((backlog_item or {}).get("source", "")).strip() == DEPARTMENT_COVERAGE_SOURCE:
-        existing_title_keys = {
-            _normalize_title_for_dedupe(str(row.get("title", "")))
-            for row in (generated_rows or [])
-            if isinstance(row, dict)
-            and _normalize_object_type(str(row.get("object_type", ""))) == normalized_object_type
-            and str(row.get("title", "")).strip()
-        }
-    else:
-        existing_title_keys = {
+    explicit_chunk_offset = max(int((backlog_item or {}).get("_chunk_offset", 0) or 0), 0)
+    excluded_chunk_id = str(excluded_chunk_id or "").strip()
+    generated_rows = [
+        row
+        for row in (generated_rows or [])
+        if isinstance(row, dict)
+        and (
+            not excluded_chunk_id
+            or str(row.get("_supervisor_chunk_id", "")).strip() != excluded_chunk_id
+        )
+    ]
+    existing_title_keys = {
+        _normalize_title_for_dedupe(str(row.get("title", "")))
+        for row in generated_rows
+        if _normalize_object_type(str(row.get("object_type", ""))) == normalized_object_type
+        and str(row.get("title", "")).strip()
+    }
+    if not generated_rows and not excluded_chunk_id:
+        existing_title_keys.update(
             _normalize_title_for_dedupe(title)
             for title in (existing_titles or [])
             if str(title).strip()
-        }
+        )
 
     def _next_unique_title(base: str, position: int) -> str:
         candidate = str(base or "").strip() or f"Generated {normalized_object_type.rstrip('s').title()}"
@@ -3280,16 +3798,118 @@ def _build_deterministic_chunk_rows(
         backlog_item=backlog_item or {},
         fallback_note=fallback_note,
         make_unique_title=_next_unique_title,
+        company_name=_extract_company_name_from_prompt(prompt_text),
     )
     if coverage_rows:
         return coverage_rows
+
+    if normalized_object_type == "triggers":
+        trigger_specs = _extract_trigger_specs_from_prompt(prompt_text)
+        selected_specs = trigger_specs[
+            explicit_chunk_offset : explicit_chunk_offset + requested_count
+        ]
+        if selected_specs:
+            for index, spec in enumerate(selected_specs, start=1):
+                rows.append(
+                    {
+                        "object_type": "triggers",
+                        "title": str(spec.get("title", "")).strip(),
+                        "conditions": [
+                            dict(item)
+                            for item in list(spec.get("conditions", []) or [])
+                            if isinstance(item, dict)
+                        ],
+                        "actions": [
+                            dict(item)
+                            for item in list(spec.get("actions", []) or [])
+                            if isinstance(item, dict)
+                        ],
+                        "dependency_notes": [
+                            fallback_note,
+                            "Compiled from the matching explicit trigger rule in the prompt.",
+                        ],
+                    }
+                )
+            return rows
+
+    if normalized_object_type == "macros":
+        macro_specs = _extract_macro_specs_from_prompt(prompt_text)
+        selected_specs = macro_specs[
+            explicit_chunk_offset : explicit_chunk_offset + requested_count
+        ]
+        if selected_specs:
+            for index, spec in enumerate(selected_specs, start=1):
+                actions: list[dict[str, object]] = []
+                comment = str(spec.get("comment", "")).strip()
+                if comment:
+                    actions.append({"field": "comment_value", "value": comment})
+                    if spec.get("comment_is_public") is not None:
+                        actions.append(
+                            {
+                                "field": "comment_mode_is_public",
+                                "value": bool(spec.get("comment_is_public")),
+                            }
+                        )
+                group_name = str(spec.get("group", "")).strip()
+                if group_name:
+                    actions.append({"field": "group_id", "value": group_name})
+                priority = str(spec.get("priority", "")).strip().lower()
+                if priority:
+                    actions.append({"field": "priority", "value": priority})
+                tags = [str(item).strip() for item in list(spec.get("tags", []) or []) if str(item).strip()]
+                if tags:
+                    actions.append({"field": "set_tags", "value": " ".join(tags)})
+                rows.append(
+                    {
+                        "object_type": "macros",
+                        "title": str(spec.get("title", "")).strip(),
+                        "conditions": [],
+                        "actions": actions,
+                        "dependency_notes": [
+                            fallback_note,
+                            "Compiled from the matching explicit macro definition in the prompt.",
+                        ],
+                    }
+                )
+            return rows
+
+    if normalized_object_type == "views":
+        view_specs = _extract_view_specs_from_prompt(prompt_text)
+        selected_specs = view_specs[
+            explicit_chunk_offset : explicit_chunk_offset + requested_count
+        ]
+        if selected_specs:
+            for spec in selected_specs:
+                rows.append(
+                    {
+                        "object_type": "views",
+                        "title": str(spec.get("title", "")).strip(),
+                        "conditions": [
+                            dict(item)
+                            for item in list(spec.get("conditions", []) or [])
+                            if isinstance(item, dict)
+                        ],
+                        "actions": [
+                            dict(item)
+                            for item in list(spec.get("actions", []) or [])
+                            if isinstance(item, dict)
+                        ],
+                        "dependency_notes": [
+                            fallback_note,
+                            "Compiled from the matching explicit view definition in the prompt.",
+                        ],
+                    }
+                )
+            return rows
 
     if normalized_object_type == "ticket_fields":
         field_specs = _extract_ticket_field_specs_from_prompt(prompt_text)
         used_titles = {
             _normalize_title_for_dedupe(str(row.get("title", "")).strip())
             for row in (generated_rows or [])
-            if isinstance(row, dict) and str(row.get("title", "")).strip()
+            if isinstance(row, dict)
+            and _normalize_object_type(str(row.get("object_type", ""))) == "ticket_fields"
+            and str(row.get("title", "")).strip()
         }
         available_specs = [
             spec
@@ -3333,12 +3953,34 @@ def _build_deterministic_chunk_rows(
                     "title": _next_unique_title(spec_title, index),
                     "conditions": [],
                     "actions": actions,
-                    "dependency_notes": [fallback_note],
+                    "dependency_notes": [
+                        fallback_note,
+                        *(
+                            [
+                                "Dropdown options added because later prompt rules explicitly reference them: "
+                                + ", ".join(str(item) for item in spec.get("implied_options_added", []))
+                            ]
+                            if spec.get("implied_options_added")
+                            else []
+                        ),
+                    ],
                 }
             )
         return rows
 
     if normalized_object_type == "groups":
+        team_names = _extract_inline_support_team_names(prompt_text)
+        used_team_names = {
+            _normalize_title_for_dedupe(str(row.get("title", "")))
+            for row in (generated_rows or [])
+            if isinstance(row, dict)
+            and _normalize_object_type(str(row.get("object_type", ""))) == "groups"
+        }
+        available_team_names = [
+            name
+            for name in team_names
+            if _normalize_title_for_dedupe(name) not in used_team_names
+        ]
         title_hints = _extract_title_hints(prompt_text)
         base_title = title_hints[0] if title_hints else "Generated Support Group"
         description_match = re.search(
@@ -3348,13 +3990,18 @@ def _build_deterministic_chunk_rows(
         )
         description_hint = str(description_match.group(1)).strip() if description_match else ""
         for index in range(1, requested_count + 1):
+            title = (
+                available_team_names[index - 1]
+                if index <= len(available_team_names)
+                else base_title
+            )
             actions = []
             if description_hint:
                 actions.append({"field": "description", "value": f"Support group for {description_hint}."})
             rows.append(
                 {
                     "object_type": "groups",
-                    "title": _next_unique_title(base_title, index),
+                    "title": _next_unique_title(title, index),
                     "conditions": [],
                     "actions": actions,
                     "dependency_notes": [fallback_note],
@@ -3380,13 +4027,30 @@ def _build_deterministic_chunk_rows(
         return rows
 
     if normalized_object_type == "categories":
+        category_names = _extract_article_category_names(prompt_text)
+        used_category_names = {
+            _normalize_title_for_dedupe(str(row.get("title", "")))
+            for row in (generated_rows or [])
+            if isinstance(row, dict)
+            and _normalize_object_type(str(row.get("object_type", ""))) == "categories"
+        }
+        available_category_names = [
+            name
+            for name in category_names
+            if _normalize_title_for_dedupe(name) not in used_category_names
+        ]
         title_hints = _extract_title_hints(prompt_text)
         base_title = title_hints[0] if title_hints else "General Information"
         for index in range(1, requested_count + 1):
+            title = (
+                available_category_names[index - 1]
+                if index <= len(available_category_names)
+                else base_title
+            )
             rows.append(
                 {
                     "object_type": "categories",
-                    "title": _next_unique_title(base_title, index),
+                    "title": _next_unique_title(title, index),
                     "conditions": [],
                     "actions": [
                         {"field": "locale", "value": "en-us"},
@@ -3405,16 +4069,35 @@ def _build_deterministic_chunk_rows(
             if candidate.isdigit():
                 category_id = candidate
                 break
+        category_names = _extract_article_category_names(prompt_text)
+        used_section_names = {
+            _normalize_title_for_dedupe(str(row.get("title", "")))
+            for row in (generated_rows or [])
+            if isinstance(row, dict)
+            and _normalize_object_type(str(row.get("object_type", ""))) == "sections"
+        }
+        available_section_names = [
+            name
+            for name in category_names
+            if _normalize_title_for_dedupe(name) not in used_section_names
+        ]
         title_hints = _extract_title_hints(prompt_text)
         base_title = title_hints[0] if title_hints else "General Support"
         for index in range(1, requested_count + 1):
+            title = (
+                available_section_names[index - 1]
+                if index <= len(available_section_names)
+                else base_title
+            )
             actions = [{"field": "locale", "value": "en-us"}]
             if category_id:
                 actions.append({"field": "category_id", "value": category_id})
+            elif title in category_names:
+                actions.append({"field": "category_name", "value": title})
             rows.append(
                 {
                     "object_type": "sections",
-                    "title": _next_unique_title(base_title, index),
+                    "title": _next_unique_title(title, index),
                     "conditions": [],
                     "actions": actions,
                     "dependency_notes": [fallback_note],
@@ -3423,6 +4106,18 @@ def _build_deterministic_chunk_rows(
         return rows
 
     if normalized_object_type == "ticket_forms":
+        form_specs = _extract_ticket_form_specs_from_prompt(prompt_text)
+        used_form_names = {
+            _normalize_title_for_dedupe(str(row.get("title", "")))
+            for row in (generated_rows or [])
+            if isinstance(row, dict)
+            and _normalize_object_type(str(row.get("object_type", ""))) == "ticket_forms"
+        }
+        available_form_specs = [
+            spec
+            for spec in form_specs
+            if _normalize_title_for_dedupe(str(spec.get("title", ""))) not in used_form_names
+        ]
         referenced_fields = _extract_ticket_form_field_hints_from_prompt(
             prompt=prompt_text,
             reference_catalog=reference_catalog,
@@ -3449,12 +4144,23 @@ def _build_deterministic_chunk_rows(
             referenced_fields = ["General Intake Field"]
 
         for index in range(1, requested_count + 1):
+            form_spec = (
+                available_form_specs[index - 1]
+                if index <= len(available_form_specs)
+                else {}
+            )
+            form_title = str(form_spec.get("title", "")).strip() or "Generated Intake Form"
+            form_fields = [
+                str(item).strip()
+                for item in list(form_spec.get("fields", []) or [])
+                if str(item).strip()
+            ] or referenced_fields[:8]
             rows.append(
                 {
                     "object_type": "ticket_forms",
-                    "title": _next_unique_title("Generated Intake Form", index),
+                    "title": _next_unique_title(form_title, index),
                     "conditions": [],
-                    "actions": [{"field": "ticket_field_names", "value": referenced_fields[:8]}],
+                    "actions": [{"field": "ticket_field_names", "value": form_fields[:30]}],
                     "dependency_notes": [fallback_note],
                 }
             )
@@ -3477,6 +4183,23 @@ def _build_deterministic_chunk_rows(
         return rows
 
     if normalized_object_type == "articles":
+        article_specs = _extract_article_specs_from_prompt(prompt_text)
+        used_article_names = {
+            _normalize_title_for_dedupe(str(row.get("title", "")))
+            for row in (generated_rows or [])
+            if isinstance(row, dict)
+            and _normalize_object_type(str(row.get("object_type", ""))) == "articles"
+        }
+        if "_chunk_offset" in (backlog_item or {}):
+            available_article_specs = article_specs[
+                explicit_chunk_offset : explicit_chunk_offset + requested_count
+            ]
+        else:
+            available_article_specs = [
+                spec
+                for spec in article_specs
+                if _normalize_title_for_dedupe(spec.get("title", "")) not in used_article_names
+            ]
         section_id: str | None = None
         for section in reference_catalog.get("sections", []) or []:
             if not isinstance(section, dict):
@@ -3488,19 +4211,46 @@ def _build_deterministic_chunk_rows(
         title_hints = _extract_title_hints(prompt_text)
         base_title = title_hints[0] if title_hints else "Generated Help Article"
         for index in range(1, requested_count + 1):
+            spec = (
+                available_article_specs[index - 1]
+                if index <= len(available_article_specs)
+                else {}
+            )
+            article_title = str(spec.get("title", "")).strip() or base_title
+            category_name = str(spec.get("category", "")).strip()
+            requirements = str(spec.get("requirements", "")).strip()
+            body = _html_paragraphs(
+                f"This guide explains {article_title.lower()}.",
+                requirements
+                or "Review the relevant policy details, gather supporting documents, and contact support with the outcome you need.",
+                "Keep the request and supporting evidence together so the assigned team can confirm next steps, timing, and any follow-up requirements.",
+            )
             actions = [
                 {"field": "locale", "value": "en-us"},
-                {"field": "body", "value": "<p>Draft article generated from business brief fallback.</p>"},
+                {"field": "body", "value": body},
             ]
             if section_id:
                 actions.append({"field": "section_id", "value": section_id})
+            elif category_name:
+                actions.append({"field": "section_name", "value": category_name})
             rows.append(
                 {
                     "object_type": "articles",
-                    "title": _next_unique_title(base_title, index),
+                    "title": (
+                        article_title
+                        if "_chunk_offset" in (backlog_item or {}) and spec
+                        else _next_unique_title(article_title, index)
+                    ),
                     "conditions": [],
                     "actions": actions,
-                    "dependency_notes": [fallback_note],
+                    "dependency_notes": [
+                        fallback_note,
+                        *(
+                            [f"Depends on same-batch help center section: {category_name}."]
+                            if category_name and not section_id
+                            else []
+                        ),
+                    ],
                 }
             )
         return rows
@@ -3652,7 +4402,7 @@ async def _draft_department_content_rows(
             "role": "user",
             "content": json.dumps(
                 {
-                    "business": "Apex Mobility Finance",
+                    "business": _extract_company_name_from_prompt(prompt) or "the company",
                     "department": department,
                     "topic": topic,
                     "object_type": normalized_object_type,
@@ -3775,6 +4525,12 @@ def _supplement_chunk_rows_to_target(
         if title:
             title_seed.append(title)
 
+    supplement_backlog_item = dict(backlog_item or {})
+    if "_chunk_offset" in supplement_backlog_item:
+        supplement_backlog_item["_chunk_offset"] = (
+            max(int(supplement_backlog_item.get("_chunk_offset", 0) or 0), 0)
+            + len(current_rows)
+        )
     supplements = _build_deterministic_chunk_rows(
         object_type=object_type,
         target_count=missing,
@@ -3783,7 +4539,7 @@ def _supplement_chunk_rows_to_target(
         existing_titles=title_seed,
         generated_rows=list(generated_rows or []) + current_rows,
         reason=reason,
-        backlog_item=backlog_item,
+        backlog_item=supplement_backlog_item,
     )
     if not supplements:
         return current_rows, 0
@@ -3830,11 +4586,336 @@ def _dedupe_generated_rows(rows: list[dict]) -> tuple[list[dict], int]:
     return deduped, dropped
 
 
+def _drop_wildcard_reference_conditions(rows: list[dict]) -> int:
+    removed = 0
+    wildcard_values = {"*", "all", "any", "all forms", "any form", "all groups", "any group"}
+    reference_fields = {"ticket_form", "ticket_form_id", "form", "form_id", "group", "group_id"}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        conditions = row.get("conditions", [])
+        conditions = conditions if isinstance(conditions, list) else []
+        kept: list[dict] = []
+        row_removed = 0
+        for entry in conditions:
+            if not isinstance(entry, dict):
+                continue
+            field = str(entry.get("field", "")).strip().lower()
+            value = re.sub(r"\s+", " ", str(entry.get("value", "")).strip().lower())
+            if field in reference_fields and value in wildcard_values:
+                removed += 1
+                row_removed += 1
+                continue
+            kept.append(entry)
+        row["conditions"] = kept
+        if row_removed:
+            _append_dependency_note(
+                row,
+                "Wildcard form/group condition removed; absence of that condition already means all values.",
+            )
+    return removed
+
+
+def _apply_explicit_article_dependencies(rows: list[dict], *, prompt: str) -> int:
+    specs_by_title = {
+        _normalize_title_for_dedupe(str(spec.get("title", ""))): spec
+        for spec in _extract_article_specs_from_prompt(prompt)
+        if str(spec.get("title", "")).strip()
+    }
+    applied = 0
+    section_aliases = ARTICLE_FIELD_ALIASES["section_id"]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if _normalize_object_type(str(row.get("object_type", ""))) != "articles":
+            continue
+        section_entries = [
+            entry
+            for bucket in ("conditions", "actions")
+            for entry in list(row.get(bucket, []) or [])
+            if isinstance(entry, dict)
+            and str(entry.get("field", "")).strip().lower() in section_aliases
+            and str(entry.get("value", "")).strip()
+        ]
+        if any(
+            str(entry.get("field", "")).strip().lower() == "section_id"
+            and str(entry.get("value", "")).strip().isdigit()
+            for entry in section_entries
+        ):
+            continue
+        spec = specs_by_title.get(_normalize_title_for_dedupe(str(row.get("title", ""))))
+        category = str((spec or {}).get("category", "")).strip()
+        if not category:
+            continue
+        has_exact_section_name = any(
+            str(entry.get("field", "")).strip().lower() == "section_name"
+            and _normalize_title_for_dedupe(str(entry.get("value", "")))
+            == _normalize_title_for_dedupe(category)
+            for entry in section_entries
+        )
+        if has_exact_section_name:
+            continue
+        _drop_row_entries_by_aliases(row, section_aliases)
+        _set_action_value(row, "section_name", category)
+        _append_dependency_note(row, f"Depends on same-batch help center section: {category}.")
+        applied += 1
+    return applied
+
+
 def _truncate_text(value: str, max_chars: int) -> str:
     text = str(value or "").strip()
     if max_chars <= 0 or len(text) <= max_chars:
         return text
     return text[: max_chars - 3].rstrip() + "..."
+
+
+def _prepare_update_request(
+    request: ImportAssistantGenerateRequest,
+) -> tuple[ImportAssistantGenerateRequest, dict]:
+    if request.operation_mode != "update" or request.update_target is None:
+        return request, {"operation_mode": "create"}
+
+    target = request.update_target
+    target_focus = UPDATE_FOCUS_BY_CONTEXT_TYPE.get(target.object_type)
+    if not target_focus:
+        raise ValueError(f"Update is not supported for object type '{target.object_type}'.")
+    instruction = (
+        "EXACT UPDATE MODE. Modify only the selected related object and return exactly one complete "
+        f"{target_focus} record representing its final state. Preserve every unchanged condition and "
+        "action from related_objects[0].snapshot. Conditions may include scope=all or scope=any. "
+        "Do not create a replacement object, invent IDs, or change object type. Preserve the title "
+        "unless the user explicitly asks to rename it."
+    )
+    notes = " ".join(
+        part
+        for part in [instruction, str(request.context_notes or "").strip()]
+        if part
+    )
+    prepared = request.model_copy(
+        update={
+            "dependency_mode": "force_existing_only",
+            "focus_object_types": [target_focus],
+            "related_objects": [target],
+            "context_notes": notes,
+        }
+    )
+    return prepared, {
+        "operation_mode": "update",
+        "instance_sync_id": request.instance_sync_id,
+        "target_object_id": target.id,
+        "target_object_type": target.object_type,
+        "target_name": target.name,
+        "target_updated_at": target.updated_at,
+        "target_snapshot_hash": target.snapshot_hash,
+    }
+
+
+def _snapshot_conditions(snapshot: dict, object_type: str) -> list[dict]:
+    if object_type == "views":
+        raw_groups = {"all": snapshot.get("all", []), "any": snapshot.get("any", [])}
+    else:
+        raw_conditions = snapshot.get("conditions", {})
+        raw_groups = raw_conditions if isinstance(raw_conditions, dict) else {"all": raw_conditions}
+    output: list[dict] = []
+    for scope in ("all", "any"):
+        entries = raw_groups.get(scope, []) if isinstance(raw_groups, dict) else []
+        for entry in entries if isinstance(entries, list) else []:
+            if not isinstance(entry, dict) or not str(entry.get("field", "")).strip():
+                continue
+            normalized = {
+                "field": str(entry.get("field", "")).strip(),
+                "operator": str(entry.get("operator", "is")).strip() or "is",
+                "scope": scope,
+            }
+            if "value" in entry:
+                normalized["value"] = entry.get("value")
+            output.append(normalized)
+    return output
+
+
+def _snapshot_actions(snapshot: dict, object_type: str) -> list[dict]:
+    raw_actions = snapshot.get("actions", [])
+    if isinstance(raw_actions, list) and raw_actions:
+        return [dict(item) for item in raw_actions if isinstance(item, dict) and item.get("field")]
+
+    actions: list[dict] = []
+
+    def add(field: str, value: object) -> None:
+        if value is None or value == "" or value == []:
+            return
+        actions.append({"field": field, "value": value})
+
+    if object_type == "views":
+        output = snapshot.get("output", {}) if isinstance(snapshot.get("output"), dict) else {}
+        add("output_columns", output.get("columns"))
+        add("sort_by", output.get("sort_by"))
+        add("sort_order", output.get("sort_order"))
+    elif object_type == "ticket_forms":
+        add("ticket_field_ids", snapshot.get("ticket_field_ids"))
+    elif object_type == "ticket_fields":
+        add("field_type", snapshot.get("type"))
+        for field in (
+            "tag",
+            "title_in_portal",
+            "custom_field_options",
+            "agent_can_edit",
+            "visible_in_portal",
+            "editable_in_portal",
+            "required",
+            "required_in_portal",
+        ):
+            if field in snapshot:
+                add(field, snapshot.get(field))
+    elif object_type == "groups":
+        add("description", snapshot.get("description"))
+    elif object_type == "brands":
+        add("subdomain", snapshot.get("subdomain"))
+    elif object_type == "categories":
+        add("locale", snapshot.get("locale"))
+        add("description", snapshot.get("description"))
+    elif object_type == "sections":
+        add("category_id", snapshot.get("category_id"))
+        add("locale", snapshot.get("locale"))
+        add("description", snapshot.get("description"))
+    elif object_type == "articles":
+        add("section_id", snapshot.get("section_id"))
+        add("body", snapshot.get("body"))
+        add("locale", snapshot.get("locale"))
+        add("label_names", snapshot.get("label_names"))
+    return actions
+
+
+def _snapshot_configuration(target: dict, object_type: str) -> dict:
+    snapshot = target.get("snapshot", {}) if isinstance(target.get("snapshot"), dict) else {}
+    return {
+        "title": str(snapshot.get("title") or snapshot.get("name") or target.get("name") or "").strip(),
+        "active": snapshot.get("active"),
+        "conditions": _snapshot_conditions(snapshot, object_type),
+        "actions": _snapshot_actions(snapshot, object_type),
+    }
+
+
+def _configuration_change_summary(before: dict, after: dict) -> list[dict]:
+    summary: list[dict] = []
+    for field, label in (
+        ("title", "Name"),
+        ("active", "Status"),
+        ("conditions", "Conditions"),
+        ("actions", "Actions"),
+    ):
+        before_value = before.get(field)
+        after_value = after.get(field)
+        changed = json.dumps(before_value, sort_keys=True, default=str) != json.dumps(
+            after_value,
+            sort_keys=True,
+            default=str,
+        )
+        entry = {"field": field, "label": label, "changed": changed}
+        if isinstance(before_value, list) or isinstance(after_value, list):
+            entry["before_count"] = len(before_value or [])
+            entry["after_count"] = len(after_value or [])
+        else:
+            entry["before"] = before_value
+            entry["after"] = after_value
+        summary.append(entry)
+    return summary
+
+
+def _bind_update_target_to_generated_rows(
+    rows: list[dict],
+    *,
+    request: ImportAssistantGenerateRequest,
+) -> tuple[list[dict], dict]:
+    if request.operation_mode != "update" or request.update_target is None:
+        return rows, {"operation_mode": "create", "applied": False}
+
+    target = request.update_target.model_dump()
+    expected_type = UPDATE_FOCUS_BY_CONTEXT_TYPE[request.update_target.object_type]
+    before = _snapshot_configuration(target, expected_type)
+    matching_rows = [
+        dict(row)
+        for row in rows
+        if _normalize_object_type(str(row.get("object_type", ""))) == expected_type
+    ]
+    binding_warnings: list[str] = []
+    if matching_rows:
+        row = matching_rows[0]
+        if len(rows) != 1:
+            binding_warnings.append(
+                f"Update generation returned {len(rows)} records; only the exact target record was retained."
+            )
+    else:
+        row = {
+            "object_type": expected_type,
+            "title": before.get("title") or request.update_target.name,
+            "conditions": list(before.get("conditions", []) or []),
+            "actions": list(before.get("actions", []) or []),
+        }
+        row.setdefault("validation_overrides", {})["blocked_reason"] = (
+            f"Update generation did not return the selected {expected_type.rstrip('s')} type."
+        )
+
+    rename_requested = bool(
+        re.search(
+            r"\b(?:rename|change\s+(?:the\s+)?(?:name|title))\b",
+            request.prompt,
+            flags=re.IGNORECASE,
+        )
+    )
+    if not rename_requested:
+        row["title"] = before.get("title") or request.update_target.name
+    if not list(row.get("conditions", []) or []) and before.get("conditions"):
+        row["conditions"] = list(before.get("conditions", []) or [])
+    if not list(row.get("actions", []) or []) and before.get("actions"):
+        row["actions"] = list(before.get("actions", []) or [])
+    if "active" not in row and before.get("active") is not None:
+        row["active"] = before.get("active")
+
+    after = {
+        "title": str(row.get("title") or "").strip(),
+        "active": row.get("active"),
+        "conditions": list(row.get("conditions", []) or []),
+        "actions": list(row.get("actions", []) or []),
+    }
+    change_summary = _configuration_change_summary(before, after)
+    if not any(item.get("changed") for item in change_summary):
+        row.setdefault("validation_overrides", {})["blocked_reason"] = (
+            "The proposed update does not change the synchronized Zendesk object."
+        )
+
+    dependency_notes = list(row.get("dependency_notes", []) or [])
+    dependency_notes.append(
+        f"Exact update target: {request.update_target.object_type} '{request.update_target.name}' "
+        f"(Zendesk ID {request.update_target.id})."
+    )
+    dependency_notes.extend(binding_warnings)
+    row.update(
+        {
+            "object_type": expected_type,
+            "operation_mode": "update",
+            "target_object_id": request.update_target.id,
+            "target_object_type": request.update_target.object_type,
+            "target_updated_at": request.update_target.updated_at,
+            "target_snapshot_hash": request.update_target.snapshot_hash,
+            "zendesk_object_id": request.update_target.id,
+            "before_configuration": before,
+            "after_configuration": after,
+            "change_summary": change_summary,
+            "dependency_notes": list(dict.fromkeys(str(item) for item in dependency_notes if str(item).strip())),
+        }
+    )
+    return [row], {
+        "operation_mode": "update",
+        "applied": True,
+        "instance_sync_id": request.instance_sync_id,
+        "target_object_id": request.update_target.id,
+        "target_object_type": request.update_target.object_type,
+        "target_name": request.update_target.name,
+        "source_record_count": len(rows),
+        "retained_record_count": 1,
+        "changed_fields": [item["field"] for item in change_summary if item.get("changed")],
+        "warnings": binding_warnings,
+    }
 
 
 def _compact_related_objects(related_objects: list[dict], *, max_items: int) -> list[dict]:
@@ -3844,14 +4925,57 @@ def _compact_related_objects(related_objects: list[dict], *, max_items: int) -> 
             break
         if not isinstance(item, dict):
             continue
-        output.append(
-            {
-                "object_type": str(item.get("object_type", "")).strip(),
-                "id": str(item.get("id", "")).strip(),
-                "name": _truncate_text(str(item.get("name", "")), 180),
-                "description": _truncate_text(str(item.get("description", "")), 300),
+        compact = {
+            "object_type": str(item.get("object_type", "")).strip(),
+            "id": str(item.get("id", "")).strip(),
+            "name": _truncate_text(str(item.get("name", "")), 180),
+            "description": _truncate_text(str(item.get("description", "")), 300),
+        }
+        snapshot = item.get("snapshot")
+        if isinstance(snapshot, dict) and snapshot:
+            allowed_snapshot_fields = {
+                "id",
+                "title",
+                "name",
+                "active",
+                "conditions",
+                "all",
+                "any",
+                "actions",
+                "output",
+                "type",
+                "tag",
+                "custom_field_options",
+                "ticket_field_ids",
+                "description",
+                "subdomain",
+                "locale",
+                "category_id",
+                "section_id",
+                "body",
+                "draft",
+                "label_names",
+                "agent_can_edit",
+                "visible_in_portal",
+                "editable_in_portal",
+                "required",
+                "required_in_portal",
+                "title_in_portal",
+                "updated_at",
             }
-        )
+            compact["snapshot"] = {
+                key: (
+                    _truncate_text(value, 20000)
+                    if isinstance(value, str)
+                    else value
+                )
+                for key, value in snapshot.items()
+                if key in allowed_snapshot_fields
+            }
+            compact["snapshot_hash"] = str(item.get("snapshot_hash") or "")
+            compact["updated_at"] = str(item.get("updated_at") or "")
+            compact["update_target"] = True
+        output.append(compact)
     return output
 
 
@@ -4401,6 +5525,10 @@ def _normalize_rule_entries(
         if treat_as_conditions:
             operator = str(entry.get("operator", "is")).strip() or "is"
             normalized_entry["operator"] = operator
+            scope = str(
+                entry.get("scope") or entry.get("condition_scope") or "all"
+            ).strip().lower()
+            normalized_entry["scope"] = "any" if scope == "any" else "all"
         normalized_entries.append(normalized_entry)
 
     if dropped_invalid > 0:
@@ -4611,7 +5739,12 @@ def _canonicalize_article_record(
     if not locale_value:
         info["defaults_applied"].append("locale=en-us")
 
-    body_value = _extract_article_value_from_row(row, ARTICLE_FIELD_ALIASES["body"])
+    body_value = _extract_article_value_from_row(row, {"body"})
+    if body_value in (None, ""):
+        body_value = _extract_article_value_from_row(
+            row,
+            ARTICLE_FIELD_ALIASES["body"] - {"body"},
+        )
     body_text = str(body_value or "").strip()
     if not body_text:
         template_key = _select_article_template_key(prompt)
@@ -4634,6 +5767,7 @@ def _canonicalize_article_record(
         if not body_text:
             body_text = f"<p>{info['title']}</p>"
             info["defaults_applied"].append("body=title_template")
+    _drop_row_entries_by_aliases(row, ARTICLE_FIELD_ALIASES["body"])
     _set_action_value(row, "body", body_text)
 
     draft_value = _extract_article_value_from_row(row, ARTICLE_FIELD_ALIASES["draft"])
@@ -4647,6 +5781,20 @@ def _canonicalize_article_record(
         _set_action_value(row, "draft", draft_bool)
 
     section_raw = _extract_article_value_from_row(row, ARTICLE_FIELD_ALIASES["section_id"])
+    if not str(section_raw or "").strip():
+        article_title_key = _normalize_title_for_dedupe(str(row.get("title", "")))
+        matching_spec = next(
+            (
+                spec
+                for spec in _extract_article_specs_from_prompt(prompt)
+                if _normalize_title_for_dedupe(str(spec.get("title", ""))) == article_title_key
+            ),
+            None,
+        )
+        inferred_section_name = str((matching_spec or {}).get("category", "")).strip()
+        if inferred_section_name:
+            section_raw = inferred_section_name
+            info["defaults_applied"].append("section_name=explicit_article_spec")
     section_id, lookup_source = _find_reference_id_from_lookup(
         section_raw,
         object_type="section",
@@ -4814,6 +5962,30 @@ def _extract_ticket_field_specs_from_prompt(prompt: str) -> list[dict[str, objec
                 "options": options[:20],
             }
         )
+    for spec in specs:
+        if str(spec.get("field_type", "")) not in {"tagger", "multiselect"}:
+            continue
+        title = str(spec.get("title", "")).strip()
+        if not title:
+            continue
+        options = [str(item).strip() for item in list(spec.get("options", []) or []) if str(item).strip()]
+        option_keys = {_coverage_key(item) for item in options}
+        implied: list[str] = []
+        condition_pattern = re.compile(
+            rf"\b{re.escape(title)}\s+(?:is|equals?)\s+[\"'](?P<value>[^\"']{{1,80}})[\"']",
+            flags=re.IGNORECASE,
+        )
+        for match in condition_pattern.finditer(text):
+            value = str(match.group("value") or "").strip()
+            key = _coverage_key(value)
+            if not key or key in option_keys:
+                continue
+            option_keys.add(key)
+            options.append(value)
+            implied.append(value)
+        spec["options"] = options[:30]
+        if implied:
+            spec["implied_options_added"] = implied[:10]
     return specs
 
 
@@ -5199,9 +6371,6 @@ def _apply_dependency_resolution(
     catalog_lookup: dict[str, dict[str, str]],
     dependency_mode: str,
 ) -> tuple[list[dict], dict]:
-    if not related_lookup and not catalog_lookup:
-        return rows, {"resolved_links": 0, "unresolved_links": 0, "unresolved_samples": []}
-
     resolved_links = 0
     unresolved_links = 0
     unresolved_samples: list[str] = []
@@ -5278,6 +6447,7 @@ def _apply_dependency_resolution(
                     continue
                 same_batch_reference = same_batch_lookup.get(expected_object, {}).get(normalized_value)
                 if same_batch_reference:
+                    resolved_links += 1
                     row_notes.append(
                         f"{field}: '{value}' references same-batch {expected_object} '{same_batch_reference}'."
                     )
@@ -5351,7 +6521,11 @@ def _build_preview_records(
         if object_type in {"groups"} and not title:
             row_warnings.append("Group record requires a name/title.")
         if dependency_notes:
-            row_warnings.extend(dependency_notes)
+            row_warnings.extend(
+                note
+                for note in dependency_notes
+                if not str(note).startswith("Exact update target:")
+            )
 
         if blocked_reason:
             blocked += 1
@@ -5375,8 +6549,16 @@ def _build_preview_records(
                 "conditions": conditions,
                 "actions": actions,
                 "deployment_status": "pending",
-                "zendesk_object_id": None,
+                "zendesk_object_id": item.get("zendesk_object_id"),
                 "execution_message": "",
+                "operation_mode": str(item.get("operation_mode") or "create"),
+                "target_object_id": item.get("target_object_id"),
+                "target_object_type": item.get("target_object_type"),
+                "target_updated_at": item.get("target_updated_at"),
+                "target_snapshot_hash": item.get("target_snapshot_hash"),
+                "before_configuration": item.get("before_configuration"),
+                "after_configuration": item.get("after_configuration"),
+                "change_summary": list(item.get("change_summary", []) or []),
             }
         )
 
@@ -5729,7 +6911,7 @@ def _canonicalize_ticket_field_record(
 
     raw_option_values = _extract_values_by_field_aliases(row, TICKET_FIELD_OPTIONS_FIELDS)
     raw_options = raw_option_values[0] if raw_option_values else None
-    if raw_options in (None, "", []):
+    if normalized_type in {"tagger", "multiselect"} and raw_options in (None, "", []):
         prompt_option_hints = _extract_ticket_field_option_hints(
             prompt,
             field_title=info["title"],
@@ -5760,14 +6942,19 @@ def _canonicalize_ticket_field_record(
     parsed_options = cleaned_options
     info["warnings"].extend(option_warnings)
     _drop_row_entries_by_aliases(row, TICKET_FIELD_OPTIONS_FIELDS)
-    if parsed_options:
-        _set_action_value(row, "custom_field_options", parsed_options)
-    elif normalized_type in {"tagger", "multiselect"}:
-        row.setdefault("validation_overrides", {})
-        row["validation_overrides"]["blocked_reason"] = (
-            "Dropdown/multi-select fields require custom_field_options, but no valid options were generated."
+    if normalized_type in {"tagger", "multiselect"}:
+        if parsed_options:
+            _set_action_value(row, "custom_field_options", parsed_options)
+        else:
+            row.setdefault("validation_overrides", {})
+            row["validation_overrides"]["blocked_reason"] = (
+                "Dropdown/multi-select fields require custom_field_options, but no valid options were generated."
+            )
+            info["warnings"].append("Missing custom_field_options for dropdown/multi-select field.")
+    elif parsed_options:
+        info["warnings"].append(
+            f"Ignored custom_field_options because field_type={normalized_type} does not support options."
         )
-        info["warnings"].append("Missing custom_field_options for dropdown/multi-select field.")
 
     defaults = {
         "agent_can_edit": settings.ticket_field_default_agent_can_edit,
@@ -5910,6 +7097,7 @@ def _canonicalize_generated_rows(
     form_resolution = {
         "resolved_ids": 0,
         "auto_created_fields": 0,
+        "system_field_references": 0,
         "unresolved": [],
         "forms_processed": 0,
         "inference_hints_count": 0,
@@ -6087,6 +7275,16 @@ def _canonicalize_generated_rows(
 
             if ref_text.lower() in generated_field_titles:
                 referenced_names.append(ref_text)
+                continue
+
+            if ref_text.lower() in ZENDESK_SYSTEM_TICKET_FIELD_NAMES:
+                referenced_names.append(ref_text)
+                form_resolution["system_field_references"] += 1
+                dependency_notes = list(row.get("dependency_notes", []) or [])
+                dependency_notes.append(
+                    f"Zendesk system field '{ref_text}' will be resolved by exact name at deployment time."
+                )
+                row["dependency_notes"] = dependency_notes
                 continue
 
             if settings.form_missing_field_mode == "auto_create":
@@ -6435,6 +7633,10 @@ def _build_planning_summary(
     return {
         "object_type": plan.get("object_type", "triggers"),
         "intent": plan.get("intent", request.prompt),
+        "operation_mode": request.operation_mode,
+        "target_object_id": request.update_target.id if request.update_target else None,
+        "target_object_type": request.update_target.object_type if request.update_target else None,
+        "target_name": request.update_target.name if request.update_target else None,
         "confidence": plan.get("confidence", 0.7),
         "ambiguity_score": plan.get("ambiguity_score", 0.0),
         "prompt_explicit": prompt_explicit,
@@ -6605,6 +7807,7 @@ async def _generate_import_assistant_batch_impl(
     sheets = SheetsService()
     appscript = AppScriptBridgeService()
     settings = get_settings()
+    request, operation_metadata = _prepare_update_request(request)
     benchmark_mode = bool(
         settings.benchmark_mode_enabled
         and str(request.mode or "").strip().lower() == "benchmark"
@@ -6645,6 +7848,7 @@ async def _generate_import_assistant_batch_impl(
     force_wave_chunk_path = False
     force_wave_chunk_reason = "standard_prompt"
     planner_bypassed = False
+    explicit_manifest_planner_bypass = False
     orchestration_mode = "explicit_fast_path"
     orchestration_metadata: dict = {
         "mode": orchestration_mode,
@@ -7013,24 +8217,10 @@ async def _generate_import_assistant_batch_impl(
             "pending_counts": _count_generated(pending_rows),
         }
 
-    def _department_review_bundle_key(chunk: dict) -> str:
-        wave = int(chunk.get("wave", 0) or 0)
-        department = str(chunk.get("department_name", "")).strip()
-        topic = str(chunk.get("topic", "")).strip()
-        object_type = str(chunk.get("object_type", "")).strip()
-        coverage_kind = str(chunk.get("coverage_kind", "")).strip()
-        if wave == 1:
-            return f"topic:{_coverage_key(topic or chunk.get('title_hint') or object_type)}"
-        if wave == 2 and coverage_kind == "shared_ticket_fields":
-            return "shared:ticket_fields"
-        if department:
-            return f"department:{_coverage_key(department)}"
-        return f"type:{object_type}"
-
     def _build_department_review_units(chunks: list[dict], *, wave: int) -> list[dict]:
         grouped: dict[str, list[dict]] = {}
         for chunk in chunks:
-            grouped.setdefault(_department_review_bundle_key(chunk), []).append(chunk)
+            grouped.setdefault(_supervisor_review_bundle_key(chunk), []).append(chunk)
         units: list[dict] = []
         for bundle_key, members in grouped.items():
             rows = [row for member in members for row in member.get("rows", []) if isinstance(row, dict)]
@@ -7429,6 +8619,19 @@ async def _generate_import_assistant_batch_impl(
             expected_titles = [str(item.get("department_name"))]
         elif object_type == "ticket_forms" and item.get("form_title"):
             expected_titles = [str(item.get("form_title"))]
+        elif object_type in {"views", "triggers", "macros", "articles"}:
+            explicit_specs = {
+                "views": _extract_view_specs_from_prompt,
+                "triggers": _extract_trigger_specs_from_prompt,
+                "macros": _extract_macro_specs_from_prompt,
+                "articles": _extract_article_specs_from_prompt,
+            }[object_type](request.prompt)
+            offset = max(int(item.get("_chunk_offset", 0) or 0), 0)
+            expected_titles = [
+                str(spec.get("title", "")).strip()
+                for spec in explicit_specs[offset : offset + max(int(target_count or 1), 1)]
+                if str(spec.get("title", "")).strip()
+            ]
         gate_spec = {
             "chunk_id": chunk_id,
             "object_type": object_type,
@@ -7536,6 +8739,7 @@ async def _generate_import_assistant_batch_impl(
         def replace_chunk_rows(chunk: dict, replacement_rows: list[dict]) -> None:
             nonlocal generated_data
             chunk_id = str(chunk.get("chunk_id", ""))
+            _apply_explicit_article_dependencies(replacement_rows, prompt=request.prompt)
             first_index = next(
                 (
                     index
@@ -7789,40 +8993,68 @@ async def _generate_import_assistant_batch_impl(
         )
         planner_context_bundle = llm_context_standard
         generator_context_bundle = llm_context_standard
-        chunk_estimate = _estimate_requested_record_count(request.prompt)
-        estimated_requested_records = int(chunk_estimate.get("estimated_count", 1) or 1)
-        inferred_object_type_for_explicitness = _infer_object_type_from_prompt(
-            prompt=request.prompt,
-            focus_object_types=focus_object_types,
-        )
-        prompt_explicit_for_bypass = _is_explicit_enough_for_generation(
-            request.prompt,
-            inferred_object_type_for_explicitness,
-        )
-        pre_planner_object_targets = _extract_object_type_targets(
-            prompt=request.prompt,
-            focus_object_types=focus_object_types,
-            estimated_count=estimated_requested_records,
-            chunk_estimate=chunk_estimate,
-        )
-        pre_planner_coverage_manifest = _build_department_coverage_manifest(
-            prompt=request.prompt,
-            focus_object_types=focus_object_types,
-        )
-        force_wave_chunk_path, force_wave_chunk_reason = _should_force_wave_chunk_path(
-            prompt=request.prompt,
-            estimated_count=estimated_requested_records,
-            object_targets=pre_planner_object_targets,
-            chunk_estimate=chunk_estimate,
-        )
-        planner_bypassed = bool(
-            pre_planner_coverage_manifest.get("enabled")
-            or (
-                estimated_requested_records == 1
-                and prompt_explicit_for_bypass
-                and not force_wave_chunk_path
+        if request.operation_mode == "update" and request.update_target is not None:
+            target_object_type = UPDATE_FOCUS_BY_CONTEXT_TYPE[request.update_target.object_type]
+            chunk_estimate = {
+                "estimated_count": 1,
+                "sources": ["exact_update_target"],
+                "numeric_matches": [],
+                "enumerated_items": 0,
+            }
+            estimated_requested_records = 1
+            inferred_object_type_for_explicitness = target_object_type
+            prompt_explicit_for_bypass = True
+            pre_planner_object_targets = {target_object_type: 1}
+            pre_planner_coverage_manifest = {
+                "enabled": False,
+                "reason": "exact_update_target",
+                "departments": [],
+            }
+            force_wave_chunk_path = False
+            force_wave_chunk_reason = "exact_update_target"
+            explicit_manifest_planner_bypass = False
+            planner_bypassed = True
+        else:
+            chunk_estimate = _estimate_requested_record_count(request.prompt)
+            estimated_requested_records = int(chunk_estimate.get("estimated_count", 1) or 1)
+            inferred_object_type_for_explicitness = _infer_object_type_from_prompt(
+                prompt=request.prompt,
+                focus_object_types=focus_object_types,
             )
-        )
+            prompt_explicit_for_bypass = _is_explicit_enough_for_generation(
+                request.prompt,
+                inferred_object_type_for_explicitness,
+            )
+            pre_planner_object_targets = _extract_object_type_targets(
+                prompt=request.prompt,
+                focus_object_types=focus_object_types,
+                estimated_count=estimated_requested_records,
+                chunk_estimate=chunk_estimate,
+            )
+            pre_planner_coverage_manifest = _build_department_coverage_manifest(
+                prompt=request.prompt,
+                focus_object_types=focus_object_types,
+            )
+            force_wave_chunk_path, force_wave_chunk_reason = _should_force_wave_chunk_path(
+                prompt=request.prompt,
+                estimated_count=estimated_requested_records,
+                object_targets=pre_planner_object_targets,
+                chunk_estimate=chunk_estimate,
+            )
+            explicit_manifest_planner_bypass = _should_bypass_planner_for_explicit_manifest(
+                prompt=request.prompt,
+                object_targets=pre_planner_object_targets,
+                force_wave_chunk_reason=force_wave_chunk_reason,
+            )
+            planner_bypassed = bool(
+                pre_planner_coverage_manifest.get("enabled")
+                or explicit_manifest_planner_bypass
+                or (
+                    estimated_requested_records == 1
+                    and prompt_explicit_for_bypass
+                    and not force_wave_chunk_path
+                )
+            )
         store.append_status(batch_id, "request_validated", "Incoming request validated.")
         await _honor_run_control(checkpoint="planning start")
     except Exception as exc:  # noqa: BLE001
@@ -7907,9 +9139,17 @@ async def _generate_import_assistant_batch_impl(
 
     if planner_bypassed:
         planner_bypass_reason = (
-            "department_coverage_manifest"
-            if pre_planner_coverage_manifest.get("enabled")
-            else "single_item_explicit_prompt"
+            "exact_update_target"
+            if request.operation_mode == "update"
+            else (
+                "department_coverage_manifest"
+                if pre_planner_coverage_manifest.get("enabled")
+                else (
+                    "explicit_numbered_operating_model"
+                    if explicit_manifest_planner_bypass
+                    else "single_item_explicit_prompt"
+                )
+            )
         )
         store.append_status(
             batch_id,
@@ -7979,6 +9219,8 @@ async def _generate_import_assistant_batch_impl(
     resolved_object_type = _normalize_object_type(
         str(inference_result.get("resolved_object_type") or plan.get("object_type", "triggers"))
     )
+    if request.operation_mode == "update" and request.update_target is not None:
+        resolved_object_type = UPDATE_FOCUS_BY_CONTEXT_TYPE[request.update_target.object_type]
     plan["object_type"] = resolved_object_type
     inference_assumptions = list(inference_result.get("assumptions", []) or [])
     base_object_match = inference_result.get("base_object_match")
@@ -8011,6 +9253,9 @@ async def _generate_import_assistant_batch_impl(
         prompt_explicit=prompt_explicit,
         object_targets=object_targets,
     )
+    if request.operation_mode == "update":
+        use_business_blueprint = False
+        business_reason = "exact_update_target"
     if coverage_manifest.get("enabled"):
         use_business_blueprint = True
         if business_reason == "standard_record_prompt":
@@ -8022,7 +9267,9 @@ async def _generate_import_assistant_batch_impl(
     orchestration_backlog: list[dict] = []
     try:
         if use_business_blueprint and (
-            not planner_bypassed or coverage_manifest.get("enabled")
+            not planner_bypassed
+            or coverage_manifest.get("enabled")
+            or explicit_manifest_planner_bypass
         ):
             orchestration_mode = "business_blueprint"
             store.append_status(
@@ -8037,6 +9284,7 @@ async def _generate_import_assistant_batch_impl(
                     focus_object_types=focus_object_types,
                     object_targets=object_targets,
                     planner_route=planner_route,
+                    deterministic_only=explicit_manifest_planner_bypass,
                 )
                 if not planner_telemetry and isinstance(blueprint_telemetry, dict):
                     planner_telemetry = blueprint_telemetry
@@ -8468,7 +9716,7 @@ async def _generate_import_assistant_batch_impl(
                         and len(item_chunk_targets) > 0
                     )
                     compatibility_only_for_item = (
-                        (object_type == "ticket_fields" and len(item_chunk_targets) > 1)
+                        object_type == "ticket_fields"
                         or _is_wave3_rule_object_type(object_type)
                     )
                     item_mode_order = _generator_mode_order(
@@ -8486,18 +9734,27 @@ async def _generate_import_assistant_batch_impl(
 
                     for local_chunk_index, item_chunk_target in enumerate(item_chunk_targets, start=1):
                         chunk_backlog_item = dict(item)
+                        chunk_offset = sum(
+                            int(value or 0)
+                            for value in item_chunk_targets[: local_chunk_index - 1]
+                        )
+                        chunk_backlog_item["_chunk_offset"] = chunk_offset
                         if isinstance(item.get("fields"), list):
-                            field_offset = sum(
-                                int(value or 0)
-                                for value in item_chunk_targets[: local_chunk_index - 1]
-                            )
                             chunk_backlog_item["fields"] = list(item.get("fields", []))[
-                                field_offset : field_offset + int(item_chunk_target)
+                                chunk_offset : chunk_offset + int(item_chunk_target)
                             ]
-                        template_first_for_chunk = _should_use_department_template_first(
+                        department_template_first = _should_use_department_template_first(
                             chunk_backlog_item,
                             object_type,
                             strategy=settings.department_generation_strategy,
+                        )
+                        explicit_template_first = _should_use_explicit_template_first(
+                            prompt=request.prompt,
+                            object_type=object_type,
+                            target_count=int(item_chunk_target),
+                        )
+                        template_first_for_chunk = bool(
+                            department_template_first or explicit_template_first
                         )
                         chunk_item_plan = dict(item_plan)
                         chunk_item_plan["intent"] = _build_wave_prompt(
@@ -8512,7 +9769,11 @@ async def _generate_import_assistant_batch_impl(
                             )
                         )
                         if template_first_for_chunk:
-                            model_hint = ", template=department"
+                            model_hint = (
+                                ", template=department"
+                                if department_template_first
+                                else ", template=explicit_prompt"
+                            )
                         else:
                             model_hint = (
                                 f", model={item_generator_model}"
@@ -8546,7 +9807,11 @@ async def _generate_import_assistant_batch_impl(
                                 chunk_total=len(item_chunk_targets),
                                 target_count=int(item_chunk_target),
                                 mode=(
-                                    "department_template"
+                                    (
+                                        "department_template"
+                                        if department_template_first
+                                        else "explicit_template"
+                                    )
                                     if template_first_for_chunk
                                     else (
                                         "gemini"
@@ -8612,6 +9877,8 @@ async def _generate_import_assistant_batch_impl(
                             forced_deterministic_for_chunk = True
                             forced_reason = (
                                 f"Department coverage uses template-first generation for {object_type}."
+                                if department_template_first
+                                else f"Explicit prompt structure uses deterministic-first generation for {object_type}."
                             )
                             chunk_rows = _build_deterministic_chunk_rows(
                                 object_type=object_type,
@@ -8638,7 +9905,11 @@ async def _generate_import_assistant_batch_impl(
                                 )
                             used_deterministic_fallback = True
                             fallback_reason = forced_reason
-                            context_profile = "department_template"
+                            context_profile = (
+                                "department_template"
+                                if department_template_first
+                                else "explicit_template"
+                            )
                             chunk_runtime_metrics = {
                                 "pre_request_wait_ms": 0.0,
                                 "retry_count": 0,
@@ -8945,11 +10216,35 @@ async def _generate_import_assistant_batch_impl(
                                 else:
                                     fallback_reason = mismatch_reason
 
-                        is_department_supervisor_chunk = bool(
-                            settings.gemini_supervisor_review_grouping == "department"
-                            and str(item.get("source", "")).strip() == DEPARTMENT_COVERAGE_SOURCE
+                        wildcard_conditions_removed = _drop_wildcard_reference_conditions(chunk_rows)
+                        if wildcard_conditions_removed:
+                            store.append_status(
+                                batch_id,
+                                "generating",
+                                (
+                                    f"Wave {wave_position}/{total_wave_count} {object_type} normalized "
+                                    f"{wildcard_conditions_removed} wildcard reference condition(s)."
+                                ),
+                            )
+
+                        article_dependencies_added = _apply_explicit_article_dependencies(
+                            chunk_rows,
+                            prompt=request.prompt,
                         )
-                        if is_department_supervisor_chunk:
+                        if article_dependencies_added:
+                            store.append_status(
+                                batch_id,
+                                "generating",
+                                (
+                                    f"Wave {wave_position}/{total_wave_count} articles linked "
+                                    f"{article_dependencies_added} record(s) to explicit same-batch sections."
+                                ),
+                            )
+
+                        is_grouped_supervisor_chunk = bool(
+                            settings.gemini_supervisor_review_grouping == "department"
+                        )
+                        if is_grouped_supervisor_chunk:
                             retry_plan = dict(chunk_item_plan)
                             retry_item = dict(chunk_backlog_item)
                             retry_target = int(item_chunk_target)
@@ -8960,6 +10255,11 @@ async def _generate_import_assistant_batch_impl(
                             retry_compatibility_first = compatibility_first_for_item
                             retry_compatibility_only = compatibility_only_for_item
                             retry_template_first = template_first_for_chunk
+                            retry_backlog_id = (
+                                str(retry_item.get("backlog_id", "")).strip()
+                                or f"wave-{wave}-{object_type}"
+                            )
+                            retry_source_chunk_id = f"{retry_backlog_id}:{retry_chunk_index}"
 
                             async def retry_callback(
                                 gate_reasons,
@@ -8975,25 +10275,40 @@ async def _generate_import_assistant_batch_impl(
                                 _compatibility_only=retry_compatibility_only,
                                 _template_first=retry_template_first,
                                 _object_type=object_type,
+                                _source_chunk_id=retry_source_chunk_id,
                             ):
                                 repair_reason = (
                                     "Supervisor repair required for this chunk only: "
                                     + " | ".join(str(reason) for reason in gate_reasons[:8])
                                 )
+                                replacement_context_rows = [
+                                    row
+                                    for row in generated_data
+                                    if str(row.get("_supervisor_chunk_id", "")).strip()
+                                    != _source_chunk_id
+                                ]
+                                replacement_existing_titles = [
+                                    str(row.get("title", "")).strip()
+                                    for row in replacement_context_rows
+                                    if str(row.get("title", "")).strip()
+                                ][-200:]
                                 if _template_first:
                                     return _build_deterministic_chunk_rows(
                                         object_type=_object_type,
                                         target_count=_target,
                                         prompt=request.prompt,
                                         reference_catalog=reference_catalog,
-                                        existing_titles=chunked_titles[-200:],
-                                        generated_rows=generated_data,
+                                        existing_titles=replacement_existing_titles,
+                                        generated_rows=replacement_context_rows,
                                         reason=repair_reason,
                                         backlog_item=_item,
+                                        excluded_chunk_id=_source_chunk_id,
                                     )
                                 if (
                                     settings.department_generation_strategy == "hybrid"
                                     and _object_type in {"macros", "articles"}
+                                    and str(_item.get("source", "")).strip()
+                                    == DEPARTMENT_COVERAGE_SOURCE
                                     and _model
                                     and _api_key
                                 ):
@@ -9002,8 +10317,8 @@ async def _generate_import_assistant_batch_impl(
                                         target_count=_target,
                                         prompt=request.prompt,
                                         reference_catalog=reference_catalog,
-                                        existing_titles=chunked_titles[-200:],
-                                        generated_rows=generated_data,
+                                        existing_titles=replacement_existing_titles,
+                                        generated_rows=replacement_context_rows,
                                         backlog_item=_item,
                                         model=str(_model),
                                         api_key=str(_api_key),
@@ -9030,7 +10345,7 @@ async def _generate_import_assistant_batch_impl(
                                     chunk_target_count=_target,
                                     chunk_index=_chunk_index,
                                     chunk_total=_chunk_total,
-                                    existing_titles=chunked_titles[-200:],
+                                    existing_titles=replacement_existing_titles,
                                     compatibility_first=_compatibility_first,
                                     compatibility_only=_compatibility_only,
                                     model_override=_model,
@@ -9046,8 +10361,8 @@ async def _generate_import_assistant_batch_impl(
                                     chunk_rows=repaired_rows,
                                     prompt=request.prompt,
                                     reference_catalog=reference_catalog,
-                                    existing_titles=chunked_titles[-200:],
-                                    generated_rows=generated_data,
+                                    existing_titles=replacement_existing_titles,
+                                    generated_rows=replacement_context_rows,
                                     reason=repair_reason,
                                     backlog_item=_item,
                                 )
@@ -9059,6 +10374,7 @@ async def _generate_import_assistant_batch_impl(
                                 _item=retry_item,
                                 _target=retry_target,
                                 _object_type=object_type,
+                                _source_chunk_id=retry_source_chunk_id,
                             ):
                                 reason = (
                                     "Supervisor retry exhausted; deterministic fallback applied: "
@@ -9069,10 +10385,17 @@ async def _generate_import_assistant_batch_impl(
                                     target_count=_target,
                                     prompt=request.prompt,
                                     reference_catalog=reference_catalog,
-                                    existing_titles=chunked_titles[-200:],
+                                    existing_titles=[
+                                        str(row.get("title", "")).strip()
+                                        for row in generated_data
+                                        if str(row.get("_supervisor_chunk_id", "")).strip()
+                                        != _source_chunk_id
+                                        and str(row.get("title", "")).strip()
+                                    ][-200:],
                                     generated_rows=generated_data,
                                     reason=reason,
                                     backlog_item=_item,
+                                    excluded_chunk_id=_source_chunk_id,
                                 )
 
                             _queue_department_supervisor_chunk(
@@ -9768,6 +11091,7 @@ async def _generate_import_assistant_batch_impl(
             "benchmark": {
                 "enabled": benchmark_mode,
             },
+            "operation": operation_metadata,
             "planning": {
                 "planner_bypassed": planner_bypassed,
                 "mode": "deterministic" if planner_bypassed else "llm",
@@ -9888,15 +11212,24 @@ async def _generate_import_assistant_batch_impl(
             "unresolved_links": int(dependency_resolution.get("unresolved_links", 0) or 0),
             "unresolved_samples": list(dependency_resolution.get("unresolved_samples", []) or []),
         }
+        if request.operation_mode == "update":
+            generated_data, update_binding_metadata = _bind_update_target_to_generated_rows(
+                generated_data,
+                request=request,
+            )
+            operation_metadata = {**operation_metadata, **update_binding_metadata}
         generated_data, focus_diagnostics = _annotate_focus_object_constraints(
             generated_data,
             focus_object_types=focus_object_type_set,
         )
-        generated_data, duplicate_candidates = _annotate_duplicate_candidates(
-            generated_data,
-            existing_index=existing_object_index,
-            dependency_mode=request.dependency_mode,
-        )
+        if request.operation_mode == "update":
+            duplicate_candidates = []
+        else:
+            generated_data, duplicate_candidates = _annotate_duplicate_candidates(
+                generated_data,
+                existing_index=existing_object_index,
+                dependency_mode=request.dependency_mode,
+            )
         generation_safety = _evaluate_generation_safety(
             prompt=request.prompt,
             plan=plan,

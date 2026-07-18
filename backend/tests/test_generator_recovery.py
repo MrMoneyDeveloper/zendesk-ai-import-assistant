@@ -91,6 +91,44 @@ def test_generator_retry_ladder_reaches_json_object_and_succeeds(monkeypatch):
     assert calls[2].get("response_format_override") == "json_object"
 
 
+def test_generator_routes_next_format_attempt_to_groq_after_invalid_gemini_payload(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setenv("XAI_API_KEY", "gsk_test_key")
+    monkeypatch.setenv("LLM_MODEL_GENERATOR", "openai/gpt-oss-20b")
+    get_settings.cache_clear()
+    GrokClient._LAST_CALL_METRICS.clear()
+    calls: list[dict] = []
+
+    async def fake_chat(self, messages, temperature=None, **kwargs):  # noqa: ANN001
+        calls.append(dict(kwargs))
+        if len(calls) == 1:
+            GrokClient._LAST_CALL_METRICS["generator"] = {
+                "task": "generator",
+                "selected_provider": "gemini",
+                "error_class": "none",
+            }
+            return '{"records":[{"object_type":"triggers","title":123}],"generation_notes":[]}'
+        return (
+            '{"records":[{"object_type":"triggers","title":"Route Claims",'
+            '"conditions":[{"field":"status","operator":"is","value":"new"}],'
+            '"actions":[{"field":"group_id","value":"Claims"}],'
+            '"dependency_notes":[]}],"generation_notes":[]}'
+        )
+
+    monkeypatch.setattr(GrokClient, "chat", fake_chat)
+    rows = asyncio.run(
+        run_generator(
+            {"object_type": "triggers", "intent": "Route claims"},
+            allow_fallback=False,
+        )
+    )
+
+    assert rows[0]["title"] == "Route Claims"
+    assert calls[0].get("prefer_provider") is None
+    assert calls[1].get("prefer_provider") == "groq"
+
+
 def test_generate_fails_with_failed_generation_metadata(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))

@@ -17,6 +17,7 @@ export default function PromptComposer({
   isLoading,
   isLocked = false,
   lockReason = "",
+  operationMode = null,
   existingItemBehavior = "relate_or_update",
   onExistingItemBehaviorChange,
   selectedContextCount = 0,
@@ -63,6 +64,7 @@ export default function PromptComposer({
 
   const hasExplicitFocus = (focusObjectTypes || []).length > 0;
   const activeModeLabel = existingItemBehavior === "create_new" ? "Create New" : "Base";
+  const isUpdateMode = operationMode === "update";
   const panelClass = darkMode
     ? "border-[#7B1FFF]/30 bg-[#120522]/70 text-slate-100"
     : "border-violet-200 bg-white text-slate-950 shadow-sm";
@@ -287,7 +289,9 @@ export default function PromptComposer({
       <form onSubmit={submit} className={`rounded-2xl border p-5 ${panelClass} ${embedded ? "w-full" : ""}`}>
         <div className="mb-4 flex items-center gap-3">
           <Sparkles className="h-5 w-5 text-violet-500" />
-          <h3 className="text-base font-semibold">Describe what you want to build...</h3>
+          <h3 className="text-base font-semibold">
+            {isUpdateMode ? "Describe the change to this object" : "Describe what you want to build"}
+          </h3>
           {compact && selectedContextCount > 0 ? (
             <span className={`ml-auto rounded-full px-2 py-1 text-xs ${darkMode ? "bg-[#7B1FFF]/18 text-[#B9A7D9]" : "bg-violet-50 text-violet-700"}`}>
               {selectedContextCount} context
@@ -296,7 +300,9 @@ export default function PromptComposer({
         </div>
         <textarea
           {...form.register("prompt")}
-          placeholder="e.g. Create a trigger that closes tickets after 7 days of inactivity and sends a reminder email to the customer..."
+          placeholder={isUpdateMode
+            ? "e.g. Keep the current routing logic, add the VIP tag, and send high-priority tickets to Enterprise Support..."
+            : "e.g. Create a trigger that closes tickets after 7 days of inactivity and sends a reminder email to the customer..."}
           className={`min-h-[112px] w-full resize-y rounded-xl border px-4 py-3 text-sm leading-6 outline-none transition ${
             darkMode
               ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-[#F4EEFF] placeholder:text-[#B9A7D9]/70 focus:border-[#9B35FF]"
@@ -368,7 +374,7 @@ export default function PromptComposer({
               disabled={isLoading || isLocked}
             >
               <WandSparkles size={16} />
-              Generate
+              {isUpdateMode ? "Preview update" : "Generate"}
             </Button>
           </div>
         </div>

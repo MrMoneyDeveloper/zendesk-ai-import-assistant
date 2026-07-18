@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 BatchStatus = Literal[
     "received",
@@ -38,6 +38,7 @@ DependencyMode = Literal[
     "force_existing_only",
 ]
 OnExistingMode = Literal["create_new", "overwrite_existing", "skip_existing"]
+OperationMode = Literal["create", "update"]
 ZendeskDeploymentScope = Literal["support", "help_center", "all"]
 ZendeskArticleMode = Literal["draft", "publish"]
 FocusObjectType = Literal[
@@ -146,17 +147,27 @@ class ContextReference(BaseModel):
         "view",
         "ticket_field",
         "article",
+        "sla_policy",
+        "schedule",
+        "user_field",
+        "organization_field",
+        "custom_object",
     ]
     id: str = Field(..., min_length=1, max_length=120)
     name: str = Field(..., min_length=1, max_length=300)
     description: str | None = Field(default=None, max_length=1200)
+    catalog_key: str | None = Field(default=None, max_length=120)
+    updated_at: str | None = Field(default=None, max_length=120)
+    snapshot_hash: str | None = Field(default=None, max_length=128)
+    snapshot: dict[str, Any] | None = None
+    editable: bool = True
 
     @field_validator("id", "name")
     @classmethod
     def trim_string_value(cls, value: str) -> str:
         return value.strip()
 
-    @field_validator("description")
+    @field_validator("description", "catalog_key", "updated_at", "snapshot_hash")
     @classmethod
     def trim_optional_description(cls, value: str | None) -> str | None:
         if value is None:
@@ -176,6 +187,9 @@ class ImportAssistantGenerateRequest(BaseModel):
     recent_batch_context: list[str] = Field(default_factory=list)
     focus_object_types: list[FocusObjectType] = Field(default_factory=list)
     context_notes: str | None = None
+    operation_mode: OperationMode = "create"
+    update_target: ContextReference | None = None
+    instance_sync_id: str | None = Field(default=None, max_length=160)
 
     @field_validator("prompt")
     @classmethod
@@ -207,6 +221,43 @@ class ImportAssistantGenerateRequest(BaseModel):
             if canonical not in normalized:
                 normalized.append(canonical)
         return normalized
+
+    @field_validator("instance_sync_id")
+    @classmethod
+    def trim_instance_sync_id(cls, value: str | None) -> str | None:
+        cleaned = str(value or "").strip()
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def validate_update_target(self) -> "ImportAssistantGenerateRequest":
+        if self.operation_mode != "update":
+            return self
+        if self.update_target is None:
+            raise ValueError("update_target is required when operation_mode is update.")
+        if not self.instance_sync_id:
+            raise ValueError("instance_sync_id is required when operation_mode is update.")
+        if not self.update_target.editable:
+            raise ValueError("The selected Zendesk object is read-only in this version.")
+        if not isinstance(self.update_target.snapshot, dict) or not self.update_target.snapshot:
+            raise ValueError("The selected update target must include its synchronized snapshot.")
+        supported = {
+            "brand",
+            "category",
+            "section",
+            "trigger",
+            "automation",
+            "macro",
+            "view",
+            "group",
+            "ticket_form",
+            "ticket_field",
+            "article",
+        }
+        if self.update_target.object_type not in supported:
+            raise ValueError(
+                f"Update is not supported for object type '{self.update_target.object_type}'."
+            )
+        return self
 
 
 class ValidationSummary(BaseModel):
@@ -300,6 +351,14 @@ class PreviewRecord(BaseModel):
     deployment_status: Literal["pending", "deployed", "failed", "skipped"] = "pending"
     zendesk_object_id: str | None = None
     execution_message: str = ""
+    operation_mode: OperationMode = "create"
+    target_object_id: str | None = None
+    target_object_type: str | None = None
+    target_updated_at: str | None = None
+    target_snapshot_hash: str | None = None
+    before_configuration: dict[str, Any] | None = None
+    after_configuration: dict[str, Any] | None = None
+    change_summary: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PreviewResponse(BaseModel):
@@ -514,6 +573,10 @@ class ZendeskContextResponse(BaseModel):
     catalogs: dict[str, list[ContextReference]] = Field(default_factory=dict)
     fetched_at: str
     warnings: list[str] = Field(default_factory=list)
+    sync_id: str = ""
+    complete: bool = True
+    catalog_counts: dict[str, int] = Field(default_factory=dict)
+    page_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class ZendeskHelpCenterReadinessRequest(ZendeskCredentialValidationRequest):

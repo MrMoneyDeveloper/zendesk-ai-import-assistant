@@ -336,6 +336,7 @@ async def _repair_records_with_json_object(
     api_key_override: str | None,
     raw_text: str,
     max_output_tokens: int,
+    prefer_provider: str | None = None,
 ) -> list[dict]:
     repair_messages = [
         {
@@ -356,13 +357,14 @@ async def _repair_records_with_json_object(
         repair_messages,
         temperature=0.0,
         model=model,
-        max_output_tokens=max(220, min(max_output_tokens, 520)),
+        max_output_tokens=max(900, min(max_output_tokens, 3000)),
         response_schema=None,
         response_schema_name="generator_records_repair",
         strict_schema=False,
         task=route.task,
         response_format_override="json_object",
         api_key_override=api_key_override,
+        prefer_provider=prefer_provider,
     )
     repaired_records, _ = _parse_records_from_text(repaired_raw)
     return repaired_records
@@ -394,6 +396,24 @@ def _resolve_retry_modes(
         if mode is not None:
             resolved.append(mode)
     return tuple(resolved) if resolved else _GENERATOR_RETRY_MODES
+
+
+def _recommended_output_tokens(object_type: str, target_count: int) -> int:
+    normalized = str(object_type or "").strip().lower()
+    per_record = {
+        "brands": 220,
+        "categories": 220,
+        "sections": 260,
+        "groups": 220,
+        "ticket_fields": 420,
+        "ticket_forms": 480,
+        "views": 520,
+        "triggers": 560,
+        "automations": 560,
+        "macros": 760,
+        "articles": 1500,
+    }.get(normalized, 520)
+    return min(max(500 + (per_record * max(int(target_count or 1), 1)), 900), 7000)
 
 
 async def run_generator(
@@ -446,17 +466,29 @@ async def run_generator(
     last_provider_error_code: str | None = None
     last_error_class: str | None = None
     last_validator_reason: str | None = None
+    preferred_provider: str | None = None
 
     object_type_hint = str(plan.get("object_type", "triggers"))
+    recommended_tokens = _recommended_output_tokens(
+        object_type_hint,
+        int(chunk_target_count or 1),
+    )
     for mode in retry_modes:
         messages = (
             _with_hardened_instruction(base_messages, mode.name, object_type_hint)
             if mode.requires_hardened_prompt
             else base_messages
         )
-        mode_max_tokens = max_output_tokens or route.max_output_tokens
+        mode_max_tokens = max(
+            int(max_output_tokens or 0),
+            int(route.max_output_tokens or 0),
+            recommended_tokens,
+        )
         if mode.name == "no_response_format":
-            mode_max_tokens = min(route.max_output_tokens, max(settings.llm_generator_max_output_tokens, 350))
+            mode_max_tokens = max(
+                mode_max_tokens,
+                int(settings.llm_generator_max_output_tokens or 0),
+            )
         try:
             raw = await client.chat(
                 messages,
@@ -469,12 +501,15 @@ async def run_generator(
                 task=route.task,
                 response_format_override=mode.response_format_override,
                 api_key_override=api_key_override,
+                prefer_provider=preferred_provider,
             )
             records, _ = _parse_records_from_text(raw)
             return records
         except Exception as exc:  # noqa: BLE001
             metrics = GrokClient.get_last_call_metrics(route.task)
             attempts.append(_build_mode_attempt_trace(mode, metrics, exc))
+            if str(metrics.get("selected_provider") or "").strip().lower() == "gemini":
+                preferred_provider = "groq"
             last_provider_error_code = str(metrics.get("provider_error_code") or "").strip() or last_provider_error_code
             last_error_class = str(metrics.get("error_class") or "").strip() or last_error_class
             excerpt = str(metrics.get("provider_failed_generation_excerpt") or "").strip()
@@ -515,6 +550,7 @@ async def run_generator(
                             api_key_override=api_key_override,
                             raw_text=str(raw),
                             max_output_tokens=mode_max_tokens,
+                            prefer_provider=preferred_provider,
                         )
                         logger.warning(
                             "Generator recovered records via json_object repair pass after no_response_format parse failure.",

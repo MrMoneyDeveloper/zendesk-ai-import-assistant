@@ -1,5 +1,6 @@
 const APP_CONFIG = Object.freeze({
   APP_NAME: 'AI Zendesk Import Assistant',
+  API_VERSION: '2026-07-18-operating-model-v2',
   DEFAULT_SPREADSHEET_NAME: 'AI Zendesk Import Assistant Staging',
   API_KEY_PROPERTY: 'APPS_SCRIPT_API_KEY',
   SHEET_ID_PROPERTY: 'GOOGLE_SHEET_ID',

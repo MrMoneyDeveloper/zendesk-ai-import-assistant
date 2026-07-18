@@ -2,6 +2,10 @@
   return new Date().toISOString();
 }
 
+let MANAGED_SPREADSHEET_CACHE_ = null;
+let REQUIRED_TABS_READY_THIS_EXECUTION_ = {};
+let SHEET_ROWS_CACHE_ = {};
+
 function jsonResponse_(payload) {
   return ContentService
     .createTextOutput(JSON.stringify(payload))
@@ -41,23 +45,30 @@ function requireApiKey_(providedKey) {
 }
 
 function openManagedSpreadsheet_() {
+  if (MANAGED_SPREADSHEET_CACHE_) {
+    return MANAGED_SPREADSHEET_CACHE_;
+  }
+
   const props = getScriptProperties_();
   let sheetId = String(props.getProperty(APP_CONFIG.SHEET_ID_PROPERTY) || '').trim();
   if (sheetId) {
-    return SpreadsheetApp.openById(sheetId);
+    MANAGED_SPREADSHEET_CACHE_ = SpreadsheetApp.openById(sheetId);
+    return MANAGED_SPREADSHEET_CACHE_;
   }
 
   const sheetName = String(props.getProperty('APPS_SCRIPT_SHEET_NAME') || APP_CONFIG.DEFAULT_SPREADSHEET_NAME).trim();
   const spreadsheet = SpreadsheetApp.create(sheetName || APP_CONFIG.DEFAULT_SPREADSHEET_NAME);
   sheetId = spreadsheet.getId();
   props.setProperty(APP_CONFIG.SHEET_ID_PROPERTY, sheetId);
-  return spreadsheet;
+  MANAGED_SPREADSHEET_CACHE_ = spreadsheet;
+  return MANAGED_SPREADSHEET_CACHE_;
 }
 
 function getSheetByNameOrCreate_(spreadsheet, name) {
   let sheet = spreadsheet.getSheetByName(name);
   if (!sheet) {
     sheet = spreadsheet.insertSheet(name);
+    invalidateRequiredTabsState_(spreadsheet);
   }
   return sheet;
 }
@@ -66,6 +77,7 @@ function ensureHeader_(sheet, headers) {
   const hasHeader = sheet.getLastRow() >= 1 && sheet.getRange(1, 1).getValue() !== '';
   if (!hasHeader) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    invalidateRowsCache_(sheet);
     return;
   }
 
@@ -78,7 +90,77 @@ function ensureHeader_(sheet, headers) {
   });
   if (missing.length > 0) {
     sheet.getRange(1, existing.length + 1, 1, missing.length).setValues([missing]);
+    invalidateRowsCache_(sheet);
   }
+}
+
+function getSheetHeaders_(sheet, requiredHeaders) {
+  ensureHeader_(sheet, requiredHeaders || []);
+  const width = Math.max(sheet.getLastColumn(), (requiredHeaders || []).length, 1);
+  return sheet.getRange(1, 1, 1, width).getValues()[0].map(function mapHeader(value) {
+    return asString_(value).trim();
+  });
+}
+
+function valueForSheetCell_(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return value;
+}
+
+function mergedRowValues_(headers, row, baseValues) {
+  const values = Array.isArray(baseValues)
+    ? baseValues.slice(0, headers.length)
+    : headers.map(function emptyValue() { return ''; });
+  while (values.length < headers.length) {
+    values.push('');
+  }
+  headers.forEach(function eachHeader(header, index) {
+    if (Object.prototype.hasOwnProperty.call(row || {}, header)) {
+      values[index] = valueForSheetCell_(row[header]);
+    }
+  });
+  return values;
+}
+
+function rowValuesWithFormulas_(values, formulas) {
+  return values.map(function eachValue(value, index) {
+    return formulas && formulas[index] ? formulas[index] : value;
+  });
+}
+
+function writeRowsByNumber_(sheet, rowsByNumber, width) {
+  const rowNumbers = Object.keys(rowsByNumber || {}).map(function eachKey(key) {
+    return Number(key);
+  }).filter(function validRow(rowNumber) {
+    return rowNumber >= 2;
+  }).sort(function sortRows(a, b) {
+    return a - b;
+  });
+  if (rowNumbers.length === 0) {
+    return;
+  }
+
+  let groupStart = rowNumbers[0];
+  let previous = rowNumbers[0];
+  let groupValues = [rowsByNumber[groupStart]];
+  for (let i = 1; i < rowNumbers.length; i += 1) {
+    const current = rowNumbers[i];
+    if (current === previous + 1) {
+      groupValues.push(rowsByNumber[current]);
+    } else {
+      sheet.getRange(groupStart, 1, groupValues.length, width).setValues(groupValues);
+      groupStart = current;
+      groupValues = [rowsByNumber[current]];
+    }
+    previous = current;
+  }
+  sheet.getRange(groupStart, 1, groupValues.length, width).setValues(groupValues);
+  invalidateRowsCache_(sheet);
 }
 
 function appendRowsByHeader_(sheet, headers, rows) {
@@ -86,96 +168,150 @@ function appendRowsByHeader_(sheet, headers, rows) {
     return 0;
   }
 
+  const sheetHeaders = getSheetHeaders_(sheet, headers);
   const values = rows.map(function mapRow(row) {
-    return headers.map(function eachHeader(header) {
-      const value = row[header];
-      if (value === undefined || value === null) {
-        return '';
-      }
-      if (typeof value === 'object') {
-        return JSON.stringify(value);
-      }
-      return value;
-    });
+    return mergedRowValues_(sheetHeaders, row, null);
   });
 
   const startRow = sheet.getLastRow() + 1;
-  sheet.getRange(startRow, 1, values.length, headers.length).setValues(values);
+  sheet.getRange(startRow, 1, values.length, sheetHeaders.length).setValues(values);
+  invalidateRowsCache_(sheet);
   return values.length;
 }
 
 function rowValuesByHeader_(headers, row) {
-  return headers.map(function eachHeader(header) {
-    const value = row[header];
-    if (value === undefined || value === null) {
-      return '';
-    }
-    if (typeof value === 'object') {
-      return JSON.stringify(value);
-    }
-    return value;
-  });
+  return mergedRowValues_(headers, row, null);
 }
 
 function upsertRowsByKeys_(sheet, headers, rows, keyHeaders) {
   if (!rows || rows.length === 0) {
     return 0;
   }
-  ensureHeader_(sheet, headers);
-  const values = sheet.getLastRow() > 0
-    ? sheet.getRange(1, 1, sheet.getLastRow(), headers.length).getValues()
-    : [headers.slice()];
+  const sheetHeaders = getSheetHeaders_(sheet, headers);
+  const lastRow = sheet.getLastRow();
+  const width = sheetHeaders.length;
+  const values = lastRow > 1
+    ? sheet.getRange(2, 1, lastRow - 1, width).getValues()
+    : [];
+  const formulas = lastRow > 1
+    ? sheet.getRange(2, 1, lastRow - 1, width).getFormulas()
+    : [];
   const indexes = {};
   keyHeaders.forEach(function eachKey(header) {
-    indexes[header] = headers.indexOf(header);
+    indexes[header] = sheetHeaders.indexOf(header);
   });
   const rowIndexByKey = {};
-  for (let i = 1; i < values.length; i += 1) {
+  for (let i = 0; i < values.length; i += 1) {
     const key = keyHeaders.map(function eachKey(header) {
       return asString_(values[i][indexes[header]]).trim();
     }).join('::');
     if (key) {
-      rowIndexByKey[key] = i;
+      rowIndexByKey[key] = i + 2;
     }
   }
 
+  const rowsByNumber = {};
+  const appendValues = [];
   rows.forEach(function eachRow(row) {
-    const rowValues = rowValuesByHeader_(headers, row);
     const key = keyHeaders.map(function eachKey(header) {
       return asString_(row[header]).trim();
     }).join('::');
     if (rowIndexByKey[key] !== undefined) {
-      values[rowIndexByKey[key]] = rowValues;
+      const rowNumber = rowIndexByKey[key];
+      const sourceIndex = rowNumber - 2;
+      const baseValues = rowValuesWithFormulas_(values[sourceIndex], formulas[sourceIndex]);
+      rowsByNumber[rowNumber] = mergedRowValues_(sheetHeaders, row, baseValues);
     } else {
-      rowIndexByKey[key] = values.length;
-      values.push(rowValues);
+      appendValues.push(mergedRowValues_(sheetHeaders, row, null));
     }
   });
 
-  sheet.getRange(1, 1, values.length, headers.length).setValues(values);
+  writeRowsByNumber_(sheet, rowsByNumber, width);
+  if (appendValues.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendValues.length, width).setValues(appendValues);
+    invalidateRowsCache_(sheet);
+  }
   return rows.length;
 }
 
 function replaceBatchRows_(sheet, headers, batchId, rows) {
-  ensureHeader_(sheet, headers);
+  const sheetHeaders = getSheetHeaders_(sheet, headers);
+  const width = sheetHeaders.length;
   const previousLastRow = sheet.getLastRow();
   const existing = previousLastRow > 1
-    ? sheet.getRange(2, 1, previousLastRow - 1, headers.length).getValues()
+    ? sheet.getRange(2, 1, previousLastRow - 1, width).getValues()
     : [];
-  const batchIndex = headers.indexOf('batch_id');
-  const retained = existing.filter(function eachExisting(row) {
-    return asString_(row[batchIndex]).trim() !== batchId;
+  const formulas = previousLastRow > 1
+    ? sheet.getRange(2, 1, previousLastRow - 1, width).getFormulas()
+    : [];
+  const batchIndex = sheetHeaders.indexOf('batch_id');
+  const recordIndex = sheetHeaders.indexOf('record_id');
+  const existingByRecordId = {};
+  const availableRows = [];
+  const incomingRecordIds = {};
+  (rows || []).forEach(function eachIncoming(row) {
+    const recordId = asString_(row.record_id).trim();
+    if (recordId) {
+      incomingRecordIds[recordId] = true;
+    }
   });
-  const replacement = (rows || []).map(function eachRow(row) {
-    return rowValuesByHeader_(headers, row);
+  existing.forEach(function eachExisting(row, index) {
+    if (asString_(row[batchIndex]).trim() !== batchId) {
+      return;
+    }
+    const rowNumber = index + 2;
+    const recordId = recordIndex >= 0 ? asString_(row[recordIndex]).trim() : '';
+    if (recordId) {
+      existingByRecordId[recordId] = rowNumber;
+    }
+    if (!recordId || !incomingRecordIds[recordId]) {
+      availableRows.push(rowNumber);
+    }
   });
-  const output = [headers.slice()].concat(retained, replacement);
 
-  if (previousLastRow > 1) {
-    sheet.getRange(2, 1, previousLastRow - 1, headers.length).clearContent();
+  const usedRows = {};
+  const rowsByNumber = {};
+  const appendValues = [];
+  (rows || []).forEach(function eachReplacement(row) {
+    const recordId = asString_(row.record_id).trim();
+    let rowNumber = recordId ? existingByRecordId[recordId] : null;
+    if (!rowNumber) {
+      while (availableRows.length > 0 && usedRows[availableRows[0]]) {
+        availableRows.shift();
+      }
+      rowNumber = availableRows.length > 0 ? availableRows.shift() : null;
+    }
+    if (rowNumber) {
+      usedRows[rowNumber] = true;
+      const sourceIndex = rowNumber - 2;
+      const baseValues = rowValuesWithFormulas_(existing[sourceIndex], formulas[sourceIndex]);
+      rowsByNumber[rowNumber] = mergedRowValues_(sheetHeaders, row, baseValues);
+    } else {
+      appendValues.push(mergedRowValues_(sheetHeaders, row, null));
+    }
+  });
+
+  existing.forEach(function clearStaleBatchRow(row, index) {
+    const rowNumber = index + 2;
+    if (asString_(row[batchIndex]).trim() !== batchId || usedRows[rowNumber]) {
+      return;
+    }
+    const baseValues = rowValuesWithFormulas_(row, formulas[index]);
+    headers.forEach(function eachManagedHeader(header) {
+      const columnIndex = sheetHeaders.indexOf(header);
+      if (columnIndex >= 0) {
+        baseValues[columnIndex] = '';
+      }
+    });
+    rowsByNumber[rowNumber] = baseValues;
+  });
+
+  writeRowsByNumber_(sheet, rowsByNumber, width);
+  if (appendValues.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendValues.length, width).setValues(appendValues);
+    invalidateRowsCache_(sheet);
   }
-  sheet.getRange(1, 1, output.length, headers.length).setValues(output);
-  return replacement.length;
+  return (rows || []).length;
 }
 
 function parseJsonCell_(value) {
@@ -223,11 +359,62 @@ function getTabDefinitionByName_(name) {
   return null;
 }
 
-function ensureRequiredTabs_(spreadsheet) {
+function requiredTabsStateKey_(spreadsheet) {
+  return spreadsheet.getId() + ':' + sha256Base64_(JSON.stringify(REQUIRED_TABS));
+}
+
+function invalidateRequiredTabsState_(spreadsheet) {
+  const spreadsheetId = spreadsheet ? spreadsheet.getId() : '';
+  Object.keys(REQUIRED_TABS_READY_THIS_EXECUTION_).forEach(function eachKey(key) {
+    if (!spreadsheetId || key.indexOf(spreadsheetId + ':') === 0) {
+      delete REQUIRED_TABS_READY_THIS_EXECUTION_[key];
+    }
+  });
+  getScriptProperties_().deleteProperty('APPS_SCRIPT_REQUIRED_TABS_STATE');
+}
+
+function markRequiredTabsReady_(spreadsheet) {
+  const stateKey = requiredTabsStateKey_(spreadsheet);
+  REQUIRED_TABS_READY_THIS_EXECUTION_[stateKey] = true;
+  getScriptProperties_().setProperty('APPS_SCRIPT_REQUIRED_TABS_STATE', JSON.stringify({
+    key: stateKey,
+    checked_at_ms: Date.now()
+  }));
+}
+
+function ensureRequiredTabs_(spreadsheet, force) {
+  const stateKey = requiredTabsStateKey_(spreadsheet);
+  if (!force && REQUIRED_TABS_READY_THIS_EXECUTION_[stateKey]) {
+    return;
+  }
+
+  if (!force) {
+    try {
+      const stored = JSON.parse(
+        getScriptProperties_().getProperty('APPS_SCRIPT_REQUIRED_TABS_STATE') || '{}'
+      );
+      const ageMs = Date.now() - Number(stored.checked_at_ms || 0);
+      if (stored.key === stateKey && ageMs >= 0 && ageMs < 10 * 60 * 1000) {
+        REQUIRED_TABS_READY_THIS_EXECUTION_[stateKey] = true;
+        return;
+      }
+    } catch (error) {
+    }
+  }
+
+  const existingByName = {};
+  spreadsheet.getSheets().forEach(function eachSheet(sheet) {
+    existingByName[sheet.getName()] = sheet;
+  });
   REQUIRED_TABS.forEach(function eachTab(tabDef) {
-    const sheet = getSheetByNameOrCreate_(spreadsheet, tabDef.name);
+    let sheet = existingByName[tabDef.name];
+    if (!sheet) {
+      sheet = spreadsheet.insertSheet(tabDef.name);
+      existingByName[tabDef.name] = sheet;
+    }
     ensureHeader_(sheet, tabDef.headers);
   });
+  markRequiredTabsReady_(spreadsheet);
 }
 
 function indexByHeaders_(headers) {
@@ -239,8 +426,13 @@ function indexByHeaders_(headers) {
 }
 
 function rowsFromSheet_(sheet) {
+  const cacheKey = sheet.getParent().getId() + ':' + sheet.getSheetId();
+  if (Object.prototype.hasOwnProperty.call(SHEET_ROWS_CACHE_, cacheKey)) {
+    return SHEET_ROWS_CACHE_[cacheKey];
+  }
   const values = sheet.getDataRange().getValues();
   if (!values || values.length <= 1) {
+    SHEET_ROWS_CACHE_[cacheKey] = [];
     return [];
   }
 
@@ -255,7 +447,17 @@ function rowsFromSheet_(sheet) {
     }
     rows.push(row);
   }
-  return rows;
+  SHEET_ROWS_CACHE_[cacheKey] = rows;
+  return SHEET_ROWS_CACHE_[cacheKey];
+}
+
+function invalidateRowsCache_(sheet) {
+  if (!sheet) {
+    SHEET_ROWS_CACHE_ = {};
+    return;
+  }
+  const cacheKey = sheet.getParent().getId() + ':' + sheet.getSheetId();
+  delete SHEET_ROWS_CACHE_[cacheKey];
 }
 
 function normalizeObjectType_(rawObjectType) {

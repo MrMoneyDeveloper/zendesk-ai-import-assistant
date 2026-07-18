@@ -581,3 +581,93 @@ def test_supervisor_gate_caps_high_score_when_mandatory_structure_is_missing():
     assert assessment["effective_quality_score"] == 0.49
     assert assessment["effective_approved"] is False
     assert any("group routing action" in reason for reason in assessment["approval_gate_reasons"])
+
+
+def test_supervisor_gate_treats_approved_pre_patch_issue_as_resolved():
+    rows = [
+        {
+            "object_type": "groups",
+            "title": "Claims",
+            "conditions": [],
+            "actions": [],
+            "_supervisor_chunk_id": "BL-3:1",
+            "_supervisor_record_key": "BL-3:1:0",
+        }
+    ]
+    review = {
+        "approved": True,
+        "quality_score": 1.0,
+        "requires_regeneration": False,
+        "chunk_assessments": [
+            {
+                "chunk_id": "BL-3:1",
+                "approved": True,
+                "quality_score": 1.0,
+                "blocking_issues": ["Incorrect group title 'Claims 3' generated instead of 'Claims'."],
+                "requires_regeneration": False,
+            }
+        ],
+    }
+
+    gate = evaluate_supervisor_bundle(
+        rows=rows,
+        chunk_specs=[
+            {
+                "chunk_id": "BL-3:1",
+                "object_type": "groups",
+                "target_count": 1,
+                "expected_titles": ["Claims"],
+            }
+        ],
+        review=review,
+        approval_threshold=0.8,
+        allowed_references={"groups": ["Claims"], "ticket_forms": []},
+    )
+
+    assessment = gate["chunk_assessments"][0]
+    assert assessment["effective_approved"] is True
+    assert assessment["approval_gate_reasons"] == []
+    assert assessment["model_reported_issues"] == review["chunk_assessments"][0]["blocking_issues"]
+
+
+def test_supervisor_gate_rejects_shallow_article_body_despite_high_model_score():
+    rows = [
+        {
+            "object_type": "articles",
+            "title": "How to Submit a Claim",
+            "conditions": [],
+            "actions": [
+                {"field": "body", "value": "A short summary that does not explain the actual process."},
+                {"field": "section_name", "value": "Claims"},
+            ],
+            "_supervisor_chunk_id": "BL-9:1",
+            "_supervisor_record_key": "BL-9:1:0",
+        }
+    ]
+    review = {
+        "approved": True,
+        "quality_score": 0.98,
+        "requires_regeneration": False,
+        "chunk_assessments": [
+            {
+                "chunk_id": "BL-9:1",
+                "approved": True,
+                "quality_score": 0.98,
+                "blocking_issues": [],
+                "requires_regeneration": False,
+            }
+        ],
+    }
+
+    gate = evaluate_supervisor_bundle(
+        rows=rows,
+        chunk_specs=[{"chunk_id": "BL-9:1", "object_type": "articles", "target_count": 1}],
+        review=review,
+        approval_threshold=0.8,
+        allowed_references={"groups": [], "ticket_forms": []},
+    )
+
+    assessment = gate["chunk_assessments"][0]
+    assert assessment["effective_quality_score"] == 0.49
+    assert assessment["effective_approved"] is False
+    assert any("350 characters" in reason for reason in assessment["approval_gate_reasons"])

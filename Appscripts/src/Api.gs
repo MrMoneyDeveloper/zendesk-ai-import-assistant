@@ -7,6 +7,13 @@ function doGet(e) {
         ok: true,
         action: 'health',
         service: APP_CONFIG.APP_NAME,
+        api_version: APP_CONFIG.API_VERSION || 'legacy',
+        capabilities: [
+          'stage_validate_preview',
+          'write_batch_metadata',
+          'append_progress_events',
+          'get_batch_operational_state'
+        ],
         now: nowIso_(),
         schema: getSchemaBundleInfoSafe_()
       });
@@ -127,6 +134,7 @@ function stageValidatePreviewPipeline_(payload) {
     ok: true,
     action: 'stage_validate_preview',
     batch_id: batchId,
+    api_version: APP_CONFIG.API_VERSION || 'legacy',
     spreadsheet_id: staging && staging.spreadsheet_id ? staging.spreadsheet_id : null,
     spreadsheet_url: staging && staging.spreadsheet_url ? staging.spreadsheet_url : null,
     summary: {

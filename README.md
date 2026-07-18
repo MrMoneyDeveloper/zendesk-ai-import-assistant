@@ -35,7 +35,10 @@ What this does:
 - starts frontend (default preferred `5176`, auto-fallback if busy)
 - sets `VITE_BACKEND_URL` automatically
 - cleans listeners when stopped
+- keeps backend auto-reload off so an active generation run is not restarted by file changes
 - runs in **Lean Prod** mode by default (diagnostics/perf capture off)
+
+For code-development sessions where automatic backend reload is useful, add `-Reload`.
 
 To run with diagnostics/perf capture enabled:
 

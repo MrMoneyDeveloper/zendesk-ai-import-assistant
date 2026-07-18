@@ -14,7 +14,7 @@ from app.services.perf_capture import emit_perf_event
 from app.services.usage_telemetry import record_model_call
 from app.validation.payloads import normalize_generated_rows
 
-GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1/interactions"
 logger = logging.getLogger(__name__)
 
 _CANONICAL_PATCH_OPERATIONS = (
@@ -111,14 +111,18 @@ SUPERVISOR_REVIEW_SCHEMA: dict[str, Any] = {
 
 _SAFE_ACTION_FIELDS = {
     "comment_value",
+    "comment_mode_is_public",
     "custom_field_options",
     "field_type",
     "output_columns",
+    "sort_by",
+    "sort_order",
     "priority",
     "status",
     "set_tags",
     "body",
 }
+MIN_ARTICLE_BODY_CHARS = 350
 
 _OPERATION_ALIASES = {
     "add_dependency_note": "add_dependency_note",
@@ -827,8 +831,14 @@ def _chunk_gate_reasons(
                 *_entry_values(row, "actions", "section_name"),
                 *_entry_values(row, "actions", "section_id"),
             ]
-            if not any(len(str(body or "").strip()) >= 120 for body in bodies):
-                reasons.append(f"Article '{row.get('title')}' needs a substantive body.")
+            if not any(
+                len(str(body or "").strip()) >= MIN_ARTICLE_BODY_CHARS
+                for body in bodies
+            ):
+                reasons.append(
+                    f"Article '{row.get('title')}' needs at least "
+                    f"{MIN_ARTICLE_BODY_CHARS} characters of substantive body guidance."
+                )
             if not any(str(section or "").strip() for section in sections):
                 reasons.append(f"Article '{row.get('title')}' is missing its section dependency.")
         elif expected_type == "sections":
@@ -890,7 +900,14 @@ def evaluate_supervisor_bundle(
             spec,
             allowed_references=allowed_references,
         )
-        blocking_issues = _as_string_list(model.get("blocking_issues", []), limit=8)
+        model_reported_issues = _as_string_list(model.get("blocking_issues", []), limit=8)
+        # A model may describe the issue that its own patch just resolved. Preserve that
+        # note for audit, but only enforce it when the model still rejects/regenerates.
+        blocking_issues = (
+            model_reported_issues
+            if not raw_approved or model_regeneration
+            else []
+        )
         gate_reasons = list(dict.fromkeys([*deterministic_reasons, *blocking_issues]))
         effective_score = min(raw_score, 0.49) if deterministic_reasons else raw_score
         effective_approved = bool(
@@ -909,6 +926,7 @@ def evaluate_supervisor_bundle(
                 "effective_approved": effective_approved,
                 "requires_regeneration": bool(not effective_approved),
                 "approval_gate_reasons": gate_reasons,
+                "model_reported_issues": model_reported_issues,
                 "record_keys": [
                     str(row.get("_supervisor_record_key") or "") for row in chunk_rows
                 ],
@@ -1058,10 +1076,12 @@ class GeminiSupervisor:
                 "Do not delete records, change object_type, replace IDs, or contradict explicit user constraints.",
                 "Use target_index as zero-based index into records whenever possible.",
                 "For bundled reviews, assess every chunk_id independently in chunk_assessments.",
+                "Judge each chunk only against its matching chunk_requirements target_count and expected_titles; records assigned to sibling chunks are not missing from this chunk.",
+                "If proposed safe patches fully resolve an issue, approve that chunk and do not request regeneration for the resolved issue.",
                 "Set approved=false and requires_regeneration=true for a chunk when required current-wave coverage is missing or cannot be fixed safely.",
                 "Do not claim that an object exists unless it appears in cumulative_records or the current records.",
                 "For macros, replace generic response copy with concise department-specific next steps and evidence requests.",
-                "For articles, improve weak body copy with concrete preparation, process, escalation, and outcome guidance.",
+                f"For articles, provide at least {MIN_ARTICLE_BODY_CHARS} characters of concrete preparation, process, escalation, and outcome guidance.",
             ],
             "allowed_patch_operations": list(_CANONICAL_PATCH_OPERATIONS),
             "prompt": prompt,
@@ -1090,10 +1110,24 @@ class GeminiSupervisor:
             "remaining_manifest_coverage": remaining_manifest_coverage or {},
             "records": records,
         }
+        chunk_requirements = list((review_scope or {}).get("chunk_requirements", []) or [])
         request_body = {
             "model": self.settings.gemini_supervisor_model,
             "input": json.dumps(payload_context, ensure_ascii=False),
             "store": False,
+            "generation_config": {
+                "max_output_tokens": min(
+                    max(
+                        1800,
+                        1200
+                        + (350 * max(len(chunk_requirements), 1))
+                        + (100 * len(records)),
+                    ),
+                    6000,
+                ),
+                "temperature": 0.1,
+                "thinking_level": "low",
+            },
             "response_format": {
                 "type": "text",
                 "mime_type": "application/json",

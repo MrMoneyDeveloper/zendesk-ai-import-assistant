@@ -1,5 +1,7 @@
 import httpx
 import asyncio
+import hashlib
+import json
 import time
 import re
 from datetime import UTC, datetime
@@ -54,16 +56,19 @@ RULE_ACTION_ALLOWLIST = {
     "status",
     "priority",
     "comment_value",
+    "comment_mode_is_public",
     "notification_user",
     "notification_group",
 }
 VIEW_CONDITION_ALLOWLIST = {
     "status",
     "group_id",
+    "assignee_id",
     "priority",
     "ticket_form_id",
     "brand_id",
     "tags",
+    "current_tags",
 }
 
 
@@ -237,28 +242,42 @@ async def fetch_zendesk_reference_catalog(
     base_url = _build_base_url(normalized_subdomain)
     auth_user = f"{email}/token"
     warnings: list[str] = []
-
-    catalogs: dict[str, list[dict]] = {
-        "brands": [],
-        "groups": [],
-        "ticket_forms": [],
-        "triggers": [],
-        "automations": [],
-        "macros": [],
-        "views": [],
-        "ticket_fields": [],
-        "articles": [],
-        "help_centers": [],
-        "categories": [],
-        "sections": [],
+    page_counts: dict[str, int] = {}
+    endpoint_complete: dict[str, bool] = {}
+    endpoint_specs = {
+        "brands": ("/api/v2/brands.json?per_page=100", "brands", "brand", ("name",), True),
+        "groups": ("/api/v2/groups.json?per_page=100", "groups", "group", ("name",), True),
+        "ticket_forms": ("/api/v2/ticket_forms.json?per_page=100", "ticket_forms", "ticket_form", ("name",), True),
+        "triggers": ("/api/v2/triggers.json?per_page=100", "triggers", "trigger", ("title", "name"), True),
+        "automations": ("/api/v2/automations.json?per_page=100", "automations", "automation", ("title", "name"), True),
+        "macros": ("/api/v2/macros.json?per_page=100", "macros", "macro", ("title", "name"), True),
+        "views": ("/api/v2/views.json?per_page=100", "views", "view", ("title", "name"), True),
+        "ticket_fields": ("/api/v2/ticket_fields.json?per_page=100", "ticket_fields", "ticket_field", ("title", "name"), True),
+        "articles": ("/api/v2/help_center/articles.json?per_page=100", "articles", "article", ("title", "name"), True),
+        "help_centers": ("/api/v2/help_center/help_centers.json?per_page=100", "help_centers", "help_center", ("name", "title"), False),
+        "categories": ("/api/v2/help_center/categories.json?per_page=100", "categories", "category", ("name", "title"), True),
+        "sections": ("/api/v2/help_center/sections.json?per_page=100", "sections", "section", ("name", "title"), True),
+        "sla_policies": ("/api/v2/slas/policies.json?per_page=100", "sla_policies", "sla_policy", ("title", "name"), False),
+        "schedules": ("/api/v2/business_hours/schedules.json?per_page=100", "schedules", "schedule", ("name", "title"), False),
+        "user_fields": ("/api/v2/user_fields.json?per_page=100", "user_fields", "user_field", ("title", "name"), False),
+        "organization_fields": ("/api/v2/organization_fields.json?per_page=100", "organization_fields", "organization_field", ("title", "name"), False),
+        "custom_objects": ("/api/v2/custom_objects?page[size]=100", "custom_objects", "custom_object", ("title", "name", "key"), False),
     }
+    catalogs: dict[str, list[dict]] = {key: [] for key in endpoint_specs}
+    raw_entries_by_key: dict[str, list[dict]] = {key: [] for key in endpoint_specs}
 
     async with httpx.AsyncClient(timeout=25) as client:
-        async def _safe_get(path: str) -> tuple[dict, int | None]:
+        async def _safe_get(path_or_url: str) -> tuple[dict, int | None]:
+            path_or_url = str(path_or_url or "").strip()
+            request_url = path_or_url if path_or_url.startswith(("http://", "https://")) else f"{base_url}{path_or_url}"
+            parsed_url = urlparse(request_url)
+            if parsed_url.netloc and parsed_url.netloc != urlparse(base_url).netloc:
+                warnings.append(f"{_sanitize_path(path_or_url)}: rejected cross-host pagination link.")
+                return {}, None
             started = time.perf_counter()
             try:
                 response = await client.get(
-                    f"{base_url}{path}",
+                    request_url,
                     auth=(auth_user, api_token),
                     headers={"Content-Type": "application/json"},
                 )
@@ -266,60 +285,70 @@ async def fetch_zendesk_reference_catalog(
                 _emit_zendesk_http_event(
                     operation="reference_catalog_fetch",
                     method="GET",
-                    url_or_path=path,
+                    url_or_path=path_or_url,
                     status_code=None,
                     duration_ms=(time.perf_counter() - started) * 1000.0,
                     success=False,
                     error=str(exc),
                 )
-                warnings.append(f"{path}: request failed ({exc})")
+                warnings.append(f"{_sanitize_path(path_or_url)}: request failed ({exc})")
                 return {}, None
             _emit_zendesk_http_event(
                 operation="reference_catalog_fetch",
                 method="GET",
-                url_or_path=path,
+                url_or_path=path_or_url,
                 status_code=response.status_code,
                 duration_ms=(time.perf_counter() - started) * 1000.0,
                 success=response.is_success,
                 error=None if response.is_success else f"HTTP {response.status_code}",
             )
             if not response.is_success:
-                warnings.append(f"{path}: HTTP {response.status_code}")
+                warnings.append(f"{_sanitize_path(path_or_url)}: HTTP {response.status_code}")
                 return {}, response.status_code
             try:
                 return (response.json() if response.text else {}), response.status_code
             except ValueError:
-                warnings.append(f"{path}: response was not valid JSON.")
+                warnings.append(f"{_sanitize_path(path_or_url)}: response was not valid JSON.")
                 return {}, response.status_code
 
-        endpoint_map = {
-            "brands": "/api/v2/brands.json",
-            "groups": "/api/v2/groups.json",
-            "ticket_forms": "/api/v2/ticket_forms.json",
-            "triggers": "/api/v2/triggers.json",
-            "automations": "/api/v2/automations.json",
-            "macros": "/api/v2/macros.json",
-            "views": "/api/v2/views.json",
-            "ticket_fields": "/api/v2/ticket_fields.json",
-            "articles": "/api/v2/help_center/articles.json?per_page=100",
-            "help_centers": "/api/v2/help_center/help_centers.json",
-            "categories": "/api/v2/help_center/categories.json?per_page=100",
-            "sections": "/api/v2/help_center/sections.json?per_page=100",
-        }
-        payload_pairs = await asyncio.gather(
-            *[_safe_get(path) for path in endpoint_map.values()]
-        )
-        payload_by_key: dict[str, dict] = {}
-        for key, pair in zip(endpoint_map.keys(), payload_pairs):
-            payload, _status_code = pair
-            payload_by_key[key] = payload
+        async def _fetch_all(key: str) -> tuple[str, list[dict], int, bool]:
+            path, root_key, _object_type, _name_fields, _editable = endpoint_specs[key]
+            entries: list[dict] = []
+            next_ref: str | None = path
+            seen: set[str] = set()
+            pages = 0
+            complete = True
+            while next_ref and pages < 50:
+                if next_ref in seen:
+                    warnings.append(f"{key}: repeated pagination link; stopped to avoid a loop.")
+                    complete = False
+                    break
+                seen.add(next_ref)
+                payload, status_code = await _safe_get(next_ref)
+                pages += 1
+                if status_code is None or not (200 <= status_code < 300):
+                    complete = False
+                    break
+                raw_items = payload.get(root_key, []) if isinstance(payload, dict) else []
+                if isinstance(raw_items, list):
+                    entries.extend(item for item in raw_items if isinstance(item, dict))
+                next_value = payload.get("next_page") if isinstance(payload, dict) else None
+                links = payload.get("links", {}) if isinstance(payload, dict) else {}
+                if not next_value and isinstance(links, dict):
+                    next_value = links.get("next")
+                next_ref = str(next_value).strip() if next_value else None
+            if next_ref:
+                warnings.append(f"{key}: pagination stopped at the 50-page safety cap.")
+                complete = False
+            return key, entries, pages, complete
 
-        help_center_entries = []
-        help_center_payload = payload_by_key.get("help_centers")
-        if isinstance(help_center_payload, dict):
-            raw_list = help_center_payload.get("help_centers", [])
-            if isinstance(raw_list, list):
-                help_center_entries = raw_list
+        fetched = await asyncio.gather(*[_fetch_all(key) for key in endpoint_specs])
+        for key, entries, pages, complete in fetched:
+            raw_entries_by_key[key] = entries
+            page_counts[key] = pages
+            endpoint_complete[key] = complete
+
+        help_center_entries = raw_entries_by_key.get("help_centers", [])
 
         if not help_center_entries:
             fallback_paths = [
@@ -341,145 +370,68 @@ async def fetch_zendesk_reference_catalog(
                     continue
                 raw_list = fallback_payload.get("help_centers")
                 if isinstance(raw_list, list) and raw_list:
-                    payload_by_key["help_centers"] = {"help_centers": raw_list}
+                    raw_entries_by_key["help_centers"] = raw_list
                     help_center_entries = raw_list
+                    endpoint_complete["help_centers"] = True
                     break
                 raw_single = fallback_payload.get("help_center")
                 if isinstance(raw_single, dict) and raw_single.get("id") and raw_single.get("name"):
-                    payload_by_key["help_centers"] = {"help_centers": [raw_single]}
+                    raw_entries_by_key["help_centers"] = [raw_single]
                     help_center_entries = [raw_single]
+                    endpoint_complete["help_centers"] = True
                     break
 
-        def _add(
-            *,
-            target_key: str,
-            object_type: str,
-            entries: list,
-            name_field: str = "name",
-            description_builder=None,
-        ) -> None:
-            for item in entries:
-                if not isinstance(item, dict):
-                    continue
-                item_id = str(item.get("id", "")).strip()
-                name = str(item.get(name_field, "")).strip()
+        def _description(item: dict, key: str) -> str:
+            actions = item.get("actions", [])
+            raw_conditions = item.get("conditions", {})
+            if isinstance(raw_conditions, dict):
+                all_count = len(raw_conditions.get("all", []) or [])
+                any_count = len(raw_conditions.get("any", []) or [])
+            else:
+                all_count = len(item.get("all", []) or [])
+                any_count = len(item.get("any", []) or [])
+            parts: list[str] = []
+            if key in {"triggers", "automations", "views"}:
+                parts.append(f"conditions={all_count + any_count}")
+            if isinstance(actions, list) and actions:
+                parts.append(f"actions={len(actions)}")
+            if item.get("type"):
+                parts.append(f"type={item.get('type')}")
+            if item.get("section_id"):
+                parts.append(f"section_id={item.get('section_id')}")
+            if key == "sla_policies":
+                parts.append(f"metrics={len(item.get('policy_metrics', []) or [])}")
+            if key == "schedules":
+                parts.append(f"time_zone={item.get('time_zone', '')}")
+            if item.get("active") is not None:
+                parts.append(f"active={bool(item.get('active'))}")
+            return "; ".join(part for part in parts if not part.endswith("="))[:1200]
+
+        for key, spec in endpoint_specs.items():
+            _path, _root, object_type, name_fields, editable = spec
+            for item in raw_entries_by_key.get(key, []):
+                item_id = str(item.get("id") or item.get("key") or "").strip()
+                name = next(
+                    (str(item.get(field, "")).strip() for field in name_fields if str(item.get(field, "")).strip()),
+                    "",
+                )
                 if not item_id or not name:
                     continue
-                payload = {"object_type": object_type, "id": item_id, "name": name}
-                if callable(description_builder):
-                    description = description_builder(item)
-                    if description:
-                        payload["description"] = description
-                catalogs[target_key].append(payload)
-
-        def _rule_summary(item: dict) -> str:
-            conditions = item.get("conditions", {}) if isinstance(item, dict) else {}
-            all_conditions = conditions.get("all", []) if isinstance(conditions, dict) else []
-            actions = item.get("actions", []) if isinstance(item, dict) else []
-            cond_count = len(all_conditions) if isinstance(all_conditions, list) else 0
-            action_count = len(actions) if isinstance(actions, list) else 0
-            return f"conditions={cond_count}; actions={action_count}"
-
-        def _macro_summary(item: dict) -> str:
-            actions = item.get("actions", []) if isinstance(item, dict) else []
-            action_count = len(actions) if isinstance(actions, list) else 0
-            return f"actions={action_count}"
-
-        def _view_summary(item: dict) -> str:
-            all_conditions = item.get("all", []) if isinstance(item, dict) else []
-            any_conditions = item.get("any", []) if isinstance(item, dict) else []
-            return f"all={len(all_conditions) if isinstance(all_conditions, list) else 0}; any={len(any_conditions) if isinstance(any_conditions, list) else 0}"
-
-        def _ticket_field_summary(item: dict) -> str:
-            field_type = str(item.get("type", "")).strip().lower()
-            tag = str(item.get("tag", "")).strip()
-            if tag:
-                return f"type={field_type}; tag={tag}"
-            return f"type={field_type}"
-
-        def _article_summary(item: dict) -> str:
-            label_names = item.get("label_names", []) if isinstance(item, dict) else []
-            section_id = str(item.get("section_id", "")).strip()
-            tags = ", ".join(label_names[:3]) if isinstance(label_names, list) and label_names else ""
-            parts = []
-            if section_id:
-                parts.append(f"section_id={section_id}")
-            if tags:
-                parts.append(f"labels={tags}")
-            return "; ".join(parts)
-
-        _add(
-            target_key="brands",
-            object_type="brand",
-            entries=payload_by_key.get("brands", {}).get("brands", []) if isinstance(payload_by_key.get("brands"), dict) else [],
-        )
-        _add(
-            target_key="groups",
-            object_type="group",
-            entries=payload_by_key.get("groups", {}).get("groups", []) if isinstance(payload_by_key.get("groups"), dict) else [],
-        )
-        _add(
-            target_key="ticket_forms",
-            object_type="ticket_form",
-            entries=payload_by_key.get("ticket_forms", {}).get("ticket_forms", []) if isinstance(payload_by_key.get("ticket_forms"), dict) else [],
-        )
-        _add(
-            target_key="triggers",
-            object_type="trigger",
-            entries=payload_by_key.get("triggers", {}).get("triggers", []) if isinstance(payload_by_key.get("triggers"), dict) else [],
-            name_field="title",
-            description_builder=_rule_summary,
-        )
-        _add(
-            target_key="automations",
-            object_type="automation",
-            entries=payload_by_key.get("automations", {}).get("automations", []) if isinstance(payload_by_key.get("automations"), dict) else [],
-            name_field="title",
-            description_builder=_rule_summary,
-        )
-        _add(
-            target_key="macros",
-            object_type="macro",
-            entries=payload_by_key.get("macros", {}).get("macros", []) if isinstance(payload_by_key.get("macros"), dict) else [],
-            name_field="title",
-            description_builder=_macro_summary,
-        )
-        _add(
-            target_key="views",
-            object_type="view",
-            entries=payload_by_key.get("views", {}).get("views", []) if isinstance(payload_by_key.get("views"), dict) else [],
-            name_field="title",
-            description_builder=_view_summary,
-        )
-        _add(
-            target_key="ticket_fields",
-            object_type="ticket_field",
-            entries=payload_by_key.get("ticket_fields", {}).get("ticket_fields", []) if isinstance(payload_by_key.get("ticket_fields"), dict) else [],
-            name_field="title",
-            description_builder=_ticket_field_summary,
-        )
-        _add(
-            target_key="articles",
-            object_type="article",
-            entries=payload_by_key.get("articles", {}).get("articles", []) if isinstance(payload_by_key.get("articles"), dict) else [],
-            name_field="title",
-            description_builder=_article_summary,
-        )
-        _add(
-            target_key="help_centers",
-            object_type="help_center",
-            entries=payload_by_key.get("help_centers", {}).get("help_centers", []) if isinstance(payload_by_key.get("help_centers"), dict) else [],
-        )
-        _add(
-            target_key="categories",
-            object_type="category",
-            entries=payload_by_key.get("categories", {}).get("categories", []) if isinstance(payload_by_key.get("categories"), dict) else [],
-        )
-        _add(
-            target_key="sections",
-            object_type="section",
-            entries=payload_by_key.get("sections", {}).get("sections", []) if isinstance(payload_by_key.get("sections"), dict) else [],
-        )
+                snapshot = json.loads(json.dumps(item, default=str))
+                serialized = json.dumps(snapshot, sort_keys=True, separators=(",", ":"), default=str)
+                catalogs[key].append(
+                    {
+                        "object_type": object_type,
+                        "id": item_id,
+                        "name": name,
+                        "description": _description(item, key) or None,
+                        "catalog_key": key,
+                        "updated_at": str(item.get("updated_at") or "").strip() or None,
+                        "snapshot_hash": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+                        "snapshot": snapshot,
+                        "editable": bool(editable),
+                    }
+                )
 
         if not catalogs["help_centers"]:
             warnings.append(
@@ -488,6 +440,27 @@ async def fetch_zendesk_reference_catalog(
             )
 
     fetched_total = sum(len(v) for v in catalogs.values())
+    catalog_counts = {key: len(values) for key, values in catalogs.items()}
+    sync_material = json.dumps(
+        {
+            key: [(item.get("id"), item.get("snapshot_hash")) for item in values]
+            for key, values in catalogs.items()
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    sync_id = f"SYNC-{hashlib.sha256(sync_material.encode('utf-8')).hexdigest()[:20].upper()}"
+    required_catalogs = {
+        "brands",
+        "groups",
+        "ticket_forms",
+        "triggers",
+        "automations",
+        "macros",
+        "views",
+        "ticket_fields",
+    }
+    complete = all(endpoint_complete.get(key, False) for key in required_catalogs)
     if fetched_total == 0:
         return {
             "ok": False,
@@ -496,6 +469,10 @@ async def fetch_zendesk_reference_catalog(
             "catalogs": catalogs,
             "fetched_at": _now_iso(),
             "warnings": warnings,
+            "sync_id": sync_id,
+            "complete": complete,
+            "catalog_counts": catalog_counts,
+            "page_counts": page_counts,
         }
 
     return {
@@ -505,27 +482,35 @@ async def fetch_zendesk_reference_catalog(
         "catalogs": catalogs,
         "fetched_at": _now_iso(),
         "warnings": warnings,
+        "sync_id": sync_id,
+        "complete": complete,
+        "catalog_counts": catalog_counts,
+        "page_counts": page_counts,
     }
 
 
 def _build_rule_payload(record: dict, root_key: str) -> dict:
     conditions = record.get("conditions", []) or []
     actions = record.get("actions", []) or []
-    all_conditions = [
-        _normalize_condition(item)
-        for item in conditions
-        if item.get("field")
-    ]
-    if not all_conditions:
+    all_conditions: list[dict] = []
+    any_conditions: list[dict] = []
+    for item in conditions:
+        if not isinstance(item, dict) or not item.get("field"):
+            continue
+        scope = str(item.get("scope") or item.get("condition_scope") or "all").strip().lower()
+        target = any_conditions if scope == "any" else all_conditions
+        target.append(_normalize_condition(item))
+    if not all_conditions and not any_conditions:
         all_conditions = [{"field": "status", "operator": "less_than", "value": "solved"}]
     normalized_actions = _sanitize_rule_actions(actions)
+    active = _coerce_bool(record.get("active"))
     return {
         root_key: {
             "title": str(record.get("title", "Untitled trigger")).strip() or "Untitled trigger",
-            "active": True,
+            "active": True if active is None else active,
             "conditions": {
                 "all": all_conditions,
-                "any": [],
+                "any": any_conditions,
             },
             "actions": normalized_actions,
         }
@@ -679,10 +664,11 @@ def _extract_ticket_form_field_references(record: dict) -> list[str]:
 
 def _build_macro_payload(record: dict) -> dict:
     actions = _sanitize_rule_actions(record.get("actions", []) or [])
+    active = _coerce_bool(record.get("active"))
     return {
         "macro": {
             "title": str(record.get("title", "Untitled macro")).strip() or "Untitled macro",
-            "active": True,
+            "active": True if active is None else active,
             "actions": actions,
         }
     }
@@ -690,13 +676,19 @@ def _build_macro_payload(record: dict) -> dict:
 
 def _build_view_payload(record: dict) -> dict:
     conditions = record.get("conditions", []) or []
-    all_conditions = [
-        _normalize_condition(item)
-        for item in conditions
-        if item.get("field")
-        and str(item.get("field", "")).strip().lower() in VIEW_CONDITION_ALLOWLIST
-    ]
-    if not all_conditions:
+    all_conditions: list[dict] = []
+    any_conditions: list[dict] = []
+    for item in conditions:
+        if (
+            not isinstance(item, dict)
+            or not item.get("field")
+            or str(item.get("field", "")).strip().lower() not in VIEW_CONDITION_ALLOWLIST
+        ):
+            continue
+        scope = str(item.get("scope") or item.get("condition_scope") or "all").strip().lower()
+        target = any_conditions if scope == "any" else all_conditions
+        target.append(_normalize_condition(item))
+    if not all_conditions and not any_conditions:
         all_conditions = [{"field": "status", "operator": "less_than", "value": "solved"}]
 
     raw_columns = _find_first_value(record, "output_columns")
@@ -707,13 +699,27 @@ def _build_view_payload(record: dict) -> dict:
     else:
         output_columns = ["status", "updated", "subject"]
 
+    active = _coerce_bool(record.get("active"))
     return {
         "view": {
             "title": str(record.get("title", "Untitled view")).strip() or "Untitled view",
-            "active": True,
+            "active": True if active is None else active,
             "all": all_conditions,
-            "any": [],
-            "output": {"columns": output_columns},
+            "any": any_conditions,
+            "output": {
+                "columns": output_columns,
+                **(
+                    {"sort_by": str(_find_first_value(record, "sort_by")).strip()}
+                    if _find_first_value(record, "sort_by")
+                    else {}
+                ),
+                **(
+                    {"sort_order": str(_find_first_value(record, "sort_order")).strip().lower()}
+                    if str(_find_first_value(record, "sort_order") or "").strip().lower()
+                    in {"asc", "desc"}
+                    else {}
+                ),
+            },
         }
     }
 
@@ -1621,6 +1627,7 @@ async def deploy_records_to_zendesk(
             *,
             object_type: str,
             raw_value: object,
+            allow_create: bool = True,
         ) -> tuple[str | None, str | None]:
             if raw_value is None:
                 return None, "Missing dependency value."
@@ -1640,6 +1647,12 @@ async def deploy_records_to_zendesk(
             existing_id = existing_map.get(raw.lower())
             if existing_id:
                 return existing_id, None
+
+            if not allow_create:
+                return None, (
+                    f"Dependency '{raw}' was not found in the synchronized Zendesk instance. "
+                    "Exact update mode never auto-creates dependencies."
+                )
 
             dependency_title = raw
             category_id_hint: str | None = None
@@ -1689,6 +1702,10 @@ async def deploy_records_to_zendesk(
             executed_at = _now_iso()
             decision = str(record.get("import_decision", "")).strip().lower()
             deployable = bool(record.get("deployable", False))
+            exact_update = str(record.get("operation_mode", "create")).strip().lower() == "update"
+            target_object_id = str(record.get("target_object_id") or "").strip()
+            raw_target_type = str(record.get("target_object_type") or "").strip().lower()
+            target_object_type = object_mappings.get(raw_target_type, raw_target_type)
 
             if decision != "approved" or not deployable:
                 skipped += 1
@@ -1763,6 +1780,7 @@ async def deploy_records_to_zendesk(
                     resolved_category_id, category_resolution_error = await _ensure_dependency_id(
                         object_type="categories",
                         raw_value=category_reference,
+                        allow_create=not exact_update,
                     )
                 else:
                     fallback_categories = await _load_existing_map("categories")
@@ -1816,6 +1834,7 @@ async def deploy_records_to_zendesk(
                         resolved_id, resolve_error = await _ensure_dependency_id(
                             object_type="ticket_fields",
                             raw_value=field_name,
+                            allow_create=not exact_update,
                         )
                         if resolve_error:
                             failed += 1
@@ -1884,6 +1903,7 @@ async def deploy_records_to_zendesk(
                 resolved_section_id, section_resolution_error = await _ensure_dependency_id(
                     object_type="sections",
                     raw_value=section_reference,
+                    allow_create=not exact_update,
                 )
                 if not resolved_section_id:
                     failed += 1
@@ -1910,16 +1930,28 @@ async def deploy_records_to_zendesk(
                 raw_actions_count = len(list(record.get("actions", []) or []))
                 if object_type == "triggers":
                     entry_actions = payload.get("trigger", {}).get("actions", [])
-                    entry_conditions = payload.get("trigger", {}).get("conditions", {}).get("all", [])
+                    trigger_conditions = payload.get("trigger", {}).get("conditions", {})
+                    entry_conditions = [
+                        *list(trigger_conditions.get("all", []) or []),
+                        *list(trigger_conditions.get("any", []) or []),
+                    ]
                 elif object_type == "automations":
                     entry_actions = payload.get("automation", {}).get("actions", [])
-                    entry_conditions = payload.get("automation", {}).get("conditions", {}).get("all", [])
+                    automation_conditions = payload.get("automation", {}).get("conditions", {})
+                    entry_conditions = [
+                        *list(automation_conditions.get("all", []) or []),
+                        *list(automation_conditions.get("any", []) or []),
+                    ]
                 elif object_type == "macros":
                     entry_actions = payload.get("macro", {}).get("actions", [])
                     entry_conditions = []
                 else:  # views
                     entry_actions = []
-                    entry_conditions = payload.get("view", {}).get("all", [])
+                    view_payload = payload.get("view", {})
+                    entry_conditions = [
+                        *list(view_payload.get("all", []) or []),
+                        *list(view_payload.get("any", []) or []),
+                    ]
 
                 if object_type in {"triggers", "automations", "macros"}:
                     sanitization_stats["actions_dropped"] += max(raw_actions_count - len(entry_actions), 0)
@@ -1951,6 +1983,7 @@ async def deploy_records_to_zendesk(
                     resolved_id, resolve_error = await _ensure_dependency_id(
                         object_type=expected_object_type,
                         raw_value=entry.get("value"),
+                        allow_create=not exact_update,
                     )
                     if resolve_error:
                         unresolved_reference_error = (
@@ -1978,8 +2011,8 @@ async def deploy_records_to_zendesk(
                     )
                     continue
 
-            existing_id = None
-            if on_existing in {"overwrite_existing", "skip_existing"} and title:
+            existing_id = target_object_id if exact_update else None
+            if not exact_update and on_existing in {"overwrite_existing", "skip_existing"} and title:
                 existing_map = await _load_existing_map(object_type)
                 existing_id = existing_map.get(title.strip().lower())
 
@@ -1993,6 +2026,30 @@ async def deploy_records_to_zendesk(
                         "deployment_status": "skipped",
                         "zendesk_object_id": existing_id,
                         "execution_message": "Skipped because object already exists (on_existing=skip_existing).",
+                        "executed_at": executed_at,
+                    }
+                )
+                continue
+
+            exact_update_error = ""
+            if exact_update and not target_object_id:
+                exact_update_error = "Exact update is missing its synchronized target ID."
+            elif exact_update and not target_object_id.isdigit():
+                exact_update_error = "Exact update target ID must be a numeric Zendesk ID."
+            elif exact_update and target_object_type and target_object_type != object_type:
+                exact_update_error = "Exact update target type does not match the proposed object type."
+            elif exact_update and on_existing != "overwrite_existing":
+                exact_update_error = "Exact update requires on_existing=overwrite_existing."
+            if exact_update_error:
+                failed += 1
+                results.append(
+                    {
+                        "record_id": record_id,
+                        "object_type": object_type,
+                        "title": title,
+                        "deployment_status": "failed",
+                        "zendesk_object_id": target_object_id or None,
+                        "execution_message": exact_update_error,
                         "executed_at": executed_at,
                     }
                 )
@@ -2022,6 +2079,63 @@ async def deploy_records_to_zendesk(
                 method = "PUT"
                 request_path = update_path_template.format(id=existing_id)
                 success_text = "updated"
+
+            if exact_update and not dry_run:
+                live_error = ""
+                live_payload: dict = {}
+                started = time.perf_counter()
+                try:
+                    live_response = await client.get(
+                        f"{_api_base_for_type(object_type)}{request_path}",
+                        auth=(auth_user, api_token),
+                        headers={"Content-Type": "application/json"},
+                    )
+                    _emit_zendesk_http_event(
+                        operation="deploy_exact_update_preflight",
+                        method="GET",
+                        url_or_path=request_path,
+                        status_code=live_response.status_code,
+                        duration_ms=(time.perf_counter() - started) * 1000.0,
+                        success=live_response.is_success,
+                        error=None if live_response.is_success else f"HTTP {live_response.status_code}",
+                    )
+                    if not live_response.is_success:
+                        live_error = f"Exact update target could not be reloaded (HTTP {live_response.status_code})."
+                    else:
+                        live_payload = live_response.json() if live_response.text else {}
+                except (httpx.HTTPError, ValueError) as exc:
+                    live_error = f"Exact update target preflight failed: {exc}"
+
+                live_object = live_payload.get(response_root, {}) if isinstance(live_payload, dict) else {}
+                live_id = str(live_object.get("id") or "").strip() if isinstance(live_object, dict) else ""
+                if not live_error and live_id != target_object_id:
+                    live_error = "Exact update preflight returned a different Zendesk object."
+                expected_updated_at = str(record.get("target_updated_at") or "").strip()
+                live_updated_at = str(live_object.get("updated_at") or "").strip() if isinstance(live_object, dict) else ""
+                if (
+                    not live_error
+                    and expected_updated_at
+                    and live_updated_at
+                    and live_updated_at != expected_updated_at
+                ):
+                    live_error = (
+                        "The Zendesk object changed after synchronization. Sync the instance again "
+                        "before applying this update."
+                    )
+                if live_error:
+                    failed += 1
+                    results.append(
+                        {
+                            "record_id": record_id,
+                            "object_type": object_type,
+                            "title": title,
+                            "deployment_status": "failed",
+                            "zendesk_object_id": target_object_id,
+                            "execution_message": live_error,
+                            "executed_at": executed_at,
+                        }
+                    )
+                    continue
 
             if dry_run:
                 if title:

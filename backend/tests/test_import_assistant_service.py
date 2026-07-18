@@ -2,9 +2,10 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-from app.models.schemas import ValidationSummary
+from app.models.schemas import ImportAssistantGenerateRequest, ValidationSummary
 from app.services.import_assistant_service import (
     _annotate_focus_object_constraints,
+    _apply_explicit_article_dependencies,
     _apply_generation_safety_to_preview,
     _apply_dependency_resolution,
     _annotate_duplicate_candidates,
@@ -20,10 +21,20 @@ from app.services.import_assistant_service import (
     _build_clarification_questions,
     _build_existing_object_index,
     _build_preview_records,
+    _bind_update_target_to_generated_rows,
+    _compact_related_objects,
     _dedupe_generated_rows,
     _draft_department_content_rows,
     _estimate_requested_record_count,
+    _extract_article_category_names,
+    _extract_article_specs_from_prompt,
+    _extract_inline_support_team_names,
+    _extract_macro_specs_from_prompt,
     _extract_object_type_targets,
+    _extract_ticket_field_specs_from_prompt,
+    _extract_ticket_form_specs_from_prompt,
+    _extract_trigger_specs_from_prompt,
+    _extract_view_specs_from_prompt,
     _extract_explicit_constraints,
     _evaluate_generation_safety,
     _evaluate_department_coverage,
@@ -31,16 +42,167 @@ from app.services.import_assistant_service import (
     _is_business_blueprint_prompt,
     _can_use_deterministic_chunk_fallback,
     _should_use_department_template_first,
+    _should_use_explicit_template_first,
+    _should_bypass_planner_for_explicit_manifest,
     _resolve_wave_api_key,
     _resolve_wave_generator_model,
     _select_wave_generator_route,
+    _supervisor_review_bundle_key,
     _run_business_blueprint_compiler,
     _reconcile_backlog_item,
+    _prepare_update_request,
     apply_approval,
 )
 from app.services.batch_store import get_batch_store, reset_batch_store
 from app.services.planner import _resolve_fallback_object_type
 from app.services.gemini_supervisor import evaluate_supervisor_bundle
+
+
+CLEARSKY_REGRESSION_PROMPT = """We are setting up Zendesk for ClearSky Insurance Group.
+They have five support teams: Personal Lines Support, Commercial Lines Support,
+Claims, Underwriting, and Client Retention.
+
+1. Five ticket fields:
+   - A dropdown called "Query Type" with options: New Quote Request,
+     Claim Submission, Policy Cancellation, Complaint, General Inquiry
+   - A dropdown called "Policy Type" with options: Vehicle Insurance, Business Insurance
+   - A dropdown called "Client Segment" with options: Individual, Corporate, Broker Referred
+   - A dropdown called "Claim Status" with options: Submitted, Approved, Rejected
+   - A text field called "Policy Number"
+
+2. Six triggers:
+   - When Query Type is "Underwriting", assign to Underwriting.
+
+3. Five views:
+   - All open Claim Submission tickets assigned to Claims.
+
+4. Four macros:
+   - A macro called "Acknowledge Claim Submission" that sends a reply and adds a tag.
+
+5. Three ticket forms:
+   - A form called "ClearSky Personal Lines Form" that includes fields in order:
+     Subject, Description, Query Type, Policy Type, Client Segment, Policy Number, Priority
+   - A form called "ClearSky Claims Form" that includes fields in order:
+     Subject, Description, Query Type, Policy Type, Client Segment, Claim Status, Policy Number, Priority
+   - A form called "ClearSky Commercial Lines Form" that includes fields in order:
+     Subject, Description, Query Type, Policy Type, Client Segment, Policy Number, Priority
+
+6. Five knowledge base articles:
+   - An article called "How to Submit a Claim with ClearSky Insurance"
+     in the category Claims that explains required documents and timeframes
+   - An article called "Understanding Your ClearSky Policy Schedule"
+     in the category Policy Management that explains cover limits and amendments
+   - An article called "How to Get a Quote for Business Insurance"
+     in the category New Business that explains required quote information
+   - An article called "What to Do After a Vehicle Accident"
+     in the category Claims that explains emergency steps
+   - An article called "ClearSky Cancellation Policy and Your Options"
+     in the category Policy Management that explains notice and retention options
+"""
+
+
+def _update_request(prompt: str = "Add the vip tag and keep the current routing logic."):
+    return ImportAssistantGenerateRequest(
+        prompt=prompt,
+        operation_mode="update",
+        instance_sync_id="SYNC-TEST",
+        update_target={
+            "object_type": "trigger",
+            "id": "321",
+            "name": "Route Enterprise Tickets",
+            "updated_at": "2026-07-18T10:00:00Z",
+            "snapshot_hash": "abc123",
+            "editable": True,
+            "snapshot": {
+                "id": 321,
+                "title": "Route Enterprise Tickets",
+                "active": True,
+                "updated_at": "2026-07-18T10:00:00Z",
+                "conditions": {
+                    "all": [{"field": "status", "operator": "is", "value": "new"}],
+                    "any": [{"field": "priority", "operator": "is", "value": "high"}],
+                },
+                "actions": [{"field": "group_id", "value": "777"}],
+            },
+        },
+    )
+
+
+def test_prepare_update_request_forces_one_existing_target_with_snapshot():
+    prepared, metadata = _prepare_update_request(_update_request())
+
+    assert prepared.dependency_mode == "force_existing_only"
+    assert prepared.focus_object_types == ["triggers"]
+    assert len(prepared.related_objects) == 1
+    assert prepared.related_objects[0].snapshot["id"] == 321
+    assert "EXACT UPDATE MODE" in prepared.context_notes
+    assert metadata["target_object_id"] == "321"
+
+    compact = _compact_related_objects(
+        [prepared.related_objects[0].model_dump()],
+        max_items=5,
+    )
+    assert compact[0]["update_target"] is True
+    assert compact[0]["snapshot"]["conditions"]["any"][0]["field"] == "priority"
+
+
+def test_update_binding_preserves_id_title_and_any_condition_scope():
+    request = _update_request()
+    rows, metadata = _bind_update_target_to_generated_rows(
+        [
+            {
+                "object_type": "triggers",
+                "title": "Accidental Rename",
+                "conditions": [
+                    {"field": "status", "operator": "is", "value": "new", "scope": "all"},
+                    {"field": "priority", "operator": "is", "value": "high", "scope": "any"},
+                ],
+                "actions": [
+                    {"field": "group_id", "value": "777"},
+                    {"field": "set_tags", "value": "vip"},
+                ],
+            }
+        ],
+        request=request,
+    )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["title"] == "Route Enterprise Tickets"
+    assert row["target_object_id"] == "321"
+    assert row["zendesk_object_id"] == "321"
+    assert row["before_configuration"]["conditions"][1]["scope"] == "any"
+    assert row["after_configuration"]["actions"][-1]["value"] == "vip"
+    assert metadata["changed_fields"] == ["actions"]
+
+    preview, summary = _build_preview_records({"object_type": "triggers"}, rows)
+    assert preview[0]["operation_mode"] == "update"
+    assert preview[0]["target_object_id"] == "321"
+    assert preview[0]["before_configuration"]["title"] == "Route Enterprise Tickets"
+    assert summary.blocked == 0
+
+
+def test_update_binding_blocks_noop_replacement():
+    request = _update_request()
+    rows, _ = _bind_update_target_to_generated_rows(
+        [
+            {
+                "object_type": "triggers",
+                "title": "Route Enterprise Tickets",
+                "active": True,
+                "conditions": [
+                    {"field": "status", "operator": "is", "value": "new", "scope": "all"},
+                    {"field": "priority", "operator": "is", "value": "high", "scope": "any"},
+                ],
+                "actions": [{"field": "group_id", "value": "777"}],
+            }
+        ],
+        request=request,
+    )
+
+    preview, summary = _build_preview_records({"object_type": "triggers"}, rows)
+    assert summary.blocked == 1
+    assert "does not change" in preview[0]["blocked_reason"].lower()
 
 
 def test_build_preview_records_sets_warnings_and_blocks():
@@ -365,6 +527,39 @@ def test_ticket_field_canonicalization_maps_dropdown_alias_and_parses_options():
     assert action_map["required"] is False
     assert action_map["required_in_portal"] is False
     assert isinstance(info["warnings"], list)
+
+
+def test_ticket_field_canonicalization_removes_options_from_text_fields():
+    settings = SimpleNamespace(
+        ticket_field_default_agent_can_edit=True,
+        ticket_field_default_visible_in_portal=True,
+        ticket_field_default_editable_in_portal=False,
+        ticket_field_default_required=False,
+        ticket_field_default_required_in_portal=False,
+    )
+    row = {
+        "object_type": "ticket_fields",
+        "title": "Policy Number",
+        "conditions": [],
+        "actions": [
+            {"field": "field_type", "value": "text"},
+            {
+                "field": "custom_field_options",
+                "value": ["Client", "Broker Referred"],
+            },
+        ],
+    }
+
+    normalized_row, info = _canonicalize_ticket_field_record(
+        row,
+        prompt=CLEARSKY_REGRESSION_PROMPT,
+        settings=settings,
+    )
+    action_map = {item["field"]: item["value"] for item in normalized_row["actions"]}
+
+    assert action_map["field_type"] == "text"
+    assert "custom_field_options" not in action_map
+    assert any("does not support options" in warning for warning in info["warnings"])
 
 
 def test_generation_safety_blocks_ticket_field_type_mismatch():
@@ -730,18 +925,18 @@ def test_chunk_plan_uses_balanced_fast_profile_for_form_field_view_objects():
     )
     fields = _build_chunk_plan(settings=settings, estimated_count=12, object_type="ticket_fields")
     assert fields["activated"] is True
-    assert fields["chunk_size"] == 3
-    assert fields["chunk_targets"] == [3, 3, 3, 3]
+    assert fields["chunk_size"] == 5
+    assert fields["chunk_targets"] == [5, 5, 2]
 
     forms = _build_chunk_plan(settings=settings, estimated_count=4, object_type="ticket_forms")
     assert forms["activated"] is True
-    assert forms["chunk_size"] == 2
-    assert forms["chunk_targets"] == [2, 2]
+    assert forms["chunk_size"] == 3
+    assert forms["chunk_targets"] == [3, 1]
 
     views = _build_chunk_plan(settings=settings, estimated_count=5, object_type="views")
     assert views["activated"] is True
-    assert views["chunk_size"] == 2
-    assert views["chunk_targets"] == [2, 2, 1]
+    assert views["chunk_size"] == 3
+    assert views["chunk_targets"] == [3, 2]
 
 
 def test_dedupe_generated_rows_drops_duplicate_titles_by_object_type():
@@ -768,6 +963,301 @@ def test_extract_object_type_targets_detects_multi_object_numeric_intent():
     assert targets["macros"] >= 5
     assert targets["views"] >= 3
     assert targets["ticket_forms"] >= 2
+
+
+def test_clearsky_prompt_extracts_exact_teams_categories_forms_and_targets():
+    assert _extract_inline_support_team_names(CLEARSKY_REGRESSION_PROMPT) == [
+        "Personal Lines Support",
+        "Commercial Lines Support",
+        "Claims",
+        "Underwriting",
+        "Client Retention",
+    ]
+    assert _extract_article_category_names(CLEARSKY_REGRESSION_PROMPT) == [
+        "Claims",
+        "Policy Management",
+        "New Business",
+    ]
+    form_specs = _extract_ticket_form_specs_from_prompt(CLEARSKY_REGRESSION_PROMPT)
+    assert [item["title"] for item in form_specs] == [
+        "ClearSky Personal Lines Form",
+        "ClearSky Claims Form",
+        "ClearSky Commercial Lines Form",
+    ]
+    assert form_specs[1]["fields"] == [
+        "Subject",
+        "Description",
+        "Query Type",
+        "Policy Type",
+        "Client Segment",
+        "Claim Status",
+        "Policy Number",
+        "Priority",
+    ]
+
+    targets = _extract_object_type_targets(
+        prompt=CLEARSKY_REGRESSION_PROMPT,
+        focus_object_types=[],
+        estimated_count=34,
+        chunk_estimate=None,
+    )
+    assert targets == {
+        "categories": 3,
+        "sections": 3,
+        "groups": 5,
+        "ticket_fields": 5,
+        "ticket_forms": 3,
+        "views": 5,
+        "triggers": 6,
+        "macros": 4,
+        "articles": 5,
+    }
+    assert _should_bypass_planner_for_explicit_manifest(
+        prompt=CLEARSKY_REGRESSION_PROMPT,
+        object_targets=targets,
+        force_wave_chunk_reason="create_following_numbered_prompt",
+    ) is True
+
+
+def test_planner_bypass_keeps_less_explicit_multi_object_prompts_on_model_route():
+    assert _should_bypass_planner_for_explicit_manifest(
+        prompt="Create the following: some triggers, views, macros, and forms for our support team.",
+        object_targets={"triggers": 3, "views": 2, "macros": 2, "ticket_forms": 1},
+        force_wave_chunk_reason="create_following_numbered_prompt",
+    ) is False
+
+
+def test_clearsky_field_parser_adds_later_referenced_underwriting_option():
+    field_specs = _extract_ticket_field_specs_from_prompt(CLEARSKY_REGRESSION_PROMPT)
+    query_type = next(item for item in field_specs if item["title"] == "Query Type")
+    assert "Underwriting" in query_type["options"]
+    assert query_type["implied_options_added"] == ["Underwriting"]
+
+
+def test_clearsky_explicit_trigger_specs_compile_exact_routing_actions():
+    prompt = """1. Two ticket fields:
+   - A dropdown called "Query Type" with options: Claim Submission, Complaint
+   - A dropdown called "Client Segment" with options: High Value Client
+2. Two triggers:
+   - When a ticket is created and Query Type is "Claim Submission"
+     and Client Segment is "High Value Client", assign to Claims,
+     add tag "hv_claim_submission", and set priority to Urgent
+   - When a ticket is created and Query Type is "Complaint",
+     assign to Personal Lines Support, add tag "client_complaint",
+     and set priority to High
+3. End.
+"""
+    specs = _extract_trigger_specs_from_prompt(prompt)
+
+    assert len(specs) == 2
+    assert specs[0]["conditions"] == [
+        {"field": "status", "operator": "is", "value": "new"},
+        {"field": "custom_field_query_type", "operator": "is", "value": "claim_submission"},
+        {"field": "custom_field_client_segment", "operator": "is", "value": "high_value_client"},
+    ]
+    assert specs[0]["actions"] == [
+        {"field": "group_id", "value": "Claims"},
+        {"field": "set_tags", "value": "hv_claim_submission"},
+        {"field": "priority", "value": "urgent"},
+    ]
+    assert _should_use_explicit_template_first(
+        prompt=prompt,
+        object_type="triggers",
+        target_count=2,
+    ) is True
+
+
+def test_clearsky_explicit_views_compile_filters_and_sort_output():
+    prompt = """1. Two ticket fields:
+   - A dropdown called "Query Type" with options: Claim Submission, New Quote Request
+   - A dropdown called "Client Segment" with options: Individual, Corporate
+2. Two triggers:
+   - When a ticket is created and Query Type is "Claim Submission", assign to Claims,
+     add tag "claim_submission", and set priority to High
+   - When a ticket is created and Query Type is "New Quote Request"
+     and Client Segment is "Corporate", assign to Commercial Lines Support,
+     add tag "corporate_quote", and set priority to Normal
+3. Three views:
+   - All open Claim Submission tickets assigned to Claims sorted by priority descending
+   - All open Corporate Quote tickets assigned to Commercial Lines Support sorted by creation date
+   - All unassigned tickets across all teams sorted by oldest first
+4. End.
+"""
+    specs = _extract_view_specs_from_prompt(prompt)
+
+    assert len(specs) == 3
+    assert specs[0]["conditions"][-2:] == [
+        {"field": "current_tags", "operator": "includes", "value": "claim_submission"},
+        {"field": "group_id", "operator": "is", "value": "Claims"},
+    ]
+    assert specs[0]["actions"][-2:] == [
+        {"field": "sort_by", "value": "priority"},
+        {"field": "sort_order", "value": "desc"},
+    ]
+    assert specs[1]["conditions"][-2:] == [
+        {"field": "current_tags", "operator": "includes", "value": "corporate_quote"},
+        {"field": "group_id", "operator": "is", "value": "Commercial Lines Support"},
+    ]
+    assert specs[2]["conditions"][-1] == {
+        "field": "assignee_id",
+        "operator": "is",
+        "value": "",
+    }
+    assert _should_use_explicit_template_first(
+        prompt=prompt,
+        object_type="views",
+        target_count=3,
+    ) is True
+
+
+def test_clearsky_explicit_macro_specs_preserve_reply_and_private_note_modes():
+    prompt = """4. Two macros:
+   - A macro called "Acknowledge Claim" that sends a reply:
+     "We received your claim and will respond within two business days."
+     and adds tag "claim_acknowledged"
+   - A macro called "Escalate High Value Claim" that assigns the ticket
+     to Claims, sets priority to Urgent, adds tag "hv_claim_escalated",
+     and adds an internal note: "Assign a senior assessor within four hours."
+5. End.
+"""
+    specs = _extract_macro_specs_from_prompt(prompt)
+
+    assert len(specs) == 2
+    assert specs[0]["comment_is_public"] is True
+    assert specs[0]["tags"] == ["claim_acknowledged"]
+    assert specs[1] == {
+        "title": "Escalate High Value Claim",
+        "comment": "Assign a senior assessor within four hours.",
+        "comment_is_public": False,
+        "group": "Claims",
+        "priority": "urgent",
+        "tags": ["hv_claim_escalated"],
+    }
+
+    rows = _build_deterministic_chunk_rows(
+        object_type="macros",
+        target_count=2,
+        prompt=prompt,
+        reference_catalog={},
+        existing_titles=[],
+        generated_rows=[],
+        reason="template-first",
+        backlog_item={"_chunk_offset": 0},
+    )
+    private_note = rows[1]
+    assert any(
+        action["field"] == "comment_mode_is_public" and action["value"] is False
+        for action in private_note["actions"]
+    )
+    assert any(
+        action["field"] == "group_id" and action["value"] == "Claims"
+        for action in private_note["actions"]
+    )
+
+
+def test_clearsky_group_titles_do_not_collide_with_category_or_section_titles():
+    generated_rows = [
+        {"object_type": "categories", "title": "Claims"},
+        {"object_type": "sections", "title": "Claims"},
+    ]
+
+    rows = _build_deterministic_chunk_rows(
+        object_type="groups",
+        target_count=5,
+        prompt=CLEARSKY_REGRESSION_PROMPT,
+        reference_catalog={},
+        existing_titles=["Claims"],
+        generated_rows=generated_rows,
+        reason="template-first",
+    )
+
+    assert [row["title"] for row in rows] == [
+        "Personal Lines Support",
+        "Commercial Lines Support",
+        "Claims",
+        "Underwriting",
+        "Client Retention",
+    ]
+
+
+def test_targeted_group_rebuild_excludes_its_own_source_chunk():
+    source_chunk_id = "BL-003:1"
+    generated_rows = [
+        {
+            "object_type": "groups",
+            "title": title,
+            "_supervisor_chunk_id": source_chunk_id,
+        }
+        for title in (
+            "Personal Lines Support",
+            "Commercial Lines Support",
+            "Claims",
+            "Underwriting",
+            "Client Retention",
+        )
+    ]
+
+    rows = _build_deterministic_chunk_rows(
+        object_type="groups",
+        target_count=5,
+        prompt=CLEARSKY_REGRESSION_PROMPT,
+        reference_catalog={},
+        existing_titles=[row["title"] for row in generated_rows],
+        generated_rows=generated_rows,
+        reason="Supervisor repair required for this chunk only.",
+        excluded_chunk_id=source_chunk_id,
+    )
+
+    assert [row["title"] for row in rows] == [row["title"] for row in generated_rows]
+
+
+def test_clearsky_article_fallback_preserves_titles_and_same_batch_sections():
+    specs = _extract_article_specs_from_prompt(CLEARSKY_REGRESSION_PROMPT)
+    assert len(specs) == 5
+    assert specs[1]["category"] == "Policy Management"
+
+    rows = _build_deterministic_chunk_rows(
+        object_type="articles",
+        target_count=5,
+        prompt=CLEARSKY_REGRESSION_PROMPT,
+        reference_catalog={},
+        existing_titles=[],
+        generated_rows=[],
+        reason="model output malformed",
+    )
+    assert [row["title"] for row in rows] == [item["title"] for item in specs]
+    section_names = [
+        next(action["value"] for action in row["actions"] if action["field"] == "section_name")
+        for row in rows
+    ]
+    assert section_names == [item["category"] for item in specs]
+    assert all(
+        len(next(action["value"] for action in row["actions"] if action["field"] == "body")) > 180
+        for row in rows
+    )
+
+
+def test_clearsky_runtime_chunks_consolidate_to_nine_initial_review_bundles():
+    chunks = [
+        {"wave": 1, "object_type": "categories"},
+        {"wave": 1, "object_type": "sections"},
+        {"wave": 2, "object_type": "groups"},
+        {"wave": 2, "object_type": "ticket_fields"},
+        {"wave": 3, "object_type": "ticket_forms"},
+        {"wave": 3, "object_type": "views"},
+        {"wave": 3, "object_type": "views"},
+        {"wave": 4, "object_type": "triggers"},
+        {"wave": 4, "object_type": "triggers"},
+        {"wave": 4, "object_type": "macros"},
+        {"wave": 5, "object_type": "articles"},
+        {"wave": 5, "object_type": "articles"},
+    ]
+    review_units = {
+        (int(chunk["wave"]), _supervisor_review_bundle_key(chunk))
+        for chunk in chunks
+    }
+    assert len(chunks) == 12
+    assert len(review_units) == 9
 
 
 def test_deterministic_chunk_fallback_support_includes_wave3_rule_objects():
@@ -1093,6 +1583,37 @@ def test_apex_business_blueprint_compiler_bypasses_generator_model():
     assert telemetry == {"bypassed": True, "reason": "department_coverage_manifest"}
 
 
+def test_explicit_numbered_blueprint_compiler_uses_deterministic_targets():
+    targets = {
+        "categories": 3,
+        "sections": 3,
+        "groups": 5,
+        "ticket_fields": 5,
+        "ticket_forms": 3,
+        "views": 5,
+        "triggers": 6,
+        "macros": 4,
+        "articles": 5,
+    }
+    blueprint, telemetry = asyncio.run(
+        _run_business_blueprint_compiler(
+            prompt=CLEARSKY_REGRESSION_PROMPT,
+            dependency_mode="match_existing_or_create_new",
+            focus_object_types=[],
+            object_targets=targets,
+            planner_route=SimpleNamespace(model="unused", max_output_tokens=300),
+            deterministic_only=True,
+        )
+    )
+
+    assert blueprint["mode"] == "deterministic_fallback"
+    assert {
+        item["object_type"]: item["target_count"]
+        for item in blueprint["target_objects"]
+    } == targets
+    assert telemetry == {"bypassed": True, "reason": "explicit_numbered_operating_model"}
+
+
 def test_apex_deterministic_department_chunks_pass_enforced_supervisor_gate():
     manifest = _build_department_coverage_manifest(
         prompt=APEX_OPERATING_MODEL_PROMPT,
@@ -1325,6 +1846,85 @@ def test_canonicalize_articles_allows_same_batch_section_dependency():
     assert any(action["field"] == "section_name" and action["value"] == "Claims" for action in article["actions"])
 
 
+def test_explicit_article_dependency_is_restored_before_supervisor_review():
+    prompt = """6. One knowledge base article:
+   - An article called "How to Submit a Claim"
+     in the category Claims that explains required documents and timeframes
+"""
+    rows = [
+        {
+            "object_type": "articles",
+            "title": "How to Submit a Claim",
+            "conditions": [],
+            "actions": [{"field": "body", "value": "<p>Detailed claims guidance.</p>"}],
+        }
+    ]
+
+    assert _apply_explicit_article_dependencies(rows, prompt=prompt) == 1
+    assert rows[0]["actions"][-1] == {"field": "section_name", "value": "Claims"}
+    assert _apply_explicit_article_dependencies(rows, prompt=prompt) == 0
+
+    rows[0]["actions"][-1] = {"field": "section", "value": "Claims"}
+    assert _apply_explicit_article_dependencies(rows, prompt=prompt) == 1
+    assert not any(action["field"] == "section" for action in rows[0]["actions"])
+    assert any(
+        action["field"] == "section_name" and action["value"] == "Claims"
+        for action in rows[0]["actions"]
+    )
+
+
+def test_form_canonicalization_does_not_create_custom_copies_of_system_fields():
+    rows = [
+        {
+            "object_type": "ticket_fields",
+            "title": "Policy Number",
+            "conditions": [],
+            "actions": [{"field": "field_type", "value": "text"}],
+        },
+        {
+            "object_type": "ticket_forms",
+            "title": "Claims Form",
+            "conditions": [],
+            "actions": [
+                {
+                    "field": "ticket_field_names",
+                    "value": ["Subject", "Description", "Policy Number", "Priority"],
+                }
+            ],
+        },
+    ]
+
+    normalized_rows, _field_meta, form_meta, _canonicalization = _canonicalize_generated_rows(
+        rows=rows,
+        prompt="Create a claims form with Subject, Description, Policy Number, and Priority.",
+        reference_catalog={"ticket_fields": [], "sections": []},
+        existing_index={},
+        related_lookup={},
+        catalog_lookup={},
+        settings=SimpleNamespace(
+            inference_policy="infer_with_warnings",
+            form_missing_field_mode="auto_create",
+            ticket_field_default_agent_can_edit=True,
+            ticket_field_default_visible_in_portal=True,
+            ticket_field_default_editable_in_portal=False,
+            ticket_field_default_required=False,
+            ticket_field_default_required_in_portal=False,
+        ),
+    )
+
+    generated_field_titles = [
+        row["title"] for row in normalized_rows if row["object_type"] == "ticket_fields"
+    ]
+    assert generated_field_titles == ["Policy Number"]
+    assert form_meta["auto_created_fields"] == 0
+    assert form_meta["system_field_references"] == 3
+    form = next(row for row in normalized_rows if row["object_type"] == "ticket_forms")
+    field_names = next(
+        action["value"] for action in form["actions"] if action["field"] == "ticket_field_names"
+    )
+    assert field_names == ["Subject", "Description", "Policy Number", "Priority"]
+
+
 def test_canonicalize_article_resolves_topic_alias_after_section_title_patch():
     rows = [
         {
@@ -1370,6 +1970,56 @@ def test_canonicalize_article_resolves_topic_alias_after_section_title_patch():
         and action["value"] == "Damaged Vehicles & Insurance Claims"
         for action in article["actions"]
     )
+
+
+def test_article_canonicalization_prefers_supervisor_body_over_short_content_alias():
+    improved_body = (
+        "<h3>Submit your claim</h3><p>Gather your policy number, incident date, photographs, "
+        "police reference when applicable, and proof of loss. Submit the request within the "
+        "required timeframe and keep all original evidence.</p><p>A claims assessor will confirm "
+        "receipt, identify missing documents, explain the assessment stages, and provide the next "
+        "update date.</p>"
+    )
+    rows = [
+        {
+            "object_type": "sections",
+            "title": "Claims",
+            "conditions": [],
+            "actions": [{"field": "category_name", "value": "Claims"}],
+        },
+        {
+            "object_type": "articles",
+            "title": "How to Submit a Claim",
+            "conditions": [],
+            "actions": [
+                {"field": "content", "value": "Short generator summary."},
+                {"field": "body", "value": improved_body},
+                {"field": "section_name", "value": "Claims"},
+            ],
+        },
+    ]
+
+    normalized_rows, *_ = _canonicalize_generated_rows(
+        rows=rows,
+        prompt="Create a detailed claims article.",
+        reference_catalog={"ticket_fields": [], "sections": []},
+        existing_index={},
+        related_lookup={},
+        catalog_lookup={},
+        settings=SimpleNamespace(
+            inference_policy="infer_with_warnings",
+            form_missing_field_mode="warn",
+            ticket_field_default_agent_can_edit=True,
+            ticket_field_default_visible_in_portal=True,
+            ticket_field_default_editable_in_portal=False,
+            ticket_field_default_required=False,
+            ticket_field_default_required_in_portal=False,
+        ),
+    )
+
+    article = next(row for row in normalized_rows if row["object_type"] == "articles")
+    assert not any(action["field"] == "content" for action in article["actions"])
+    assert next(action["value"] for action in article["actions"] if action["field"] == "body") == improved_body
 
 
 def test_reconcile_backlog_item_respects_force_existing_only():

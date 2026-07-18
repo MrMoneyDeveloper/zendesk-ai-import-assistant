@@ -2,7 +2,8 @@ param(
   [int]$BackendPort = 8016,
   [int]$FrontendPort = 5176,
   [switch]$DisableAutoPortFallback,
-  [switch]$Diagnostics
+  [switch]$Diagnostics,
+  [switch]$Reload
 )
 
 $ErrorActionPreference = "Stop"
@@ -251,8 +252,8 @@ try {
   Save-State -Backend $activeBackendPort -Frontend $activeFrontendPort -PerfSessionDir $perfSessionDir
 
   Write-Host "Starting backend on http://127.0.0.1:$activeBackendPort"
-  $backendJob = Start-Job -Name "backend-dev" -ArgumentList $repoRoot, $activeBackendPort, $perfSessionDir -ScriptBlock {
-    param($root, $port, $sessionDir)
+  $backendJob = Start-Job -Name "backend-dev" -ArgumentList $repoRoot, $activeBackendPort, $perfSessionDir, ([bool]$Reload) -ScriptBlock {
+    param($root, $port, $sessionDir, $reloadEnabled)
     Set-Location (Join-Path $root "backend")
     if ($sessionDir) {
       $env:DIAGNOSTICS_MODE = "true"
@@ -263,7 +264,11 @@ try {
       $env:PERF_CAPTURE_ENABLED = "false"
       $env:PERF_CAPTURE_DIR = ""
     }
-    python -m uvicorn app.main:app --host 127.0.0.1 --port $port --reload
+    $uvicornArgs = @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", $port)
+    if ($reloadEnabled) {
+      $uvicornArgs += "--reload"
+    }
+    & python @uvicornArgs
   }
 
   if (-not (Wait-ForBackend -Port $activeBackendPort -TimeoutSeconds 40)) {
@@ -289,6 +294,7 @@ try {
   } else {
     Write-Host "Diagnostics mode: OFF (lean runtime profile)"
   }
+  Write-Host "Backend reload: $(if ($Reload) { 'ON' } else { 'OFF (stable demo mode)' })"
   Write-Host "Press Ctrl+C to stop both services."
 
   while ($true) {
