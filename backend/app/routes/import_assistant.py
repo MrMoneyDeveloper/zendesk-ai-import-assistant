@@ -18,6 +18,8 @@ from app.models.schemas import (
     CheckpointDecisionRequest,
     CheckpointDecisionResponse,
     CheckpointListResponse,
+    ContextQuestionRequest,
+    ContextQuestionResponse,
     ImportAssistantGenerateRequest,
     ImportAssistantGenerateResponse,
     IntegrationStatusResponse,
@@ -56,6 +58,7 @@ from app.services.attachment_extractor import (
     AttachmentExtractionError,
     extract_attachment_payload,
 )
+from app.services.context_qa import answer_context_question
 from app.services.sheets_service import SheetsService
 from app.services.zendesk import (
     check_zendesk_help_center_readiness,
@@ -86,6 +89,10 @@ SCHEMA_SYNC_MODELS = [
     "CheckpointDecisionRequest",
     "CheckpointDecisionResponse",
     "ContextReference",
+    "ContextQuestionTurn",
+    "ContextQuestionRequest",
+    "ContextQuestionCitation",
+    "ContextQuestionResponse",
     "ApprovalRequest",
     "ApprovalResponse",
     "AppScriptActionRequest",
@@ -902,6 +909,53 @@ async def zendesk_context_catalog(
         api_token=request.api_token,
     )
     return ZendeskContextResponse(**result)
+
+
+@router.post("/context-question", response_model=ContextQuestionResponse)
+async def context_question(
+    request: ContextQuestionRequest,
+) -> ContextQuestionResponse:
+    started = time.perf_counter()
+    try:
+        catalog_result = await fetch_zendesk_reference_catalog(
+            subdomain=request.subdomain,
+            email=request.email,
+            api_token=request.api_token,
+        )
+        result = await answer_context_question(
+            question=request.question,
+            question_mode=request.question_mode,
+            catalog_result=catalog_result,
+            selected_objects=[item.model_dump() for item in request.selected_objects],
+            conversation=[item.model_dump() for item in request.conversation],
+            batch_id=request.batch_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Batch not found for change review.") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Read-only Zendesk question failed before an answer could be grounded. "
+                f"Error class: {type(exc).__name__}."
+            ),
+        ) from exc
+
+    emit_perf_event(
+        "import_assistant.context_question",
+        {
+            "question_mode": request.question_mode,
+            "batch_id": request.batch_id,
+            "selected_object_count": len(request.selected_objects),
+            "catalog_total": int(result.get("scope", {}).get("catalog_total", 0) or 0),
+            "catalog_included": int(result.get("scope", {}).get("catalog_included", 0) or 0),
+            "provider": result.get("provider"),
+            "fallback_used": bool(result.get("fallback_used")),
+            "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 2),
+            "read_only": True,
+        },
+    )
+    return ContextQuestionResponse(**result)
 
 
 @router.post(

@@ -65,6 +65,8 @@ export default function PromptComposer({
   const hasExplicitFocus = (focusObjectTypes || []).length > 0;
   const activeModeLabel = existingItemBehavior === "create_new" ? "Create New" : "Base";
   const isUpdateMode = operationMode === "update";
+  const isAskMode = operationMode === "ask";
+  const isCreateUpdateMode = operationMode === "create_update";
   const panelClass = darkMode
     ? "border-[#7B1FFF]/30 bg-[#120522]/70 text-slate-100"
     : "border-violet-200 bg-white text-slate-950 shadow-sm";
@@ -290,7 +292,13 @@ export default function PromptComposer({
         <div className="mb-4 flex items-center gap-3">
           <Sparkles className="h-5 w-5 text-violet-500" />
           <h3 className="text-base font-semibold">
-            {isUpdateMode ? "Describe the change to this object" : "Describe what you want to build"}
+            {isAskMode
+              ? "Ask about the synchronized instance"
+              : isUpdateMode
+                ? "Describe the change to this object"
+                : isCreateUpdateMode
+                  ? "Describe what to create or update"
+                  : "Describe what you want to build"}
           </h3>
           {compact && selectedContextCount > 0 ? (
             <span className={`ml-auto rounded-full px-2 py-1 text-xs ${darkMode ? "bg-[#7B1FFF]/18 text-[#B9A7D9]" : "bg-violet-50 text-violet-700"}`}>
@@ -300,9 +308,13 @@ export default function PromptComposer({
         </div>
         <textarea
           {...form.register("prompt")}
-          placeholder={isUpdateMode
-            ? "e.g. Keep the current routing logic, add the VIP tag, and send high-priority tickets to Enterprise Support..."
-            : "e.g. Create a trigger that closes tickets after 7 days of inactivity and sends a reminder email to the customer..."}
+          placeholder={isAskMode
+            ? "e.g. Which triggers route claims tickets, and are any of them likely to overlap?"
+            : isUpdateMode
+              ? "e.g. Keep the current routing logic, add the VIP tag, and send high-priority tickets to Enterprise Support..."
+              : isCreateUpdateMode
+                ? "e.g. Create the missing Claims views and update matching routing rules to use the Claims team..."
+                : "e.g. Create a trigger that closes tickets after 7 days of inactivity and sends a reminder email to the customer..."}
           className={`min-h-[112px] w-full resize-y rounded-xl border px-4 py-3 text-sm leading-6 outline-none transition ${
             darkMode
               ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-[#F4EEFF] placeholder:text-[#B9A7D9]/70 focus:border-[#9B35FF]"
@@ -333,17 +345,19 @@ export default function PromptComposer({
               <Paperclip size={16} />
               Attach File
             </button>
-            <button
-              type="button"
-              className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${
-                darkMode
-                  ? "border-[#7B1FFF]/35 bg-[#07030F]/40 text-[#F4EEFF] hover:bg-[#7B1FFF]/18"
-                  : "border-violet-200 bg-white text-slate-700 hover:bg-violet-50"
-              }`}
-            >
-              <LayoutTemplate size={16} />
-              Use Template
-            </button>
+            {!isAskMode ? (
+              <button
+                type="button"
+                className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${
+                  darkMode
+                    ? "border-[#7B1FFF]/35 bg-[#07030F]/40 text-[#F4EEFF] hover:bg-[#7B1FFF]/18"
+                    : "border-violet-200 bg-white text-slate-700 hover:bg-violet-50"
+                }`}
+              >
+                <LayoutTemplate size={16} />
+                Use Template
+              </button>
+            ) : null}
           </div>
           <div className="flex items-center justify-end gap-2">
             {!compact ? (
@@ -374,7 +388,7 @@ export default function PromptComposer({
               disabled={isLoading || isLocked}
             >
               <WandSparkles size={16} />
-              {isUpdateMode ? "Preview update" : "Generate"}
+              {isAskMode ? "Ask Gemini" : isUpdateMode ? "Preview update" : "Generate"}
             </Button>
           </div>
         </div>

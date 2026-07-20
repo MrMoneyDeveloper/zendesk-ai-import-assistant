@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import {
   ArrowRight,
@@ -9,13 +9,17 @@ import {
   PencilLine,
   Plus,
   ExternalLink,
+  LoaderCircle,
+  MessageCircleQuestion,
   RefreshCw,
   Send,
+  ShieldCheck,
 } from "lucide-react";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
+import { QuestionAnswer } from "./ContextQuestionWorkspace";
 
 const columnHelper = createColumnHelper();
 const DECISION_OPTIONS = [
@@ -175,6 +179,9 @@ export default function PreviewWorkspace({
   onApproveDecisions,
   onApproveAndDeploy,
   isApproving,
+  onAskChangeQuestion,
+  isAskingChangeQuestion = false,
+  changeQuestionHistory = [],
   onDeployToZendesk,
   isDeploying,
   deployResult,
@@ -192,6 +199,9 @@ export default function PreviewWorkspace({
   const [showTechnical, setShowTechnical] = useState(false);
   const [includeHelpCenter, setIncludeHelpCenter] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
+  const [changeQuestion, setChangeQuestion] = useState("");
+  const [changeQuestionError, setChangeQuestionError] = useState("");
+  const changeQuestionInputRef = useRef(null);
   const records = useMemo(() => previewData?.records || [], [previewData?.records]);
   const isUpdatePreview = records.some((record) => record.operation_mode === "update");
 
@@ -310,6 +320,24 @@ export default function PreviewWorkspace({
     && !isDeploying
   );
 
+  const submitChangeQuestion = async (event) => {
+    event.preventDefault();
+    const question = changeQuestion.trim();
+    if (question.length < 5 || !onAskChangeQuestion || isAskingChangeQuestion) return;
+    setChangeQuestionError("");
+    try {
+      await onAskChangeQuestion(question);
+      setChangeQuestion("");
+    } catch (error) {
+      setChangeQuestionError(error?.message || "Could not answer this question.");
+    }
+  };
+
+  const focusChangeQuestion = () => {
+    changeQuestionInputRef.current?.focus();
+    changeQuestionInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
   return (
     <Card className="mt-8 border-[#7B1FFF]/30 bg-[#120522]/70">
       <CardHeader className="flex items-center justify-between gap-3">
@@ -324,6 +352,12 @@ export default function PreviewWorkspace({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {onAskChangeQuestion ? (
+            <Button variant="outline" size="sm" className="gap-2" onClick={focusChangeQuestion}>
+              <MessageCircleQuestion size={15} />
+              Ask before applying
+            </Button>
+          ) : null}
           <Button variant="outline" size="sm" onClick={onApproveDecisions} disabled={isApproving || isDeploying}>
             {isApproving ? "Saving..." : "Save Decisions"}
           </Button>
@@ -372,6 +406,64 @@ export default function PreviewWorkspace({
 
         {generatedSummary ? (
           <p className="mb-3 text-xs text-slate-400">Generated: {generatedSummary}</p>
+        ) : null}
+
+        {onAskChangeQuestion ? (
+          <section id="change-impact-question" className="-mx-6 mb-5 border-y border-[#7B1FFF]/25 bg-[#07030F]/35 px-6 py-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-violet-500/15 text-violet-200">
+                  <MessageCircleQuestion size={18} />
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-100">Ask before applying</h3>
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-400">
+                    Ask how these creations or updates affect current routing, agents, customers, reporting, dependencies, or existing objects.
+                  </p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-300">
+                <ShieldCheck size={14} /> Read-only review
+              </span>
+            </div>
+
+            <form onSubmit={submitChangeQuestion} className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+              <textarea
+                ref={changeQuestionInputRef}
+                aria-label="Ask about proposed changes"
+                value={changeQuestion}
+                onChange={(event) => setChangeQuestion(event.target.value)}
+                placeholder="e.g. Will these triggers overlap with existing routing, and what should I verify before applying them?"
+                className="min-h-20 w-full resize-y rounded-md border border-[#7B1FFF]/35 bg-[#120522]/70 px-3 py-2 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-400"
+                disabled={isAskingChangeQuestion}
+              />
+              <Button
+                type="submit"
+                className="h-10 gap-2 self-end"
+                disabled={isAskingChangeQuestion || changeQuestion.trim().length < 5}
+              >
+                {isAskingChangeQuestion ? <LoaderCircle size={15} className="animate-spin" /> : <MessageCircleQuestion size={15} />}
+                {isAskingChangeQuestion ? "Checking..." : "Ask about impact"}
+              </Button>
+            </form>
+            <p className="mt-2 text-[11px] text-slate-500">
+              Asking does not save decisions, approve records, or call a Zendesk write endpoint.
+            </p>
+            {changeQuestionError ? (
+              <p className="mt-2 border-l-2 border-rose-500 pl-3 text-xs text-rose-200">{changeQuestionError}</p>
+            ) : null}
+
+            <div className="mt-1 space-y-5">
+              {changeQuestionHistory.slice(-4).map((item, index) => (
+                <QuestionAnswer
+                  key={`${item.answered_at || index}-${item.question}`}
+                  result={item}
+                  question={item.question}
+                  compact={index === 0}
+                />
+              ))}
+            </div>
+          </section>
         ) : null}
 
         {duplicateWarningRows.length > 0 ? (

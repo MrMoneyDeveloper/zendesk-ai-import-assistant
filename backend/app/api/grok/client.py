@@ -722,7 +722,13 @@ class GrokClient:
         selected_preference = str(
             prefer_provider or getattr(self.settings, "llm_default_provider", "groq") or "groq"
         ).strip().lower()
-        gemini_tasks = {"planner", "generator", "clarifier", "healthcheck"}
+        gemini_tasks = {
+            "planner",
+            "generator",
+            "clarifier",
+            "healthcheck",
+            "context_qa",
+        }
         gemini_failure: GeminiRequestError | None = None
         task_name = str(task or "default")
 

@@ -30,6 +30,7 @@ import {
 import PromptComposer from "./components/chat/PromptComposer";
 import OperationModeSelector from "./components/chat/OperationModeSelector";
 import PreviewWorkspace from "./components/chat/PreviewWorkspace";
+import ContextQuestionWorkspace from "./components/chat/ContextQuestionWorkspace";
 import IntegrationPanel from "./components/chat/IntegrationPanel";
 import ZendeskSessionGate from "./components/chat/ZendeskSessionGate";
 import { Button } from "./components/ui/button";
@@ -40,6 +41,7 @@ import cxIcon from "./assets/cx-icon.png";
 import cxLogo from "./assets/cx-logo.png";
 import {
   approveBatch,
+  askContextQuestion,
   checkZendeskHelpCenterReadiness,
   deployBatch,
   extractAttachment,
@@ -473,6 +475,13 @@ function compactReferenceCatalog(catalog) {
   );
 }
 
+function buildQuestionConversation(history = []) {
+  return history.slice(-4).flatMap((item) => [
+    { role: "user", content: String(item?.question || "").slice(0, 4000) },
+    { role: "assistant", content: String(item?.answer || "").slice(0, 4000) },
+  ]).filter((item) => item.content);
+}
+
 const NAV_ITEMS = [
   { label: "New Chat", icon: Plus, active: true },
   { label: "Dashboard", icon: Gauge },
@@ -556,6 +565,8 @@ function App() {
   const [timeline, setTimeline] = useState([]);
   const [historySearch, setHistorySearch] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
+  const [instanceQuestionHistory, setInstanceQuestionHistory] = useState([]);
+  const [changeQuestionHistory, setChangeQuestionHistory] = useState([]);
   const [externalPrompt, setExternalPrompt] = useState("");
   const [selectedContext, setSelectedContext] = useState({});
   const [operationMode, setOperationMode] = useState(null);
@@ -740,6 +751,38 @@ function App() {
 
   const attachmentExtractMutation = useMutation({
     mutationFn: extractAttachment,
+  });
+
+  const contextQuestionMutation = useMutation({
+    mutationFn: askContextQuestion,
+    onMutate: (variables) => {
+      const label = variables?.question_mode === "change_review"
+        ? "Reviewing the staged proposal against the current Zendesk instance."
+        : "Searching the current Zendesk configuration in read-only mode.";
+      appendActivity("info", label);
+    },
+    onSuccess: (data, variables) => {
+      const item = { ...data, question: variables?.question || "" };
+      if (variables?.question_mode === "change_review") {
+        setChangeQuestionHistory((prev) => [...prev, item].slice(-12));
+      } else {
+        setInstanceQuestionHistory((prev) => [...prev, item].slice(-12));
+      }
+      setChatHistory((prev) => [
+        ...prev.slice(-10),
+        `assistant: ${String(data?.answer || "Read-only question answered.").slice(0, 2000)}`,
+      ]);
+      appendActivity(
+        data?.fallback_used ? "warning" : "success",
+        `Read-only answer completed with ${Math.round(Number(data?.confidence || 0) * 100)}% confidence.`
+      );
+      appendTimeline("assistant", data?.answer || "Read-only question answered.");
+    },
+    onError: (error) => {
+      const detail = parseFailureDetail(error);
+      appendActivity("error", detail);
+      appendTimeline("assistant", `I could not complete the read-only question: ${detail}`);
+    },
   });
 
   const integrationsQuery = useQuery({
@@ -1202,7 +1245,7 @@ function App() {
   const submitPrompt = async (value) => {
     if (!zendeskValidated) return false;
     if (!operationMode) {
-      appendActivity("error", "Choose Create new or Update existing before entering a request.");
+      appendActivity("error", "Choose an operation mode before entering a request.");
       return false;
     }
     if (operationMode === "update" && (!resolvedUpdateTarget || !zendeskContextQuery.data?.sync_id)) {
@@ -1210,7 +1253,12 @@ function App() {
       appendTimeline("assistant", "Choose the exact existing object that this update may change.");
       return false;
     }
-    if (operationMode === "create" && dependencyMode === "force_existing_only" && existingItemBehavior === "create_new") {
+    if (["ask", "create_update"].includes(operationMode) && !zendeskContextQuery.data?.sync_id) {
+      appendActivity("error", "Wait for the synchronized Zendesk catalog before continuing in this mode.");
+      return false;
+    }
+    const isCreateWorkflow = ["create", "create_update"].includes(operationMode);
+    if (isCreateWorkflow && dependencyMode === "force_existing_only" && existingItemBehavior === "create_new") {
       appendActivity(
         "error",
         "Switch Existing item behavior to 'Use existing as base' when dependency mode is 'Use existing only (strict)'."
@@ -1221,7 +1269,7 @@ function App() {
       );
       return false;
     }
-    if (operationMode === "create" && dependencyMode === "force_existing_only" && selectedRelatedObjects.length === 0) {
+    if (isCreateWorkflow && dependencyMode === "force_existing_only" && selectedRelatedObjects.length === 0) {
       appendActivity(
         "error",
         "Dependency mode requires existing context. Select one or more groups/forms/brands/sections first."
@@ -1242,11 +1290,34 @@ function App() {
     const referenceCatalog = compactReferenceCatalog(contextCatalog || {});
     const recentBatchContext = localHistory.slice(-8);
     const promptForModel = buildPromptWithAttachments(promptText);
+
+    if (operationMode === "ask") {
+      try {
+        await contextQuestionMutation.mutateAsync({
+          question: promptForModel,
+          question_mode: "instance",
+          batch_id: null,
+          instance_sync_id: zendeskContextQuery.data?.sync_id || null,
+          selected_objects: selectedRelatedObjects.map((item) => compactContextReference(item)),
+          conversation: buildQuestionConversation(instanceQuestionHistory),
+          subdomain: zendeskCredentials.subdomain,
+          email: zendeskCredentials.email,
+          api_token: zendeskCredentials.api_token,
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     const selectedRelatedObjectsForRequest = operationMode === "update"
       ? [compactContextReference(resolvedUpdateTarget, { includeSnapshot: true })]
       : existingItemBehavior === "create_new"
         ? []
-        : selectedRelatedObjects.map((item) => compactContextReference(item));
+        : selectedRelatedObjects.map((item) => compactContextReference(
+          item,
+          { includeSnapshot: operationMode === "create_update" }
+        ));
     const effectiveFocusObjectTypes = operationMode === "update"
       ? [UPDATE_FOCUS_BY_OBJECT_TYPE[resolvedUpdateTarget.object_type]]
       : focusObjectTypes;
@@ -1257,13 +1328,15 @@ function App() {
     generateMutation.mutate({
       prompt: promptForModel,
       target_environment: "sandbox",
-      mode: "generate_validate_preview",
+      mode: operationMode === "create_update" ? "create_update_validate_preview" : "generate_validate_preview",
       requester: "local-user",
-      operation_mode: operationMode,
+      operation_mode: operationMode === "update" ? "update" : "create",
       update_target: operationMode === "update"
         ? compactContextReference(resolvedUpdateTarget, { includeSnapshot: true })
         : null,
-      instance_sync_id: operationMode === "update" ? zendeskContextQuery.data?.sync_id : null,
+      instance_sync_id: ["update", "create_update"].includes(operationMode)
+        ? zendeskContextQuery.data?.sync_id
+        : null,
       dependency_mode: operationMode === "update" ? "force_existing_only" : dependencyMode,
       focus_object_types: effectiveFocusObjectTypes,
       related_objects: selectedRelatedObjectsForRequest,
@@ -1273,7 +1346,9 @@ function App() {
         `Operation mode: ${operationMode}.`,
         operationMode === "update"
           ? `Only update ${resolvedUpdateTarget.object_type}:${resolvedUpdateTarget.name} (Zendesk ID ${resolvedUpdateTarget.id}).`
-          : `Existing item behavior: ${existingItemBehavior === "create_new" ? "ignore_selected_existing_and_create_new" : "use_selected_existing_as_base_or_reference"}.`,
+          : operationMode === "create_update"
+            ? "Create missing objects and update matching synchronized objects; do not duplicate exact existing titles."
+            : `Existing item behavior: ${existingItemBehavior === "create_new" ? "ignore_selected_existing_and_create_new" : "use_selected_existing_as_base_or_reference"}.`,
         selectedRelatedObjectsForRequest.length
           ? `Selected context objects: ${selectedRelatedObjectsForRequest.map((obj) => `${obj.object_type}:${obj.name}`).join(", ")}`
           : "No explicit object selections were included in generation context.",
@@ -1285,6 +1360,7 @@ function App() {
 
   const errors = [
     generateMutation.error,
+    contextQuestionMutation.error,
     jobQuery.error,
     checkpointsQuery.error,
     previewQuery.error,
@@ -1332,13 +1408,25 @@ function App() {
     setFocusObjectTypes([]);
     setExternalPrompt("");
     setDecisions({});
+    setChangeQuestionHistory([]);
     setChatSessionId((value) => value + 1);
     generateMutation.reset();
+    contextQuestionMutation.reset();
     resetFlow();
     if (nextMode === "update") {
       setDependencyMode("force_existing_only");
       setExistingItemBehavior("relate_or_update");
       setOnExistingMode("overwrite_existing");
+      zendeskContextQuery.refetch();
+    } else if (nextMode === "create_update") {
+      setDependencyMode("match_existing_or_create_new");
+      setExistingItemBehavior("relate_or_update");
+      setOnExistingMode("overwrite_existing");
+      zendeskContextQuery.refetch();
+    } else if (nextMode === "ask") {
+      setDependencyMode("force_existing_only");
+      setExistingItemBehavior("relate_or_update");
+      setOnExistingMode("create_new");
       zendeskContextQuery.refetch();
     } else {
       setDependencyMode("match_existing_or_create_new");
@@ -1368,16 +1456,24 @@ function App() {
       || !zendeskContextQuery.data?.sync_id
       || !resolvedUpdateTarget
     ))
+    || (["ask", "create_update"].includes(operationMode) && (
+      zendeskContextQuery.isFetching
+      || !zendeskContextQuery.data?.sync_id
+    ))
   );
   const promptLockReason = !zendeskValidated
     ? "Validate Zendesk credentials first in Integration Status."
     : !operationMode
-      ? "Choose Create new or Update existing first."
+      ? "Choose Create, Update, Create or update, or Ask first."
       : operationMode === "update" && zendeskContextQuery.isFetching
         ? "Wait for the Zendesk configuration snapshot to finish synchronizing."
         : operationMode === "update" && !resolvedUpdateTarget
           ? "Choose the exact existing Zendesk object to update."
-          : "";
+          : ["ask", "create_update"].includes(operationMode) && zendeskContextQuery.isFetching
+            ? "Wait for the Zendesk configuration snapshot to finish synchronizing."
+            : ["ask", "create_update"].includes(operationMode) && !zendeskContextQuery.data?.sync_id
+              ? "Synchronize the Zendesk instance before using this mode."
+              : "";
   const selectedExistingItems = selectedRelatedObjects;
   const selectedExistingItemKeySet = new Set(
     selectedExistingItems.map((item) => `${item.object_type}:${item.id}`)
@@ -1432,6 +1528,8 @@ function App() {
     setInferenceAssumptionMessages([]);
     setLastFailureDetail(null);
     setChatHistory([]);
+    setInstanceQuestionHistory([]);
+    setChangeQuestionHistory([]);
     setHistorySearch("");
     setSelectedContext({});
     setOperationMode(null);
@@ -1450,6 +1548,7 @@ function App() {
     lastContextSyncRef.current = "";
     lastContextErrorRef.current = "";
     generateMutation.reset();
+    contextQuestionMutation.reset();
     resetFlow();
     resetZendeskValidation();
   };
@@ -1463,6 +1562,8 @@ function App() {
     setTimeline([]);
     setHistorySearch("");
     setChatHistory([]);
+    setInstanceQuestionHistory([]);
+    setChangeQuestionHistory([]);
     setOperationMode(null);
     setUpdateTarget(null);
     setSelectedContext({});
@@ -1480,6 +1581,7 @@ function App() {
     setActiveRunStartedAtMs(null);
     setChatSessionId((value) => value + 1);
     generateMutation.reset();
+    contextQuestionMutation.reset();
     resetFlow();
     if (previousBatchId) {
       queryClient.removeQueries({ queryKey: ["job", previousBatchId] });
@@ -1590,6 +1692,29 @@ function App() {
       const next = { ...prev };
       delete next[selectionKey];
       return next;
+    });
+  };
+
+  const askAboutCurrentProposal = async (question) => {
+    const cleaned = String(question || "").trim();
+    if (!cleaned || !batchId) {
+      throw new Error("A preview batch and question are required.");
+    }
+    if (!zendeskValidated || !zendeskContextQuery.data?.sync_id) {
+      throw new Error("Refresh the synchronized Zendesk context before asking about impact.");
+    }
+    appendTimeline("user", cleaned);
+    setChatHistory((prev) => [...prev.slice(-10), `user: ${cleaned}`]);
+    return contextQuestionMutation.mutateAsync({
+      question: cleaned,
+      question_mode: "change_review",
+      batch_id: batchId,
+      instance_sync_id: zendeskContextQuery.data.sync_id,
+      selected_objects: selectedRelatedObjects.map((item) => compactContextReference(item)),
+      conversation: buildQuestionConversation(changeQuestionHistory),
+      subdomain: zendeskCredentials.subdomain,
+      email: zendeskCredentials.email,
+      api_token: zendeskCredentials.api_token,
     });
   };
 
@@ -2144,9 +2269,9 @@ function App() {
             <div id="dashboard" className={`relative overflow-hidden rounded-2xl border p-5 sm:p-7 ${workspaceCard}`}>
               <div className="relative z-10 max-w-xl pr-0 sm:pr-8">
                 <h1 className="text-2xl font-bold tracking-normal text-violet-600 sm:text-3xl">Zendesk AI Import</h1>
-                <p className={`mt-3 text-xl font-semibold ${sectionTitle}`}>What would you like to build today?</p>
+                <p className={`mt-3 text-xl font-semibold ${sectionTitle}`}>What would you like to do today?</p>
                 <p className={`mt-3 max-w-xl text-sm leading-6 ${textSoft}`}>
-                  Generate Zendesk configurations, automate workflows, and create help center content with AI.
+                  Create, update, or inspect Zendesk configuration with a controlled AI workflow.
                 </p>
               </div>
               <div className="pointer-events-none absolute inset-y-0 right-0 w-full opacity-20 sm:w-2/3 sm:opacity-70">
@@ -2168,10 +2293,13 @@ function App() {
                 onRefreshContext={() => zendeskContextQuery.refetch()}
                 updateTarget={resolvedUpdateTarget}
                 onUpdateTargetChange={handleUpdateTargetChange}
+                askTargets={selectedRelatedObjects}
+                onAskTargetToggle={toggleContextSelection}
+                onClearAskTargets={() => setSelectedContext({})}
               />
             </div>
 
-            <div id="zendesk-templates" className="mt-6">
+            <div id="zendesk-templates" className={operationMode === "ask" ? "hidden" : "mt-6"}>
               <h2 className={`mb-3 text-sm font-semibold ${sectionTitle}`}>Quick Actions</h2>
               <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
                 {QUICK_ACTIONS.map((action) => {
@@ -2181,7 +2309,7 @@ function App() {
       key={action.label}
       type="button"
       onClick={() => setExternalPrompt(action.prompt)}
-      disabled={operationMode !== "create"}
+      disabled={!["create", "create_update"].includes(operationMode)}
       className={`min-h-[142px] rounded-lg border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${hoverCard}`}
     >
       <Icon className={`h-8 w-8 ${action.color}`} />
@@ -2205,7 +2333,7 @@ function App() {
                 onAddExistingContext={addExistingContextSelection}
                 onRemoveExistingContext={removeExistingContextSelection}
                 attachments={attachments}
-                isLoading={generateMutation.isPending || attachmentExtractMutation.isPending}
+                isLoading={generateMutation.isPending || contextQuestionMutation.isPending || attachmentExtractMutation.isPending}
                 isLocked={promptLocked}
                 lockReason={promptLockReason}
                 operationMode={operationMode}
@@ -2227,7 +2355,15 @@ function App() {
               />
             </div>
 
-            <div className="mt-5">
+            {operationMode === "ask" ? (
+              <ContextQuestionWorkspace
+                history={instanceQuestionHistory}
+                isLoading={contextQuestionMutation.isPending}
+                darkMode={darkMode}
+              />
+            ) : null}
+
+            <div className={operationMode === "ask" ? "hidden" : "mt-5"}>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className={`text-sm font-semibold ${sectionTitle}`}>Try these examples</h2>
                 <button type="button" className="text-xs font-medium text-violet-600">View all</button>
@@ -2240,7 +2376,7 @@ function App() {
       key={item.label}
       type="button"
       onClick={() => setExternalPrompt(item.prompt)}
-      disabled={operationMode !== "create"}
+      disabled={!["create", "create_update"].includes(operationMode)}
       className={`flex items-center gap-3 rounded-lg border p-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-45 ${hoverCard}`}
     >
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${darkMode ? "bg-[#7B1FFF]/18" : "bg-violet-50"}`}>
@@ -2253,7 +2389,7 @@ function App() {
               </div>
             </div>
 
-            <div className={`mt-5 ${processingPanelBg}`}>
+            <div className={`${operationMode === "ask" ? "hidden" : "mt-5"} ${processingPanelBg}`}>
               <button
                 type="button"
                 onClick={() => setShowProcessingDetails((prev) => !prev)}
@@ -2504,7 +2640,7 @@ function App() {
                   <select
                     value={dependencyMode}
                     onChange={(event) => setDependencyMode(event.target.value)}
-                    disabled={operationMode === "update"}
+                    disabled={!["create", "create_update"].includes(operationMode)}
                     className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${darkMode ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-slate-100" : "border-slate-200 bg-white text-slate-700"}`}
                   >
                     <option value="match_existing_or_create_new">Match existing or create new</option>
@@ -2517,7 +2653,7 @@ function App() {
                   <select
                     value={onExistingMode}
                     onChange={(event) => setOnExistingMode(event.target.value)}
-                    disabled={operationMode === "update"}
+                    disabled={!["create", "create_update"].includes(operationMode)}
                     className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${darkMode ? "border-[#7B1FFF]/25 bg-[#07030F]/60 text-slate-100" : "border-slate-200 bg-white text-slate-700"}`}
                   >
                     <option value="create_new">Create new anyway</option>
@@ -2531,7 +2667,7 @@ function App() {
                     <button
                       type="button"
                       onClick={() => setFocusObjectTypes([])}
-                      disabled={operationMode === "update"}
+                      disabled={!["create", "create_update"].includes(operationMode)}
                       className={`rounded-full px-3 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60 ${focusObjectTypes.length === 0 ? "bg-violet-100 text-violet-700" : textSoft}`}
                     >
                       Auto
@@ -2545,7 +2681,7 @@ function App() {
                           key={option.key}
                           type="button"
                           onClick={() => toggleFocusObjectType(option.key)}
-                          disabled={operationMode === "update"}
+                          disabled={!["create", "create_update"].includes(operationMode)}
                           className={`rounded-lg border px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60 ${
                             active
                               ? "border-violet-300 bg-violet-50 text-violet-700"
@@ -2713,6 +2849,9 @@ function App() {
               onApproveDecisions={saveApproval}
               onApproveAndDeploy={approveAndDeploy}
               isApproving={approveMutation.isPending}
+              onAskChangeQuestion={askAboutCurrentProposal}
+              isAskingChangeQuestion={contextQuestionMutation.isPending}
+              changeQuestionHistory={changeQuestionHistory}
               onDeployToZendesk={deployToZendesk}
               isDeploying={deployMutation.isPending}
               deployResult={deployMutation.data}

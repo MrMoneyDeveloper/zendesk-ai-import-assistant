@@ -73,6 +73,11 @@ export async function getZendeskContext(payload) {
   return res.data;
 }
 
+export async function askContextQuestion(payload) {
+  const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/context-question`, payload);
+  return res.data;
+}
+
 export async function checkZendeskHelpCenterReadiness(payload) {
   const res = await axios.post(
     `${IMPORT_ASSISTANT_ROOT}/zendesk/help-center/readiness`,

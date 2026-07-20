@@ -3,9 +3,11 @@ import {
   CheckCircle2,
   CircleAlert,
   Database,
+  GitCompareArrows,
   PencilLine,
   Plus,
   RefreshCw,
+  Search,
 } from "lucide-react";
 
 const CATALOG_LABELS = {
@@ -107,9 +109,14 @@ export default function OperationModeSelector({
   onRefreshContext,
   updateTarget,
   onUpdateTargetChange,
+  askTargets = [],
+  onAskTargetToggle,
+  onClearAskTargets,
 }) {
   const [search, setSearch] = useState("");
   const [catalogFilter, setCatalogFilter] = useState("");
+  const [askSearch, setAskSearch] = useState("");
+  const [askCatalogFilter, setAskCatalogFilter] = useState("");
   const catalogs = useMemo(() => contextStatus?.catalogs || {}, [contextStatus?.catalogs]);
   const syncId = contextStatus?.sync_id || "";
   const fetchedAt = contextStatus?.fetched_at;
@@ -122,6 +129,18 @@ export default function OperationModeSelector({
         label: CATALOG_LABELS[catalogKey] || catalogKey.replaceAll("_", " "),
         entries: (entries || [])
           .filter((entry) => entry?.editable && entry?.snapshot)
+          .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+      }))
+      .filter((group) => group.entries.length > 0);
+  }, [catalogs]);
+
+  const allCatalogGroups = useMemo(() => {
+    return Object.entries(catalogs)
+      .map(([catalogKey, entries]) => ({
+        catalogKey,
+        label: CATALOG_LABELS[catalogKey] || catalogKey.replaceAll("_", " "),
+        entries: (entries || [])
+          .map((entry) => ({ ...entry, catalog_key: entry.catalog_key || catalogKey }))
           .sort((a, b) => String(a.name).localeCompare(String(b.name))),
       }))
       .filter((group) => group.entries.length > 0);
@@ -167,6 +186,24 @@ export default function OperationModeSelector({
   const targetCounts = snapshotCounts(updateTarget);
   const targetDetails = snapshotDetails(updateTarget);
   const selectedKey = updateTarget ? `${updateTarget.object_type}:${updateTarget.id}` : "";
+  const askTargetKeySet = useMemo(
+    () => new Set((askTargets || []).map((entry) => `${entry.object_type}:${entry.id}`)),
+    [askTargets]
+  );
+  const askVisibleTargets = useMemo(() => {
+    const query = askSearch.trim().toLowerCase();
+    const groups = askCatalogFilter
+      ? allCatalogGroups.filter((group) => group.catalogKey === askCatalogFilter)
+      : allCatalogGroups;
+    return groups
+      .flatMap((group) => group.entries)
+      .filter((entry) => {
+        if (!query) return true;
+        return `${entry.name} ${entry.id} ${entry.object_type} ${entry.description || ""}`
+          .toLowerCase()
+          .includes(query);
+      });
+  }, [allCatalogGroups, askCatalogFilter, askSearch]);
   const surface = darkMode
     ? "border-[#7B1FFF]/28 bg-[#120522]/55 text-slate-100"
     : "border-slate-200 bg-white text-slate-900";
@@ -178,7 +215,7 @@ export default function OperationModeSelector({
         <div>
           <h2 id="operation-mode-heading" className="text-sm font-semibold">Choose what this run may change</h2>
           <p className={`mt-1 text-xs leading-5 ${muted}`}>
-            Select a mode before entering instructions. Update mode is restricted to one synchronized Zendesk object.
+            Select one of four modes. Ask is read-only; Update is restricted to one synchronized Zendesk object.
           </p>
         </div>
         <div className={`flex items-center gap-2 text-xs ${muted}`}>
@@ -230,6 +267,52 @@ export default function OperationModeSelector({
             <span>
               <span className="block text-sm font-semibold">Update existing</span>
               <span className={`mt-1 block text-xs leading-5 ${muted}`}>Select one exact object, compare its current logic, then replace it by ID.</span>
+            </span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOperationModeChange?.("create_update")}
+          aria-pressed={operationMode === "create_update"}
+          className={`min-h-[94px] rounded-lg border p-4 text-left transition ${
+            operationMode === "create_update"
+              ? "border-blue-500 bg-blue-500/10"
+              : darkMode
+                ? "border-[#7B1FFF]/25 bg-[#07030F]/40 hover:border-[#7B1FFF]/55"
+                : "border-slate-200 bg-slate-50 hover:border-blue-300"
+          }`}
+        >
+          <span className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-500/15 text-blue-500">
+              <GitCompareArrows size={18} />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold">Create or update</span>
+              <span className={`mt-1 block text-xs leading-5 ${muted}`}>Build missing objects and update matching existing objects after review.</span>
+            </span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOperationModeChange?.("ask")}
+          aria-pressed={operationMode === "ask"}
+          className={`min-h-[94px] rounded-lg border p-4 text-left transition ${
+            operationMode === "ask"
+              ? "border-amber-500 bg-amber-500/10"
+              : darkMode
+                ? "border-[#7B1FFF]/25 bg-[#07030F]/40 hover:border-[#7B1FFF]/55"
+                : "border-slate-200 bg-slate-50 hover:border-amber-300"
+          }`}
+        >
+          <span className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-amber-500/15 text-amber-500">
+              <Search size={18} />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold">Ask or verify</span>
+              <span className={`mt-1 block text-xs leading-5 ${muted}`}>Search the synchronized instance and answer questions without creating changes.</span>
             </span>
           </span>
         </button>
@@ -394,6 +477,118 @@ export default function OperationModeSelector({
           ) : (
             <p className="mt-3 text-xs text-amber-500">Choose one synchronized object before entering update instructions.</p>
           )}
+        </div>
+      ) : null}
+
+      {operationMode === "ask" ? (
+        <div className={`mx-4 mt-4 border-y py-4 sm:mx-5 ${darkMode ? "border-[#7B1FFF]/25" : "border-slate-200"}`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold">Search scope</p>
+              <p className={`mt-1 text-[11px] leading-5 ${muted}`}>
+                Select specific objects for a focused answer, or leave the selection empty to search the whole synchronized inventory.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onRefreshContext}
+              disabled={contextLoading}
+              className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-medium disabled:opacity-50 ${darkMode ? "border-[#7B1FFF]/35 text-violet-100" : "border-slate-300 text-slate-700"}`}
+            >
+              <RefreshCw size={14} className={contextLoading ? "animate-spin" : ""} />
+              Sync now
+            </button>
+          </div>
+
+          <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <label className="min-w-0">
+              <span className={`mb-1 block text-[11px] font-medium ${muted}`}>Object type</span>
+              <select
+                aria-label="Question object type"
+                value={askCatalogFilter}
+                onChange={(event) => setAskCatalogFilter(event.target.value)}
+                disabled={contextLoading || allCatalogGroups.length === 0}
+                className={`h-10 w-full rounded-md border px-3 text-sm outline-none disabled:opacity-60 ${darkMode ? "border-[#7B1FFF]/35 bg-[#120522]/70 text-slate-100" : "border-slate-300 bg-white text-slate-800"}`}
+              >
+                <option value="">All synchronized types</option>
+                {allCatalogGroups.map((group) => (
+                  <option key={group.catalogKey} value={group.catalogKey}>
+                    {group.label} ({group.entries.length})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="min-w-0">
+              <span className={`mb-1 block text-[11px] font-medium ${muted}`}>Search objects</span>
+              <div className="relative">
+                <Search size={14} className={`pointer-events-none absolute left-3 top-3 ${muted}`} />
+                <input
+                  aria-label="Search synchronized content"
+                  value={askSearch}
+                  onChange={(event) => setAskSearch(event.target.value)}
+                  placeholder="Name, ID, type, or description"
+                  className={`h-10 w-full rounded-md border pl-9 pr-3 text-sm outline-none ${darkMode ? "border-[#7B1FFF]/35 bg-[#120522]/70 text-slate-100" : "border-slate-300 bg-white text-slate-800"}`}
+                />
+              </div>
+            </label>
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {askVisibleTargets.slice(0, 12).map((entry) => {
+              const key = `${entry.object_type}:${entry.id}`;
+              const selected = askTargetKeySet.has(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onAskTargetToggle?.(entry)}
+                  className={`flex min-h-12 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-xs transition ${
+                    selected
+                      ? "border-emerald-500 bg-emerald-500/10"
+                      : darkMode
+                        ? "border-[#7B1FFF]/20 bg-[#07030F]/35 hover:border-[#7B1FFF]/45"
+                        : "border-slate-200 bg-white hover:border-amber-300"
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{entry.name}</span>
+                    <span className={`mt-0.5 block ${muted}`}>{humanize(entry.catalog_key || entry.object_type)} | ID {entry.id}</span>
+                  </span>
+                  <span className={`shrink-0 text-[10px] ${entry.editable ? "text-emerald-500" : muted}`}>
+                    {entry.editable ? "Editable" : "Read only"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {askVisibleTargets.length > 12 ? (
+            <p className={`mt-2 text-[11px] ${muted}`}>
+              Showing 12 of {askVisibleTargets.length} matches. Refine the search to select another object.
+            </p>
+          ) : null}
+          {askVisibleTargets.length === 0 ? (
+            <p className={`mt-3 text-xs ${muted}`}>No synchronized objects match this search.</p>
+          ) : null}
+
+          <div className={`mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-[11px] ${darkMode ? "border-[#7B1FFF]/20" : "border-slate-200"}`}>
+            <span className={muted}>
+              Scope: {askTargets.length > 0 ? `${askTargets.length} selected object${askTargets.length === 1 ? "" : "s"}` : `whole instance (${totalCount} objects)`}
+            </span>
+            {askTargets.length > 0 ? (
+              <button type="button" onClick={onClearAskTargets} className="font-medium text-violet-500 hover:text-violet-400">
+                Clear selection
+              </button>
+            ) : null}
+          </div>
+
+          <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] ${muted}`}>
+            <span className="inline-flex items-center gap-1.5">
+              {syncComplete ? <CheckCircle2 size={13} className="text-emerald-500" /> : <CircleAlert size={13} className="text-amber-500" />}
+              {syncComplete ? "Catalog ready for grounded questions" : "Partial catalog; answers will identify limitations"}
+            </span>
+            <span>{syncId ? `Snapshot ${syncId.slice(-8)}` : "No snapshot ID"}</span>
+          </div>
         </div>
       ) : null}
     </section>

@@ -39,6 +39,7 @@ DependencyMode = Literal[
 ]
 OnExistingMode = Literal["create_new", "overwrite_existing", "skip_existing"]
 OperationMode = Literal["create", "update"]
+ContextQuestionMode = Literal["instance", "change_review"]
 ZendeskDeploymentScope = Literal["support", "help_center", "all"]
 ZendeskArticleMode = Literal["draft", "publish"]
 FocusObjectType = Literal[
@@ -577,6 +578,70 @@ class ZendeskContextResponse(BaseModel):
     complete: bool = True
     catalog_counts: dict[str, int] = Field(default_factory=dict)
     page_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class ContextQuestionTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("content")
+    @classmethod
+    def trim_content(cls, value: str) -> str:
+        return value.strip()
+
+
+class ContextQuestionRequest(ZendeskCredentialValidationRequest):
+    question: str = Field(..., min_length=5, max_length=4000)
+    question_mode: ContextQuestionMode = "instance"
+    batch_id: str | None = Field(default=None, max_length=160)
+    instance_sync_id: str | None = Field(default=None, max_length=160)
+    selected_objects: list[ContextReference] = Field(default_factory=list, max_length=25)
+    conversation: list[ContextQuestionTurn] = Field(default_factory=list, max_length=8)
+
+    @field_validator("question")
+    @classmethod
+    def trim_question(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("batch_id", "instance_sync_id")
+    @classmethod
+    def trim_question_identifiers(cls, value: str | None) -> str | None:
+        cleaned = str(value or "").strip()
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def validate_change_review_batch(self) -> "ContextQuestionRequest":
+        if self.question_mode == "change_review" and not self.batch_id:
+            raise ValueError("batch_id is required for a change_review question.")
+        return self
+
+
+class ContextQuestionCitation(BaseModel):
+    source: Literal["zendesk", "proposal"]
+    object_type: str
+    object_id: str
+    name: str
+    evidence: str = ""
+
+
+class ContextQuestionResponse(BaseModel):
+    question_mode: ContextQuestionMode
+    answer: str
+    findings: list[str] = Field(default_factory=list)
+    impact: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    recommended_checks: list[str] = Field(default_factory=list)
+    cannot_verify: list[str] = Field(default_factory=list)
+    citations: list[ContextQuestionCitation] = Field(default_factory=list)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    read_only: bool = True
+    scope: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    provider: str = "deterministic"
+    model: str | None = None
+    fallback_used: bool = False
+    usage: dict[str, Any] = Field(default_factory=dict)
+    answered_at: str
 
 
 class ZendeskHelpCenterReadinessRequest(ZendeskCredentialValidationRequest):

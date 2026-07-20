@@ -17,6 +17,33 @@ vi.mock("./services/api", () => ({
     generated_counts: { triggers: 1 },
     validation_summary: { passed: 1, warnings: 0, blocked: 0 },
   })),
+  askContextQuestion: vi.fn(async (payload) => ({
+    question_mode: payload.question_mode,
+    answer: "The Route Claims trigger assigns matching tickets to the Support group.",
+    findings: ["One synchronized trigger matched the question."],
+    impact: [],
+    risks: [],
+    recommended_checks: ["Confirm the Support group is the intended destination."],
+    cannot_verify: [],
+    citations: [
+      {
+        source: "zendesk",
+        object_type: "trigger",
+        object_id: "44",
+        name: "Route Claims",
+        evidence: "The synchronized action uses group ID 1.",
+      },
+    ],
+    confidence: 0.94,
+    read_only: true,
+    scope: { catalog_total: 4, catalog_included: 1, proposal_total: 0 },
+    warnings: [],
+    provider: "Gemini",
+    model: "gemini-test",
+    fallback_used: false,
+    usage: { total_tokens: 200 },
+    answered_at: "2026-01-01T00:00:03Z",
+  })),
   getJob: vi.fn(async () => ({
     batch_id: "BATCH-TEST-001",
     status: "preview_ready",
@@ -223,7 +250,7 @@ test("keeps the prompt locked until an operation mode is selected", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
 
   await waitFor(() => {
-    expect(screen.getByText("Choose Create new or Update existing first.")).toBeInTheDocument();
+    expect(screen.getByText("Choose Create, Update, Create or update, or Ask first.")).toBeInTheDocument();
   });
   const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
   expect(input).toBeDisabled();
@@ -232,6 +259,36 @@ test("keeps the prompt locked until an operation mode is selected", async () => 
   await waitFor(() => {
     expect(screen.getByPlaceholderText(/Create a trigger that closes tickets/i)).not.toBeDisabled();
   });
+});
+
+test("offers four modes and answers a read-only instance question without generation", async () => {
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /Create new/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Update existing/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Create or update/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ask or verify/i })).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: /Ask or verify/i }));
+  const input = await screen.findByPlaceholderText(/Which triggers route claims tickets/i);
+  await waitFor(() => expect(input).not.toBeDisabled());
+  fireEvent.change(input, { target: { value: "Which trigger routes claims tickets?" } });
+  fireEvent.submit(input.closest("form"));
+
+  await waitFor(() => expect(api.askContextQuestion).toHaveBeenCalledOnce());
+  expect(api.generateBatch).not.toHaveBeenCalled();
+  expect(api.askContextQuestion.mock.calls[0][0]).toMatchObject({
+    question_mode: "instance",
+    instance_sync_id: "SYNC-TEST-001",
+  });
+  expect(await screen.findByText(/assigns matching tickets to the Support group/i)).toBeInTheDocument();
+  expect(screen.getByText("Read-only")).toBeInTheDocument();
 });
 
 test("submits an exact synchronized target for update mode", async () => {
