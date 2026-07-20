@@ -205,7 +205,7 @@ export default function OperationModeSelector({
       });
   }, [allCatalogGroups, askCatalogFilter, askSearch]);
   const surface = darkMode
-    ? "border-[#7B1FFF]/28 bg-[#120522]/55 text-slate-100"
+    ? "border-[#7B1FFF]/30 bg-[#120522]/55 text-slate-100"
     : "border-slate-200 bg-white text-slate-900";
   const muted = darkMode ? "text-[#B9A7D9]" : "text-slate-500";
 
@@ -254,7 +254,7 @@ export default function OperationModeSelector({
           aria-pressed={operationMode === "update"}
           className={`min-h-[94px] rounded-lg border p-4 text-left transition ${
             operationMode === "update"
-              ? "border-violet-500 bg-violet-500/12"
+              ? "border-violet-500 bg-violet-500/15"
               : darkMode
                 ? "border-[#7B1FFF]/25 bg-[#07030F]/40 hover:border-[#7B1FFF]/55"
                 : "border-slate-200 bg-slate-50 hover:border-violet-300"
@@ -555,7 +555,7 @@ export default function OperationModeSelector({
                     <span className="block truncate font-medium">{entry.name}</span>
                     <span className={`mt-0.5 block ${muted}`}>{humanize(entry.catalog_key || entry.object_type)} | ID {entry.id}</span>
                   </span>
-                  <span className={`shrink-0 text-[10px] ${entry.editable ? "text-emerald-500" : muted}`}>
+                  <span className={`shrink-0 text-[10px] ${entry.editable ? (darkMode ? "text-emerald-400" : "text-emerald-700") : muted}`}>
                     {entry.editable ? "Editable" : "Read only"}
                   </span>
                 </button>

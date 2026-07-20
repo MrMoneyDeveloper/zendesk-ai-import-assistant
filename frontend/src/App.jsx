@@ -557,6 +557,7 @@ function App() {
       "data-theme",
       darkMode ? "dark" : "light"
     );
+    document.documentElement.classList.toggle("dark", darkMode);
     localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
@@ -2131,7 +2132,7 @@ function App() {
   }
 
   const processingPanelBg = darkMode
-    ? "min-w-0 overflow-hidden rounded-lg border border-[#7B1FFF]/24 bg-[#120522]/60 p-3"
+    ? "min-w-0 overflow-hidden rounded-lg border border-[#7B1FFF]/25 bg-[#120522]/60 p-3"
     : "min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 p-3";
 
   const processingHeading = darkMode ? "text-slate-200" : "text-slate-800";
@@ -2150,13 +2151,13 @@ function App() {
     ? "bg-[#07030F] text-slate-100"
     : "bg-white text-slate-950";
   const railSurface = darkMode
-    ? "border-[#7B1FFF]/20 bg-[#07030F]/86"
+    ? "border-[#7B1FFF]/20 bg-[#07030F]/90"
     : "border-slate-200 bg-white";
   const workspaceCard = darkMode
-    ? "border-[#7B1FFF]/24 bg-[#120522]/70 shadow-[0_18px_60px_rgba(0,0,0,0.32)]"
+    ? "border-[#7B1FFF]/25 bg-[#120522]/70 shadow-[0_18px_60px_rgba(0,0,0,0.32)]"
     : "border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.06)]";
   const hoverCard = darkMode
-    ? "border-[#7B1FFF]/22 bg-[#151027]/78 hover:border-[#9B35FF]/55 hover:bg-[#1B1230]/88"
+    ? "border-[#7B1FFF]/20 bg-[#151027]/80 hover:border-[#9B35FF]/55 hover:bg-[#1B1230]/90"
     : "border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/30";
   const textSoft = darkMode ? "text-[#B9A7D9]" : "text-slate-500";
   const sectionTitle = darkMode ? "text-slate-100" : "text-slate-950";
@@ -2189,10 +2190,10 @@ function App() {
       className={`flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition ${
         item.active
           ? darkMode
-            ? "bg-[#7B1FFF]/24 text-white"
+            ? "bg-[#7B1FFF]/25 text-white"
             : "bg-violet-50 text-violet-700"
           : darkMode
-            ? "text-slate-300 hover:bg-[#7B1FFF]/12"
+            ? "text-slate-300 hover:bg-[#7B1FFF]/15"
             : "text-slate-700 hover:bg-slate-50"
       }`}
     >
@@ -2202,7 +2203,7 @@ function App() {
   );
 })}
         </nav>
-        <div className={`mt-9 border-t pt-6 ${darkMode ? "border-[#7B1FFF]/18" : "border-slate-200"}`}>
+        <div className={`mt-9 border-t pt-6 ${darkMode ? "border-[#7B1FFF]/20" : "border-slate-200"}`}>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#6D28D9] text-sm font-semibold text-white">
               A
@@ -2215,7 +2216,7 @@ function App() {
           <button
             type="button"
             onClick={signOutZendeskSession}
-            className={`mt-6 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm ${darkMode ? "text-slate-300 hover:bg-[#7B1FFF]/12" : "text-slate-700 hover:bg-slate-50"}`}
+            className={`mt-6 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm ${darkMode ? "text-slate-300 hover:bg-[#7B1FFF]/15" : "text-slate-700 hover:bg-slate-50"}`}
           >
             <LogOut size={17} />
             Sign Out
@@ -2379,7 +2380,7 @@ function App() {
       disabled={!["create", "create_update"].includes(operationMode)}
       className={`flex items-center gap-3 rounded-lg border p-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-45 ${hoverCard}`}
     >
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${darkMode ? "bg-[#7B1FFF]/18" : "bg-violet-50"}`}>
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${darkMode ? "bg-[#7B1FFF]/20" : "bg-violet-50"}`}>
         <Icon className={`h-5 w-5 ${item.color}`} />
       </span>
       <span className={sectionTitle}>{item.label}</span>
@@ -2398,7 +2399,7 @@ function App() {
                 aria-label={showProcessingDetails ? "Hide activity history" : "Show activity history"}
               >
                 <div className="flex min-w-0 items-start gap-3">
-                  <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${darkMode ? "bg-[#7B1FFF]/18 text-[#B994FF]" : "bg-violet-100 text-violet-700"}`}>
+                  <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${darkMode ? "bg-[#7B1FFF]/20 text-[#B994FF]" : "bg-violet-100 text-violet-700"}`}>
                     {isWorking ? (
                       <LoaderCircle className="animate-spin" size={17} aria-hidden="true" />
                     ) : (
@@ -2458,7 +2459,7 @@ function App() {
                   </span>
                 </div>
 
-                <div className={`mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2 ${darkMode ? "border-white/8" : "border-slate-200"}`}>
+                <div className={`mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2 ${darkMode ? "border-white/10" : "border-slate-200"}`}>
                   <div className="flex min-w-0 items-start gap-2">
                     <ShieldCheck className="mt-0.5 shrink-0 text-emerald-500" size={15} aria-hidden="true" />
                     <div className="min-w-0">
@@ -2542,7 +2543,7 @@ function App() {
                     const checkpointStatus = String(checkpoint?.status || "pending");
                     const isPending = checkpointStatus === "pending";
                     return (
-                      <div key={checkpointId} className={`rounded-lg border p-3 ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-slate-50"}`}>
+                      <div key={checkpointId} className={`rounded-lg border p-3 ${darkMode ? "border-[#7B1FFF]/20 bg-[#07030F]/40" : "border-slate-200 bg-slate-50"}`}>
                         <div className="flex items-center justify-between gap-2">
                           <p className={`text-sm ${sectionTitle}`}>Wave {Number(checkpoint?.wave || 0)} checkpoint</p>
                           <span className={`rounded-full px-2 py-1 text-xs ${isPending ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
@@ -2686,7 +2687,7 @@ function App() {
                             active
                               ? "border-violet-300 bg-violet-50 text-violet-700"
                               : darkMode
-                                ? "border-[#7B1FFF]/22 text-[#B9A7D9] hover:bg-[#7B1FFF]/12"
+                                ? "border-[#7B1FFF]/20 text-[#B9A7D9] hover:bg-[#7B1FFF]/15"
                                 : "border-violet-200 text-violet-700 hover:bg-violet-50"
                           }`}
                         >
@@ -2757,7 +2758,7 @@ function App() {
                       ) : showAdvancedCatalog ? (
                         <div className="grid gap-3 sm:grid-cols-2">
                           {Object.entries(contextCatalog).slice(0, 6).map(([catalogKey, entries]) => (
-                            <div key={catalogKey} className={`rounded-lg border p-2 ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-slate-50"}`}>
+                            <div key={catalogKey} className={`rounded-lg border p-2 ${darkMode ? "border-[#7B1FFF]/20 bg-[#07030F]/40" : "border-slate-200 bg-slate-50"}`}>
                               <p className={`mb-2 text-xs font-semibold ${textSoft}`}>{sectionLabel(catalogKey)}</p>
                               <div className="space-y-1">
                                 {(entries || []).slice(0, 4).map((entry) => {
@@ -2772,7 +2773,7 @@ function App() {
                                         selected
                                           ? "border-emerald-500 bg-emerald-50 text-emerald-700"
                                           : darkMode
-                                            ? "border-[#7B1FFF]/18 bg-[#120522]/40 text-slate-300"
+                                            ? "border-[#7B1FFF]/20 bg-[#120522]/40 text-slate-300"
                                             : "border-slate-200 bg-white text-slate-600"
                                       }`}
                                     >
@@ -2799,7 +2800,7 @@ function App() {
                     <div className="space-y-2">
                       {timeline.length > 0 ? (
                         timeline.slice(-4).map((entry) => (
-                          <div key={entry.id} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
+                          <div key={entry.id} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/20 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
                             <div className="min-w-0 flex-1">
                               <p className={`${sectionTitle} break-words`}>{entry.text}</p>
                               <p className={`mt-1 text-xs ${textSoft}`}>{entry.role} - {new Date(entry.at).toLocaleTimeString()}</p>
@@ -2808,7 +2809,7 @@ function App() {
                           </div>
                         ))
                       ) : (
-                        <div className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/18 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
+                        <div className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? "border-[#7B1FFF]/20 bg-[#07030F]/40" : "border-slate-200 bg-white"}`}>
                           <div className="flex items-center gap-3">
                             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-violet-600">
                               <CirclePlus size={18} />
@@ -2840,6 +2841,7 @@ function App() {
               </div>
             ) : null}
             <PreviewWorkspace
+              darkMode={darkMode}
               previewData={previewData}
               generatedData={generatedData}
               decisions={decisions}

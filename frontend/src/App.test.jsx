@@ -198,6 +198,7 @@ function renderApp() {
 beforeEach(() => {
   vi.clearAllMocks();
   window.sessionStorage.clear();
+  window.localStorage.clear();
   api.generateBatch.mockResolvedValue({
     batch_id: "BATCH-TEST-001",
     status: "received",
@@ -239,7 +240,27 @@ test("shows full-screen zendesk session gate by default", () => {
 
 test("hides main workspace until Zendesk credentials are validated", async () => {
   renderApp();
-  expect(screen.queryByText("What would you like to build today?")).not.toBeInTheDocument();
+  expect(screen.queryByText("What would you like to do today?")).not.toBeInTheDocument();
+});
+
+test("applies light and dark theme state to the document root", async () => {
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+
+  await waitFor(() => expect(screen.getByText("What would you like to do today?")).toBeInTheDocument());
+  expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  expect(document.documentElement).not.toHaveClass("dark");
+
+  fireEvent.click(screen.getByRole("button", { name: "Switch to purple theme" }));
+  expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  expect(document.documentElement).toHaveClass("dark");
+
+  fireEvent.click(screen.getByRole("button", { name: "Switch to light theme" }));
+  expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  expect(document.documentElement).not.toHaveClass("dark");
 });
 
 test("keeps the prompt locked until an operation mode is selected", async () => {
@@ -352,7 +373,7 @@ test("runs generation flow from prompt submit", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
 
   await waitFor(() => {
-    expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
+    expect(screen.getByText("What would you like to do today?")).toBeInTheDocument();
   });
   fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
   const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
@@ -402,7 +423,7 @@ test("shows verified live wave activity while the async batch is running", async
   fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
 
   await waitFor(() => {
-    expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
+    expect(screen.getByText("What would you like to do today?")).toBeInTheDocument();
   });
   fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
   const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
@@ -429,7 +450,7 @@ test("sends selected object focus in generate payload", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
 
   await waitFor(() => {
-    expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
+    expect(screen.getByText("What would you like to do today?")).toBeInTheDocument();
   });
 
   fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
@@ -453,7 +474,7 @@ test("does not show Test APIs top action", async () => {
   fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
   fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
   await waitFor(() => {
-    expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
+    expect(screen.getByText("What would you like to do today?")).toBeInTheDocument();
   });
   expect(screen.queryByRole("button", { name: "Test APIs" })).not.toBeInTheDocument();
 });
@@ -466,7 +487,7 @@ test("approve with client saves skipped decisions and does not deploy when no ro
   fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
 
   await waitFor(() => {
-    expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
+    expect(screen.getByText("What would you like to do today?")).toBeInTheDocument();
   });
 
   fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
@@ -495,7 +516,7 @@ test("new chat resets active batch workspace state", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
 
   await waitFor(() => {
-    expect(screen.getByText("What would you like to build today?")).toBeInTheDocument();
+    expect(screen.getByText("What would you like to do today?")).toBeInTheDocument();
   });
 
   fireEvent.click(screen.getByRole("button", { name: /Create new/i }));

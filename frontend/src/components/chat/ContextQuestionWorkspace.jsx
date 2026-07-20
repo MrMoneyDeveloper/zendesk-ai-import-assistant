@@ -31,15 +31,15 @@ export function QuestionAnswer({ result, question, compact = false, darkMode = t
   const answerText = darkMode ? "text-slate-100" : "text-slate-800";
   const mutedText = darkMode ? "text-slate-400" : "text-slate-500";
   return (
-    <article className={`${compact ? "pt-4" : `border-t pt-5 ${darkMode ? "border-[#7B1FFF]/20" : "border-slate-200"}`} `}>
+    <article className={compact ? "pt-4" : `border-t pt-5 ${darkMode ? "border-[#7B1FFF]/20" : "border-slate-200"}`}>
       {question ? <p className={`text-xs font-medium ${darkMode ? "text-violet-200" : "text-violet-700"}`}>{question}</p> : null}
       <div className={`mt-3 flex flex-wrap items-center gap-2 text-[11px] ${mutedText}`}>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+        <span className={`inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 ${darkMode ? "text-emerald-200" : "text-emerald-700"}`}>
           <ShieldCheck size={12} /> Read-only
         </span>
         <span>{result.provider || "Deterministic"}{result.model ? ` | ${result.model}` : ""}</span>
         <span>{Math.round(Number(result.confidence || 0) * 100)}% confidence</span>
-        {result.fallback_used ? <span className="text-amber-300">Fallback used</span> : null}
+        {result.fallback_used ? <span className={darkMode ? "text-amber-300" : "text-amber-700"}>Fallback used</span> : null}
       </div>
 
       <p className={`mt-4 whitespace-pre-wrap text-sm leading-6 ${answerText}`}>{result.answer}</p>
@@ -77,7 +77,7 @@ export function QuestionAnswer({ result, question, compact = false, darkMode = t
       </div>
 
       {(result.warnings || []).length > 0 ? (
-        <div className="mt-3 flex items-start gap-2 border-l-2 border-amber-500 bg-amber-950/15 px-3 py-2 text-xs text-amber-100">
+        <div className={`mt-3 flex items-start gap-2 border-l-2 border-amber-500 px-3 py-2 text-xs ${darkMode ? "bg-amber-950/15 text-amber-100" : "bg-amber-50 text-amber-900"}`}>
           <CircleAlert size={15} className="mt-0.5 shrink-0" />
           <p>{result.warnings.join(" ")}</p>
         </div>
@@ -88,7 +88,7 @@ export function QuestionAnswer({ result, question, compact = false, darkMode = t
 
 export default function ContextQuestionWorkspace({ history = [], isLoading = false, darkMode = false }) {
   const surface = darkMode
-    ? "border-[#7B1FFF]/28 bg-[#120522]/55"
+    ? "border-[#7B1FFF]/30 bg-[#120522]/55"
     : "border-slate-200 bg-white";
   return (
     <section className={`mt-5 border-y px-4 py-5 sm:px-5 ${surface}`} aria-live="polite">

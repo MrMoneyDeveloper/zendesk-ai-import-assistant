@@ -184,7 +184,7 @@ export default function PromptComposer({
                 onClick={() => onExistingItemBehaviorChange?.("relate_or_update")}
                 className={`rounded-md px-2 py-1 text-[11px] ${
                   existingItemBehavior === "relate_or_update"
-                    ? darkMode ? "bg-[#7B1FFF]/28 text-[#F4EEFF]" : "bg-white text-violet-700 shadow-sm"
+                    ? darkMode ? "bg-[#7B1FFF]/30 text-[#F4EEFF]" : "bg-white text-violet-700 shadow-sm"
                     : mutedText
                 }`}
                 disabled={isLocked || isLoading}
@@ -196,7 +196,7 @@ export default function PromptComposer({
                 onClick={() => onExistingItemBehaviorChange?.("create_new")}
                 className={`rounded-md px-2 py-1 text-[11px] ${
                   existingItemBehavior === "create_new"
-                    ? darkMode ? "bg-[#7B1FFF]/28 text-[#F4EEFF]" : "bg-white text-violet-700 shadow-sm"
+                    ? darkMode ? "bg-[#7B1FFF]/30 text-[#F4EEFF]" : "bg-white text-violet-700 shadow-sm"
                     : mutedText
                 }`}
                 disabled={isLocked || isLoading}
@@ -301,7 +301,7 @@ export default function PromptComposer({
                   : "Describe what you want to build"}
           </h3>
           {compact && selectedContextCount > 0 ? (
-            <span className={`ml-auto rounded-full px-2 py-1 text-xs ${darkMode ? "bg-[#7B1FFF]/18 text-[#B9A7D9]" : "bg-violet-50 text-violet-700"}`}>
+            <span className={`ml-auto rounded-full px-2 py-1 text-xs ${darkMode ? "bg-[#7B1FFF]/20 text-[#B9A7D9]" : "bg-violet-50 text-violet-700"}`}>
               {selectedContextCount} context
             </span>
           ) : null}
@@ -335,7 +335,7 @@ export default function PromptComposer({
               type="button"
               className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 ${
                 darkMode
-                  ? "border-[#7B1FFF]/35 bg-[#07030F]/40 text-[#F4EEFF] hover:bg-[#7B1FFF]/18"
+                  ? "border-[#7B1FFF]/35 bg-[#07030F]/40 text-[#F4EEFF] hover:bg-[#7B1FFF]/20"
                   : "border-violet-200 bg-white text-slate-700 hover:bg-violet-50"
               }`}
               aria-label="Add attachment"
@@ -350,7 +350,7 @@ export default function PromptComposer({
                 type="button"
                 className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${
                   darkMode
-                    ? "border-[#7B1FFF]/35 bg-[#07030F]/40 text-[#F4EEFF] hover:bg-[#7B1FFF]/18"
+                    ? "border-[#7B1FFF]/35 bg-[#07030F]/40 text-[#F4EEFF] hover:bg-[#7B1FFF]/20"
                     : "border-violet-200 bg-white text-slate-700 hover:bg-violet-50"
                 }`}
               >
