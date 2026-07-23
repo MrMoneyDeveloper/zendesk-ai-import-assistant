@@ -69,6 +69,98 @@ vi.mock("./services/api", () => ({
       },
     ],
   })),
+  listConversations: vi.fn(async () => ({ conversations: [] })),
+  getConversation: vi.fn(async (conversationId) => ({
+    conversation_id: conversationId,
+    title: "Claims Routing Review",
+    title_source: "ai",
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:05Z",
+    requester: "local-user",
+    operation_mode: "create",
+    active_batch_id: "BATCH-TEST-001",
+    message_preview: "Create a claims routing trigger",
+    message_count: 2,
+    batches: [
+      {
+        batch_id: "BATCH-TEST-001",
+        status: "preview_ready",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:05Z",
+        prompt_preview: "Create a claims routing trigger",
+      },
+    ],
+    state: {
+      operation_mode: "create",
+      dependency_mode: "match_existing_or_create_new",
+      focus_object_types: ["triggers"],
+      selected_context: [],
+    },
+    messages: [
+      {
+        message_id: "MSG-1",
+        role: "user",
+        kind: "prompt",
+        content: "Create a claims routing trigger",
+        at: "2026-01-01T00:00:00Z",
+        metadata: {},
+      },
+      {
+        message_id: "MSG-2",
+        role: "assistant",
+        kind: "batch_ready",
+        content: "The claims routing batch is ready for review.",
+        at: "2026-01-01T00:00:05Z",
+        batch_id: "BATCH-TEST-001",
+        metadata: {},
+      },
+    ],
+  })),
+  createConversation: vi.fn(async (payload) => ({
+    conversation_id: "CHAT-TEST-001",
+    title: "Claims Routing Configuration",
+    title_source: "deterministic",
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    requester: "local-user",
+    operation_mode: payload.operation_mode,
+    active_batch_id: null,
+    message_preview: payload.first_message,
+    message_count: 1,
+    batches: [],
+    state: payload.state,
+    messages: [],
+  })),
+  appendConversationMessage: vi.fn(async (conversationId) => ({
+    conversation_id: conversationId,
+    title: "Claims Routing Configuration",
+    title_source: "ai",
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:06Z",
+    requester: "local-user",
+    operation_mode: "create",
+    active_batch_id: "BATCH-TEST-001",
+    message_preview: "Claims routing",
+    message_count: 3,
+    batches: [],
+    state: {},
+    messages: [],
+  })),
+  updateConversation: vi.fn(async (conversationId, payload) => ({
+    conversation_id: conversationId,
+    title: "Claims Routing Review",
+    title_source: "ai",
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:06Z",
+    requester: "local-user",
+    operation_mode: "create",
+    active_batch_id: payload.active_batch_id,
+    message_preview: "Claims routing",
+    message_count: 2,
+    batches: [],
+    state: payload.state || {},
+    messages: [],
+  })),
   getPreview: vi.fn(async () => ({
     batch_id: "BATCH-TEST-001",
     status: "preview_ready",
@@ -199,6 +291,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   window.sessionStorage.clear();
   window.localStorage.clear();
+  api.listConversations.mockResolvedValue({ conversations: [] });
   api.generateBatch.mockResolvedValue({
     batch_id: "BATCH-TEST-001",
     status: "received",
@@ -310,6 +403,57 @@ test("offers four modes and answers a read-only instance question without genera
   });
   expect(await screen.findByText(/assigns matching tickets to the Support group/i)).toBeInTheDocument();
   expect(screen.getByText("Read-only")).toBeInTheDocument();
+});
+
+test("resumes a named past chat and continues with the same conversation id", async () => {
+  api.listConversations.mockResolvedValue({
+    conversations: [
+      {
+        conversation_id: "CHAT-001",
+        title: "Claims Routing Review",
+        title_source: "ai",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:05Z",
+        operation_mode: "create",
+        active_batch_id: "BATCH-TEST-001",
+        message_preview: "Create a claims routing trigger",
+        message_count: 2,
+        batches: [
+          {
+            batch_id: "BATCH-TEST-001",
+            status: "preview_ready",
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:05Z",
+            prompt_preview: "Create a claims routing trigger",
+          },
+        ],
+      },
+    ],
+  });
+
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+
+  const continueButton = await screen.findByTitle("Continue Claims Routing Review");
+  fireEvent.click(continueButton);
+
+  await waitFor(() => expect(api.getConversation).toHaveBeenCalledWith("CHAT-001"));
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /Create new/i })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
+  fireEvent.change(input, { target: { value: "Also add broker escalation handling." } });
+  fireEvent.submit(input.closest("form"));
+
+  await waitFor(() => expect(api.appendConversationMessage).toHaveBeenCalled());
+  await waitFor(() => expect(api.generateBatch).toHaveBeenCalled());
+  expect(api.generateBatch.mock.calls.at(-1)?.[0]).toMatchObject({
+    conversation_id: "CHAT-001",
+  });
 });
 
 test("submits an exact synchronized target for update mode", async () => {

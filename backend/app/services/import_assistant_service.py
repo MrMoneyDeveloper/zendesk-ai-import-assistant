@@ -797,6 +797,7 @@ def _build_received_batch(
         "target_environment": request.target_environment,
         "mode": request.mode,
         "operation_mode": request.operation_mode,
+        "conversation_id": request.conversation_id,
         "created_at": created_at,
         "updated_at": created_at,
         "status_history": [
@@ -919,6 +920,7 @@ def create_request_validation_failed_batch(
         "requester": requester,
         "target_environment": target_environment,
         "mode": mode,
+        "conversation_id": str(payload.get("conversation_id") or "").strip() or None,
         "created_at": now,
         "updated_at": now,
         "status_history": [
@@ -11838,6 +11840,7 @@ def list_recent_batches(limit: int = 20) -> JobListResponse:
                 updated_at=str(batch.get("updated_at", "")),
                 requester=str(batch.get("requester", "")),
                 prompt_preview=(prompt[:90] + "...") if len(prompt) > 90 else prompt,
+                conversation_id=str(batch.get("conversation_id") or "").strip() or None,
             )
         )
     return JobListResponse(jobs=items)

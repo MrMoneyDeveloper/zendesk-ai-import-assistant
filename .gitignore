@@ -16,5 +16,6 @@ Thumbs.db
 
 .local-dev-state.json
 backend/data/batches.json
+backend/data/conversations.json
 backend/data/perf-sessions/
 backend/data/live-prompt-runs/

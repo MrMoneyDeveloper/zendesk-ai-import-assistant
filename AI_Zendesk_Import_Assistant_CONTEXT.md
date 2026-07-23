@@ -6,28 +6,31 @@
 | --- | --- |
 | Purpose | Canonical product, engineering, demo, and AI-agent context |
 | Repository | `zendesk-ai-import-assistant-1` |
-| Last verified | 2026-07-19 |
+| Last verified | 2026-07-23 |
 | Current stage | Working proof of concept with controlled Zendesk deployment |
 | Benchmark policy | Read, generate, stage, validate, and preview only unless a human explicitly approves deployment |
 | Secret policy | Credentials and API keys are environment-only and are intentionally excluded from this document |
 
 ## 1. Executive Summary
 
-The AI Zendesk Import Assistant converts a natural-language business request into a structured, reviewable Zendesk operating model. It can also update one exact object already present in a connected Zendesk instance.
+The AI Zendesk Import Assistant converts a natural-language business request into a structured, reviewable Zendesk operating model. It supports four user-facing workflows: create a new configuration, update one exact synchronized object, plan a mixed create-or-update change, or ask read-only questions about the current instance and a proposed batch. Durable conversations let users return to prior work from the left navigation, reopen a nested generation batch, restore its operating context, and continue the same chat.
 
-The system is designed as a controlled configuration copilot, not an autonomous administrator. It synchronizes the current Zendesk catalog, creates or updates records in dependency order, uses Gemini as the default drafting and quality-supervision model, falls back to Groq when required, stages results in Google Sheets through Apps Script, validates every record, and requires human approval before any Zendesk write.
+The system is designed as a controlled configuration copilot, not an autonomous administrator. It synchronizes the current Zendesk catalog, answers grounded questions from fresh instance context, creates or updates records in dependency order, uses Gemini as the default drafting and quality-supervision model, falls back to Groq when required, stages results in Google Sheets through Apps Script, validates every record, and requires human approval before any Zendesk write.
 
 The core workflow is:
 
 ```text
 Connect and synchronize Zendesk
--> choose Create or Update
--> describe the business requirement
+-> start a uniquely named chat or resume a past chat and nested batch
+-> choose Create, Update, Create or Update, or Ask or Verify
+-> Ask or Verify: refresh context, answer with validated citations, and perform no writes
+-> change workflow: describe the business requirement and select context where required
 -> plan required objects and dependencies
 -> generate records in waves
 -> supervise, patch, and validate each wave
 -> stage and validate in Google Sheets
 -> preview readable before/after logic
+-> optionally ask grounded questions about proposed effects before applying
 -> approve selected records
 -> deploy Support objects
 -> optionally deploy Help Center content after Guide readiness is confirmed
@@ -58,9 +61,11 @@ The assistant reduces this translation and configuration effort while keeping th
 | Faster solution design | Converts a detailed operating brief into a structured preview in minutes rather than manually drafting every object |
 | Better coverage | Treats named departments, forms, topics, and operational rules as explicit manifest requirements |
 | Safer changes | Exact Update mode starts from a synchronized object snapshot and preserves fields the user did not ask to change |
+| Grounded decisions | Answers instance and pre-apply questions from a fresh catalog plus the actual proposed records, with validated object citations |
 | Explainable review | Shows readable conditions, actions, dependencies, warnings, and before/after changes instead of raw JSON only |
 | Controlled deployment | Requires deterministic validation and explicit human approval before Zendesk writes |
 | Auditability | Stores staged records, validation results, approvals, model usage, progress events, and execution results by batch ID |
+| Conversation continuity | Keeps uniquely named chats in searchable history, nests generated batches under each chat, and restores the saved workflow state and messages |
 | Resilience | Uses targeted retries and deterministic fallback without regenerating an already approved batch |
 | Demo suitability | Produces operational progress summaries while work is running, avoiding a silent waiting screen |
 
@@ -114,7 +119,24 @@ Fields added, changed, or removed
 Validation and supervisor decision
 ```
 
-### 5.3 Generate and Publish Help Center Content
+### 5.3 Plan a Mixed Create-or-Update Change
+
+The user selects **Create or Update** when a business request may require adding missing configuration while accounting for objects that already exist. The prompt remains locked until the Zendesk catalog has synchronized, and the workflow includes compact snapshots of selected or matching current objects as planning context.
+
+The current implementation treats this as a guarded planning profile over the create pipeline: it instructs the planner to create missing objects, avoid duplicate exact titles, and consider synchronized dependencies. Every emitted record still has an explicit final operation of `create` or `update`. Exact ID-bound replacement remains governed by the stricter Update contract; the mixed workflow must not silently overwrite an existing object unless that record is explicitly bound to a synchronized target and shown as an update in preview.
+
+### 5.4 Ask or Verify Current Configuration
+
+The user selects **Ask or Verify** to open a separate read-only workspace. They can ask about the whole synchronized instance or narrow the question by object type, search text, and selected objects. This supports questions such as:
+
+- Which triggers route claims tickets?
+- Does this form already contain the required policy field?
+- Which automations could overlap with the proposed escalation rule?
+- Can the current instance support the requested workflow without creating a duplicate object?
+
+Every question performs a fresh server-side Zendesk catalog sync. The answer is grounded in the current object catalog, uses validated citations to supplied object names and IDs, identifies facts it cannot verify, and cannot create a batch, approve records, or write to Zendesk.
+
+### 5.5 Generate and Publish Help Center Content
 
 Help Center records are generated in dependency order:
 
@@ -126,21 +148,29 @@ Article generation does not imply that Zendesk Guide is enabled or publishable. 
 
 If Guide is unavailable, the workflow stops before article deployment and asks the user to enable the Help Center and provide or confirm the correct brand URL. After readiness is verified, categories and sections are created or resolved before articles are pushed. Article deployment remains a separate explicit confirmation.
 
-### 5.4 Preview and Approve Changes
+### 5.6 Preview, Question, and Approve Changes
 
 Generated records are shown as readable product UI, not only serialized JSON. Users can inspect nested condition groups, actions, dependencies, warnings, and effective approval results. In Update mode they can compare the current and proposed state.
 
+Before applying a batch, the user can select **Ask before applying** and question the likely effects on routing, agents, customers, reporting, dependencies, conflicts, or existing rules. The backend combines a fresh instance sync with the actual proposed batch records and returns a read-only impact assessment. Asking a question does not change approval decisions or deployment state.
+
 Human approval is record-level. A front-end request cannot override failed validation, blocked status, or deployment scope restrictions.
 
-### 5.5 Keep the User Informed During Long Runs
+### 5.7 Keep the User Informed During Long Runs
 
 The application emits verified operational progress events as each wave advances. A low-volume narrator turns those events into concise public summaries about what was checked, created, patched, carried forward, or left unresolved.
 
 These messages are operational summaries only. The product does not expose hidden chain-of-thought.
 
+### 5.8 Resume Past Chats and Batches
+
+The left navigation contains a searchable **Past chats** tree. A conversation is the parent and every generated batch from that conversation appears beneath it. Selecting a conversation restores its messages, operation mode, focus objects, selected context, exact update target, and most recent batch. Selecting a nested batch restores that specific preview while keeping the parent conversation active, so the next question or generation request continues in the same conversation ID.
+
+The first user message receives an immediate unique provisional title so chat creation does not wait for another model call. A background title task then asks Gemini for a concise business-specific name, falls back to Groq if required, and retains the deterministic title if both providers fail. Uniqueness is enforced by backend storage. Existing batches are backfilled as legacy conversations without triggering title-model traffic.
+
 ## 6. Functional Scope
 
-### 6.1 Create, Update, and Deploy Capable
+### 6.1 Create, Exact-Update, and Deploy Capable
 
 | Zendesk object | Sync existing | Create | Exact update | Notes |
 | --- | ---: | ---: | ---: | --- |
@@ -168,13 +198,24 @@ The current integration also synchronizes the following for planning and conflic
 
 The system must label these as read-only or later-phase capabilities instead of implying that they can be changed.
 
-### 6.3 Deliberately Out of Scope
+### 6.3 Grounded Read-Only Questions
+
+The `POST /api/import-assistant/context-question` endpoint supports two question scopes:
+
+- `instance`: questions about the freshly synchronized Zendesk catalog, optionally narrowed to selected objects;
+- `change_review`: questions about a staged proposal and its effects on the current synchronized instance.
+
+Read-only question answering can use every synchronized object type, including SLA policies, schedules, user fields, organization fields, and custom objects. This does not make those objects selectable update targets. Gemini is the default Q&A model, Groq is the provider fallback, and deterministic text is returned if model generation fails. All paths remain read-only.
+
+### 6.4 Deliberately Out of Scope
 
 - Unapproved Zendesk deployment
 - Automatic production changes
 - Arbitrary model-authored numeric Zendesk IDs
 - Whole-instance replacement
 - Hidden chain-of-thought display
+- Treating an Ask or Verify response as approval or deployment authorization
+- Accepting invented or unvalidated model citations as instance facts
 - Automatic Help Center publishing when Guide readiness is unknown
 - Silent removal of conditions, actions, tags, or dependencies during Update mode
 
@@ -184,9 +225,18 @@ The system must label these as read-only or later-phase capabilities instead of 
 flowchart TD
     U["User"] --> UI["React and Vite UI"]
     UI --> API["FastAPI orchestration API"]
+    UI --> CHATS["Conversation history API"]
+    CHATS --> CSTORE["Atomic conversation store"]
+    CHATS --> TITLE["Background Gemini title task"]
+    TITLE -.->|provider failure| GROQ
+    TITLE --> CSTORE
 
     API --> ZR["Zendesk read-only catalog sync"]
     ZR --> API
+
+    API --> QA["Grounded read-only Q&A"]
+    ZR --> QA
+    QA --> UI
 
     API --> PLAN["Coverage manifest and dependency planner"]
     PLAN --> GEN["Gemini default generator"]
@@ -206,6 +256,9 @@ flowchart TD
     AS --> API
 
     API --> PREVIEW["Readable preview and before/after diff"]
+    PREVIEW --> IMPACT["Ask-before-applying impact review"]
+    IMPACT --> QA
+    QA --> PREVIEW
     PREVIEW --> APPROVAL["Human record-level approval"]
     APPROVAL --> API
     API --> ZW["Zendesk Support deployment"]
@@ -223,15 +276,29 @@ flowchart TD
 
 | Component | Primary responsibility | Must not do |
 | --- | --- | --- |
-| React UI | Select Create or Update, select exact target, capture prompt, display progress, preview readable logic, collect approval | Hold privileged credentials or call Zendesk directly |
-| FastAPI | Authenticate requests, synchronize context, plan waves, route models, validate outputs, enforce approval, stage records, deploy approved records | Trust model output or front-end approval without backend checks |
+| React UI | Select one of four workflows, manage searchable nested chat history, restore saved work, capture prompts and questions, display progress, preview readable logic, switch light/dark theme, and collect approval | Persist provider secrets, call Zendesk directly, or turn a read-only answer into a write |
+| FastAPI | Authenticate requests, freshly synchronize context, answer grounded questions, plan waves, route models, validate outputs, enforce approval, stage records, and deploy approved records | Trust model output, model citations, or front-end approval without backend checks |
+| Conversation service and store | Persist bounded messages and workflow state, enforce unique titles, associate batches, redact sensitive state, and backfill legacy batches | Store credentials, block generation while naming a chat, or treat chat memory as deployment approval |
 | Gemini default generator | Draft planner and generator output using current manifest and synchronized context | Invent IDs, bypass schemas, or deploy records |
 | Gemini supervisor | Review department/topic bundles, propose safe patches, identify gaps, and request targeted regeneration | Directly write arbitrary records or override deterministic failures |
+| Grounded Q&A service | Select compact relevant instance/proposal context, obtain a structured answer, validate citations, and report unverifiable claims | Approve, stage, patch, deploy, or claim evidence outside supplied context |
 | Groq lanes | Fail over generator tasks and provide low-volume progress narration | Become the source of operational truth |
 | Deterministic engine | Build stable rule templates, apply typed patches, calculate effective approval, validate dependencies, and provide fallback records | Claim model-level semantic approval |
 | Apps Script | Idempotently stage batches, validate rows, preserve metadata/progress, enforce approval writes, return preview, and log execution | Act as the AI planner or bypass backend controls |
 | Google Sheets | Provide staging, validation, approval, metadata, progress, and execution audit data | Serve as a secret store for browser clients |
 | Zendesk APIs | Supply synchronized catalog context and execute explicitly approved writes | Receive writes during benchmarks or before approval |
+
+### 8.1 User Interface and Theme Contract
+
+The active application is the operating workspace, not a marketing landing page. The four workflow choices appear before prompt or question entry, and the workspace changes to match the selected task. Raw conditions and actions are rendered as readable nested logic, with before/after comparison for exact updates and a dedicated question surface for read-only analysis.
+
+Light and dark modes apply to the complete workspace. The theme controller sets both `data-theme` and the Tailwind-compatible `dark` class on the document root and persists the preference in local storage. Shared cards, buttons, badges, inputs, tabs, selectors, preview panels, Q&A panels, session controls, and pre-apply review use centralized theme variables so one mode does not retain colors from the other.
+
+### 8.2 Free-Tier Deployment Contract
+
+The supported demonstration deployment uses Vercel for the `frontend` Vite build and a Render free Python web service for the `backend` FastAPI application. Vercel receives only the public `VITE_API_BASE_URL`, which points to the Render HTTPS origin. Gemini, Groq, Apps Script, and other server credentials remain Render environment variables.
+
+The root `render.yaml` fixes the backend root directory, Python version, build command, single-worker Uvicorn start command, health path, and free instance plan. `frontend/vercel.json` fixes the Vite build and output directory. The free Render filesystem is intentionally treated as temporary: batches and conversations can reset after a sleep, restart, or redeploy, while Apps Script and Google Sheets staging remain persistent.
 
 ## 9. Model Routing and Reliability
 
@@ -250,6 +317,7 @@ Default model behavior in the repository:
 - Mandatory-gap score cap: 0.49
 - Targeted regeneration attempts: 1
 - Review grouping: department/topic bundles
+- Grounded Q&A route: default provider with `context_qa` task routing, Gemini-first behavior, Groq fallback, and deterministic final fallback
 
 ### 9.2 Why the Roles Are Split
 
@@ -352,7 +420,9 @@ Rejected examples:
 
 Verified supervisor memory is derived only from records that actually exist after patching and pass effective approval. Free-form `memory_delta` remains a suggestion and cannot become operational truth by itself.
 
-## 13. Exact Update Safety
+## 13. Change and Question Safety
+
+### 13.1 Exact Update Safety
 
 Update mode is deliberately stricter than Create mode.
 
@@ -367,6 +437,20 @@ Update mode is deliberately stricter than Create mode.
 
 Zendesk tag semantics are handled explicitly: additive tag changes use `current_tags`; `set_tags` is reserved for an explicit full replacement because it replaces the entire tag set.
 
+### 13.2 Grounded Read-Only Q&A Safety
+
+The question service is isolated from staging, approval, patching, and deployment code paths.
+
+1. Each call performs a fresh server-side catalog sync; a supplied `instance_sync_id` is advisory and is never the sole evidence source.
+2. `instance` questions may include up to 25 selected context objects and eight prior conversation turns.
+3. `change_review` questions require a valid `batch_id` and load the actual records currently stored for that proposal.
+4. The service sends a compact relevant catalog, a complete current-name index, proposal details, and a deterministic change summary to the model.
+5. Synchronized titles, descriptions, article bodies, comments, and snapshots are treated as untrusted data rather than executable instructions.
+6. Model output must follow the structured answer contract: answer, findings, impact, risks, recommended checks, unverifiable items, citations, confidence, scope, warnings, provider, model, fallback, usage, and timestamp.
+7. Citations are accepted only when they match a supplied current or proposal object. Rejected citations are counted in response warnings.
+8. A response that claims it deployed, updated, changed, or approved Zendesk is rejected and replaced with a deterministic read-only fallback.
+9. Only change-review summaries are added to the batch audit history, capped at the latest 20 entries. Questions never mutate records or approval decisions.
+
 ## 14. Apps Script and Google Sheets Contract
 
 The deployed Apps Script bridge exposes secured actions for setup, schema synchronization, staging, metadata, progress, validation, preview, approval, and execution logging.
@@ -380,6 +464,7 @@ Important behavior:
 - Approval writes independently force failed or blocked records back to `blocked`.
 - Execution summaries count the latest result for each record.
 - The backend timeout is 90 seconds to accommodate Apps Script cold starts.
+- Grounded Ask or Verify calls do not require an Apps Script round trip; Apps Script remains the staging, validation, approval, and execution bridge for generated batches.
 
 Core audit tabs include:
 
@@ -447,24 +532,32 @@ metadata.supervisor.remaining_manifest_coverage
 metadata.model_usage
 metadata.timings
 metadata.progress_events
+metadata.change_questions
 ```
 
 Every generated record should retain a stable batch ID, record ID, record key, source chunk ID, operation mode, validation state, approval state, deployment state, and Zendesk object ID when one exists.
+
+`metadata.change_questions` stores a bounded audit summary for the latest 20 pre-apply questions. It records a truncated question and answer, confidence, citations, provider/model, fallback state, and timestamp. Instance-only questions that are not tied to a batch are not written into batch metadata.
+
+Conversation history is separate from batch metadata. Each conversation stores a stable conversation ID, unique title and title source, bounded user/assistant messages, compact restorable workflow state, and ordered batch references. Credential-like keys and tokens are removed before persistence.
 
 ## 17. Security and Governance
 
 Non-negotiable controls:
 
-1. API keys and Zendesk credentials stay in environment files or server-side secret storage.
-2. The browser never receives privileged provider or Zendesk credentials.
-3. Benchmarks do not call Zendesk write endpoints.
-4. Generated records are not deployable until validation and human approval both pass.
-5. Backend rules override invalid approval requests.
-6. Numeric IDs must originate from synchronized Zendesk context or a prior successful deployment result.
-7. Help Center publishing requires a verified destination and separate confirmation.
-8. Public progress messages summarize operations without exposing hidden reasoning.
-9. Logs and reports must redact secrets and authentication headers.
-10. Production deployment should remain disabled until a separate production-readiness review is completed.
+1. Provider keys and Apps Script credentials stay in environment files or server-side secret storage and are never sent to the browser.
+2. Zendesk credentials are entered in the browser, scoped to the current tab through `sessionStorage`, and sent only to the FastAPI backend for validation, catalog reads, or an explicitly approved deployment. They must not be written into batch metadata, Sheets, logs, or reports.
+3. Production operation requires HTTPS and should replace browser-held Zendesk credentials with a stronger authenticated server-side session or credential broker.
+4. Benchmarks and Ask or Verify requests do not call Zendesk write endpoints.
+5. Generated records are not deployable until validation and human approval both pass.
+6. Backend rules override invalid approval requests.
+7. Numeric IDs must originate from synchronized Zendesk context or a prior successful deployment result.
+8. Help Center publishing requires a verified destination and separate confirmation.
+9. Current and proposal content supplied to a model is untrusted data; model citations must resolve to known context.
+10. Public progress messages summarize operations without exposing hidden reasoning.
+11. Logs and reports must redact secrets and authentication headers.
+12. Production deployment should remain disabled until a separate production-readiness review is completed.
+13. Conversation state must contain only compact object references and redacted workflow data; Zendesk or provider credentials must never enter the conversation store.
 
 ## 18. Benchmark Scenario: ClearSky Insurance Group
 
@@ -612,7 +705,7 @@ The 50-minute speaker session should reserve no more than 10 minutes for generat
 | Demo stage | Evidence-based expectation | Presentation action |
 | --- | ---: | --- |
 | Connect and synchronize | About 2 seconds in the tested instance | Explain that no writes occur during sync |
-| Start generation | Immediate | Show Create or Update selection and submit prompt |
+| Select workflow | Immediate | Show Create, Update, Create or Update, and Ask or Verify before starting the relevant workflow |
 | Model generation and supervision | About 2 minutes 16 seconds for final ClearSky run | Discuss live operational summaries and wave progress |
 | Apps Script staging, validation, preview | About 26 seconds in the 39-record stress replay | Show Sheets audit data and readable preview |
 | Estimated total | About 2 minutes 42 seconds | Keep a saved benchmark preview available as a contingency |
@@ -622,18 +715,20 @@ This estimate combines separate controlled model and Apps Script measurements. F
 
 ## 25. Verification Status
 
-Most recent recorded code verification:
+Most recent recorded code verification by area:
 
-- Backend test suite: 184 passed in 7.40 seconds
-- Frontend tests: 12 passed
+- Backend full test suite: 188 passed in 6.84 seconds
+- Frontend tests: 17 passed across 3 files
 - Frontend production build: passed
 - Frontend lint: 0 errors, 1 existing TanStack Table compiler warning
 - Apps Script deployed health: operating-model v2 capabilities available
 - Live catalog synchronization: complete with zero warnings in the tested instance
+- Live chat-history UI check: 53 legacy and current chats rendered in a bounded left-nav scroller; search, nested batch expansion, and resume-to-active-title passed with no browser console errors
+- Light/dark UI check: exact-update preview and shared controls rendered in both modes without browser console errors; the light-theme editable contrast issue was corrected
 
 Known build observations:
 
-- Main JavaScript bundle is about 561.76 kB and triggers the Vite 500 kB advisory.
+- Main JavaScript bundle is about 595.39 kB uncompressed and triggers the Vite 500 kB advisory; the main CSS bundle is about 41.49 kB.
 - Several PNG assets are approximately 1.3 MB to 2.0 MB.
 - These are load-performance optimization opportunities, not generation correctness blockers.
 
@@ -655,6 +750,43 @@ Known build observations:
 - Preview must show current and proposed logic in non-technical language.
 - Only the selected target may be written after approval.
 
+### Create or Update Mode
+
+- Prompt entry must remain locked until the current catalog has synchronized.
+- The planner must receive selected or matching current-object context and avoid duplicate exact titles.
+- Each proposed record must still declare a concrete `create` or `update` operation in preview.
+- No existing object may be silently overwritten without an ID-bound synchronized target and visible before/after treatment.
+
+### Ask or Verify Mode
+
+- Each question must use a fresh server-side catalog sync, even when the UI supplies an earlier sync ID.
+- The user may ask across the instance or narrow context to selected synchronized objects.
+- Instance questions must not require or create a generation batch.
+- Answers must remain read-only, surface uncertainty, and include only citations that resolve to supplied current or proposal records.
+- Questions phrased as commands must not stage, approve, patch, or deploy anything.
+
+### Pre-Apply Questions
+
+- A preview-ready batch must expose **Ask before applying** without changing record decisions.
+- Change-review questions must load the actual proposed batch and a fresh current catalog.
+- Answers should identify likely impact, risk, overlap, and recommended checks while clearly separating facts from items that cannot be verified.
+- The latest 20 change-review summaries may be retained for audit; the question path must not mutate proposed records.
+
+### Past Chat Resume
+
+- The left navigation must show searchable conversations with unique titles.
+- Generation batches must appear as nested children of their parent conversation.
+- Selecting a parent must restore its messages and saved workflow state; selecting a child must restore that exact batch preview.
+- New prompts and questions after restoration must retain the same conversation ID.
+- Chat naming must be asynchronous and must not add latency to generation.
+- Stored conversation state must exclude credentials and token-like values.
+
+### Theme and Readability
+
+- Light and dark modes must update the complete active workspace, including shared controls, selectors, Q&A, preview, comparison, session, and approval surfaces.
+- The document root must keep `data-theme` and the `dark` class synchronized.
+- Readable condition/action presentation must remain the default; raw JSON is supporting detail rather than the primary interface.
+
 ### Supervisor
 
 - Raw and effective approval must be separate.
@@ -675,12 +807,16 @@ Known build observations:
 
 ## 27. Known Limitations and Next Engineering Priorities
 
-1. Add complete create/update handlers and UI selection for SLA policies, schedules, user fields, organization fields, and custom objects if they become required scope.
-2. Run one instrumented, single-stopwatch ClearSky flow from synchronization through Apps Script preview to replace the current combined timing estimate.
-3. Add a repeatable cold-start benchmark for Apps Script and provider rate-limit conditions.
-4. Code-split the main frontend bundle and compress or resize large PNG assets.
-5. Add deployment contract tests against a disposable Zendesk sandbox before enabling any production target.
-6. Preserve a deterministic demo snapshot so a provider outage cannot consume the speaker session.
+1. Add focused backend route and service tests for grounded Q&A, citation rejection, prompt-injection resistance, deterministic fallback, fresh synchronization, and absence of write side effects.
+2. Formalize `create_update` as a backend orchestration contract if true mixed ID-bound updates are required; the current UI workflow intentionally maps through guarded create planning and reserves exact replacement for Update mode.
+3. Replace browser-held Zendesk credentials with an authenticated server-side session or credential broker before production use.
+4. Add complete create/update handlers and UI selection for SLA policies, schedules, user fields, organization fields, and custom objects if they become required scope.
+5. Run one instrumented, single-stopwatch ClearSky flow from synchronization through Apps Script preview to replace the current combined timing estimate.
+6. Add a repeatable cold-start benchmark for Apps Script and provider rate-limit conditions.
+7. Code-split the main frontend bundle and compress or resize large PNG assets.
+8. Add deployment contract tests against a disposable Zendesk sandbox before enabling any production target.
+9. Preserve a deterministic demo snapshot so a provider outage cannot consume the speaker session.
+10. Replace the local JSON conversation store with a shared database before running multiple backend replicas or providing multi-user production history.
 
 ## 28. Important Environment Settings
 
@@ -691,6 +827,8 @@ LLM_DEFAULT_PROVIDER
 LLM_PROVIDER
 LLM_MODEL_PLANNER
 LLM_MODEL_GENERATOR
+LLM_MODEL_CLARIFIER
+LLM_GENERATOR_MAX_OUTPUT_TOKENS
 GEMINI_API_KEY
 GEMINI_DEFAULT_MODEL
 GEMINI_DEFAULT_MAX_RETRIES
@@ -705,6 +843,10 @@ GEMINI_SUPERVISOR_REVIEW_GROUPING
 GEMINI_SUPERVISOR_AUTO_APPLY_PATCHES
 PROGRESS_NARRATOR_ENABLED
 PROGRESS_NARRATOR_PROVIDER
+CONVERSATION_STORE_FILE
+CONVERSATION_STORE_MAX_ENTRIES
+CONVERSATION_STORE_MAX_MESSAGES
+VITE_API_BASE_URL
 APPS_SCRIPT_WEB_APP_URL
 APPS_SCRIPT_API_KEY
 APPS_SCRIPT_TIMEOUT_SECONDS
@@ -728,8 +870,19 @@ FRONTEND_ORIGIN
 | Supervisor and deterministic gates | `backend/app/services/gemini_supervisor.py` |
 | Wave orchestration and coverage | `backend/app/services/import_assistant_service.py` |
 | Exact update prompts | `backend/app/helpers/prompts.py` |
+| Grounded question service and citation validation | `backend/app/services/context_qa.py` |
+| Grounded question API contract | `backend/app/routes/import_assistant.py`, `backend/app/models/schemas.py` |
+| Conversation persistence and AI naming | `backend/app/services/conversation_store.py`, `backend/app/services/conversation_service.py` |
 | Zendesk sync and deployment safety | `backend/app/services/zendesk.py` |
-| Operation mode and exact target UI | `frontend/src/components/chat/OperationModeSelector.jsx` |
+| Four-mode selector and exact target UI | `frontend/src/components/chat/OperationModeSelector.jsx` |
+| Ask/Verify and pre-apply question workspaces | `frontend/src/App.jsx`, `frontend/src/components/chat/PreviewWorkspace.jsx` |
+| Searchable nested chat history | `frontend/src/components/chat/ConversationHistoryNav.jsx`, `frontend/src/App.jsx` |
+| Theme tokens and root theme control | `frontend/src/index.css`, `frontend/src/App.jsx` |
+| Conversation backend tests | `backend/tests/test_conversation_service.py` |
+| Frontend workflow, chat-history, preview, and theme tests | `frontend/src/App.test.jsx`, `frontend/src/components/chat/ConversationHistoryNav.test.jsx`, `frontend/src/components/chat/PreviewWorkspace.test.jsx` |
+| Render free-service Blueprint | `render.yaml` |
+| Vercel frontend configuration | `frontend/vercel.json` |
+| Free-tier deployment runbook | `DEPLOY_FREE_VERCEL_RENDER.md` |
 | Apps Script operating-model worker | `Appscripts/src/OperatingModel.gs` |
 | Apps Script API | `Appscripts/src/Api.gs` |
 | Apps Script install and API notes | `Appscripts/README.md` |
@@ -742,16 +895,16 @@ Use this block when another model or developer needs a concise starting context:
 Project: AI Zendesk Import Assistant
 
 Purpose:
-Convert a natural-language business operating model into structured Zendesk configuration, or safely update one exact synchronized Zendesk object.
+Support four controlled Zendesk workflows: create a structured operating model, update one exact synchronized object, plan a mixed create-or-update change, or answer read-only questions about the current instance and a proposed batch. Preserve each workflow as a uniquely named resumable conversation with nested generation batches.
 
 Current architecture:
-React/Vite UI -> FastAPI -> Zendesk read-only catalog sync -> coverage manifest and dependency waves -> Gemini default generation -> Gemini structured supervision -> backend deterministic gates and typed patches -> Apps Script and Google Sheets staging/validation -> readable preview -> human record approval -> Zendesk Support deployment -> separate Help Center readiness and deployment phase -> execution log.
+React/Vite UI -> FastAPI -> fresh Zendesk read-only catalog sync. A conversation service persists bounded redacted messages, workflow state, unique AI-assisted titles, and nested batch references. Ask/Verify branches to grounded structured Q&A with validated citations and no write side effects. Change workflows continue through coverage manifest and dependency waves -> Gemini default generation -> Gemini structured supervision -> backend deterministic gates and typed patches -> Apps Script and Google Sheets staging/validation -> readable preview and optional pre-apply Q&A -> human record approval -> Zendesk Support deployment -> separate Help Center readiness and deployment phase -> execution log.
 
 Model policy:
-Gemini is the default planner/generator and supervisor. Groq is the generation failover and preferred low-volume progress narrator. Deterministic templates, validation, and fallback remain authoritative. Never expose hidden chain-of-thought.
+Gemini is the default planner/generator, supervisor, and grounded Q&A provider. Groq is the provider failover and preferred low-volume progress narrator. Deterministic templates, validation, citation checks, and fallback remain authoritative. Never expose hidden chain-of-thought.
 
 Safety policy:
-Never deploy automatically. Never trust model approval by itself. Never invent Zendesk IDs. In Update mode, require one synchronized target and preserve all unrequested configuration. Keep Help Center publishing separate until brand, Guide, locale, category, and section readiness are verified.
+Never deploy automatically. Never trust model approval or citations by themselves. Never invent Zendesk IDs. In Update mode, require one synchronized target and preserve all unrequested configuration. Ask/Verify and pre-apply questions are read-only and cannot modify approvals or records. Keep Help Center publishing separate until brand, Guide, locale, category, and section readiness are verified.
 
 Quality policy:
 Use department/topic review bundles, an effective approval threshold of 0.80, a mandatory-gap score cap of 0.49, one targeted retry for only the failed source chunk, then deterministic fallback and item-level blocking. Commit memory only from records that actually exist after patching and pass effective approval.
@@ -760,7 +913,7 @@ Verified benchmark:
 The final ClearSky hybrid run generated 39 records in 135.96 seconds, used 116,033 tokens, applied 12 safe patches, had 0 fallback chunks, 0 blocked chunks, 0 duplicate titles/actions, and averaged 1.00 effective quality. A separate 39-record Apps Script replay took 26.00 seconds client-side. Combined demo estimate is about 2 minutes 42 seconds, with no Zendesk write included.
 
 Current limitations:
-SLA policies, schedules, user fields, organization fields, and custom objects are synchronized read-only. Frontend bundle and large PNG assets can be optimized. A single-stopwatch end-to-end benchmark is still recommended.
+SLA policies, schedules, user fields, organization fields, and custom objects are synchronized read-only. Mixed Create or Update is currently a guarded planning profile rather than a fully separate backend operation type. Conversation history currently uses an atomic local JSON store and must move to a shared database for multiple replicas or multi-user production use. Stronger credential brokering, frontend asset optimization, and a single-stopwatch end-to-end benchmark are still recommended.
 ```
 
 ## 31. Final Product Principle
@@ -771,15 +924,21 @@ The system is not:
 Prompt -> AI -> Zendesk
 ```
 
-It is:
+It is two controlled paths over freshly synchronized context:
 
 ```text
-Prompt or exact update target
--> synchronized instance context
+Ask or Verify
+-> fresh synchronized instance and optional proposal context
+-> grounded answer with validated citations
+-> no staging, approval, or write side effects
+
+Create, Update, or Create or Update
+-> synchronized instance context and explicit change intent
 -> explicit coverage and dependencies
 -> model generation with failover
 -> enforced supervision and deterministic validation
 -> auditable staging and readable preview
+-> optional grounded pre-apply impact question
 -> human approval
 -> controlled Zendesk deployment
 ```

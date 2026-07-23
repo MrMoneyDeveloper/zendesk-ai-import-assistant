@@ -31,6 +31,7 @@ import PromptComposer from "./components/chat/PromptComposer";
 import OperationModeSelector from "./components/chat/OperationModeSelector";
 import PreviewWorkspace from "./components/chat/PreviewWorkspace";
 import ContextQuestionWorkspace from "./components/chat/ContextQuestionWorkspace";
+import ConversationHistoryNav from "./components/chat/ConversationHistoryNav";
 import IntegrationPanel from "./components/chat/IntegrationPanel";
 import ZendeskSessionGate from "./components/chat/ZendeskSessionGate";
 import { Button } from "./components/ui/button";
@@ -41,20 +42,25 @@ import cxIcon from "./assets/cx-icon.png";
 import cxLogo from "./assets/cx-logo.png";
 import {
   approveBatch,
+  appendConversationMessage,
   askContextQuestion,
   checkZendeskHelpCenterReadiness,
+  createConversation,
   deployBatch,
   extractAttachment,
   generateBatch,
   controlBatchJob,
   decideCheckpoint,
   getCheckpoints,
+  getConversation,
   getZendeskContext,
   getIntegrationsStatus,
   getJob,
   listJobs,
+  listConversations,
   getPreview,
   validateZendeskCredentials,
+  updateConversation,
 } from "./services/api";
 import { useImportAssistantStore } from "./store/importAssistantStore";
 
@@ -485,7 +491,6 @@ function buildQuestionConversation(history = []) {
 const NAV_ITEMS = [
   { label: "New Chat", icon: Plus, active: true },
   { label: "Dashboard", icon: Gauge },
-  { label: "All Chats", icon: MessageSquare },
   { label: "Templates", icon: Grid2X2 },
   { label: "Knowledge Base", icon: Boxes },
   { label: "Integrations", icon: GitBranch },
@@ -565,6 +570,9 @@ function App() {
   const [activityLogs, setActivityLogs] = useState([]);
   const [timeline, setTimeline] = useState([]);
   const [historySearch, setHistorySearch] = useState("");
+  const [conversationSearch, setConversationSearch] = useState("");
+  const [activeConversationId, setActiveConversationId] = useState(null);
+  const [resumingConversationId, setResumingConversationId] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
   const [instanceQuestionHistory, setInstanceQuestionHistory] = useState([]);
   const [changeQuestionHistory, setChangeQuestionHistory] = useState([]);
@@ -642,6 +650,20 @@ function App() {
     if (terminalBatchNotifiedRef.current.has(resolvedBatchId)) return;
     terminalBatchNotifiedRef.current.add(resolvedBatchId);
     setBatchId(resolvedBatchId);
+    const conversationId = String(data?.conversation_id || activeConversationId || "").trim();
+    const persistTerminalMessage = (content, kind, metadata = {}) => {
+      if (!conversationId) return;
+      void appendConversationMessage(conversationId, {
+        role: "assistant",
+        kind,
+        content,
+        batch_id: resolvedBatchId,
+        metadata,
+      }).then((updated) => {
+        queryClient.setQueryData(["conversation", conversationId], updated);
+        queryClient.invalidateQueries({ queryKey: ["conversation-list"] });
+      }).catch(() => {});
+    };
 
     if (status === "failed") {
       const failure = data?.metadata?.failure || {};
@@ -655,6 +677,11 @@ function App() {
       });
       appendActivity("error", `${reason} Next: ${nextStep}`);
       appendTimeline("assistant", `Generation stopped: ${reason} Next: ${nextStep}`);
+      persistTerminalMessage(
+        `Generation stopped: ${reason} Next: ${nextStep}`,
+        "batch_failed",
+        { status, failure }
+      );
       queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
       return;
     }
@@ -662,6 +689,11 @@ function App() {
     if (status === "clarification_required") {
       appendActivity("warning", `Batch ${resolvedBatchId} needs clarification before generation can continue.`);
       appendTimeline("assistant", "I need a little more detail before opening the generation waves.");
+      persistTerminalMessage(
+        "I need a little more detail before opening the generation waves.",
+        "clarification_required",
+        { status }
+      );
       queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
       return;
     }
@@ -684,15 +716,26 @@ function App() {
       `Batch ${resolvedBatchId} ready for review. Validation summary: passed=${data.validation_summary?.passed || 0}, warnings=${data.validation_summary?.warnings || 0}, blocked=${data.validation_summary?.blocked || 0}.`
     );
     if (generationSafety?.blocked) {
+      const message = `Batch ${resolvedBatchId} generated, but deployment is blocked by safety checks. ${generationSafety.reasons?.join(" | ") || ""}`;
       appendTimeline(
         "assistant",
-        `Batch ${resolvedBatchId} generated, but deployment is blocked by safety checks. ${generationSafety.reasons?.join(" | ") || ""}`
+        message
       );
+      persistTerminalMessage(message, "batch_ready", {
+        status,
+        validation_summary: data.validation_summary,
+        generation_safety: generationSafety,
+      });
     } else {
+      const message = `Batch ${resolvedBatchId} is ready for review (${data.validation_summary?.passed || 0} passed, ${data.validation_summary?.warnings || 0} warnings, ${data.validation_summary?.blocked || 0} blocked).`;
       appendTimeline(
         "assistant",
-        `Batch ${resolvedBatchId} is ready for review (${data.validation_summary?.passed || 0} passed, ${data.validation_summary?.warnings || 0} warnings, ${data.validation_summary?.blocked || 0} blocked).`
+        message
       );
+      persistTerminalMessage(message, "batch_ready", {
+        status,
+        validation_summary: data.validation_summary,
+      });
     }
     if ((focusDiagnostics?.mismatch_count || 0) > 0) {
       appendActivity(
@@ -708,7 +751,7 @@ function App() {
     queryClient.invalidateQueries({ queryKey: ["job", resolvedBatchId] });
     queryClient.invalidateQueries({ queryKey: ["checkpoints", resolvedBatchId] });
     queryClient.invalidateQueries({ queryKey: ["preview", resolvedBatchId] });
-  }, [appendActivity, appendTimeline, queryClient, setBatchId]);
+  }, [activeConversationId, appendActivity, appendTimeline, queryClient, setBatchId]);
 
   const generateMutation = useMutation({
     mutationFn: generateBatch,
@@ -723,6 +766,9 @@ function App() {
       appendTimeline("assistant", "I am preparing the operating-model run and will show each verified checkpoint here.");
     },
     onSuccess: (data) => {
+      if (data?.conversation_id) {
+        setActiveConversationId(data.conversation_id);
+      }
       setBatchId(data.batch_id);
       queryClient.setQueryData(["job", data.batch_id], data);
       if (["preview_ready", "failed", "clarification_required"].includes(String(data?.status || ""))) {
@@ -735,6 +781,7 @@ function App() {
         );
       }
       queryClient.invalidateQueries({ queryKey: ["jobs-list"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation-list"] });
     },
     onError: (error) => {
       const detail = parseFailureDetail(error);
@@ -755,7 +802,11 @@ function App() {
   });
 
   const contextQuestionMutation = useMutation({
-    mutationFn: askContextQuestion,
+    mutationFn: (variables) => {
+      const payload = { ...variables };
+      delete payload.chat_conversation_id;
+      return askContextQuestion(payload);
+    },
     onMutate: (variables) => {
       const label = variables?.question_mode === "change_review"
         ? "Reviewing the staged proposal against the current Zendesk instance."
@@ -773,6 +824,24 @@ function App() {
         ...prev.slice(-10),
         `assistant: ${String(data?.answer || "Read-only question answered.").slice(0, 2000)}`,
       ]);
+      const conversationId = variables?.chat_conversation_id || activeConversationId;
+      if (conversationId) {
+        void appendConversationMessage(conversationId, {
+          role: "assistant",
+          kind: "context_answer",
+          content: data?.answer || "Read-only question answered.",
+          metadata: {
+            question: variables?.question || "",
+            question_mode: variables?.question_mode || "instance",
+            question_response: data,
+          },
+        }).then((updated) => {
+          queryClient.setQueryData(["conversation", conversationId], updated);
+          queryClient.invalidateQueries({ queryKey: ["conversation-list"] });
+        }).catch((error) => {
+          appendActivity("warning", `The answer was returned but chat history was not updated: ${parseFailureDetail(error)}`);
+        });
+      }
       appendActivity(
         data?.fallback_used ? "warning" : "success",
         `Read-only answer completed with ${Math.round(Number(data?.confidence || 0) * 100)}% confidence.`
@@ -809,6 +878,13 @@ function App() {
     queryFn: () => listJobs(40),
     refetchInterval: 45_000,
     refetchOnWindowFocus: false,
+  });
+
+  const conversationsQuery = useQuery({
+    queryKey: ["conversation-list"],
+    queryFn: () => listConversations(60),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const zendeskContextQuery = useQuery({
@@ -1243,6 +1319,58 @@ function App() {
     return `${cleanedPrompt}\n\nAttachment context:\n${context}`;
   };
 
+  const buildConversationState = () => ({
+    operation_mode: operationMode,
+    dependency_mode: dependencyMode,
+    on_existing_mode: onExistingMode,
+    existing_item_behavior: existingItemBehavior,
+    focus_object_types: focusObjectTypes,
+    selected_context: selectedRelatedObjects
+      .map((item) => compactContextReference(item))
+      .filter(Boolean),
+    update_target: updateTarget
+      ? compactContextReference(updateTarget)
+      : null,
+  });
+
+  const ensureConversationForMessage = async (message) => {
+    const state = buildConversationState();
+    try {
+      if (!activeConversationId) {
+        const created = await createConversation({
+          first_message: message,
+          operation_mode: operationMode,
+          requester: "local-user",
+          state,
+        });
+        setActiveConversationId(created.conversation_id);
+        queryClient.setQueryData(["conversation", created.conversation_id], created);
+        queryClient.invalidateQueries({ queryKey: ["conversation-list"] });
+        window.setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ["conversation-list"] });
+        }, 2500);
+        return created.conversation_id;
+      }
+
+      const updated = await appendConversationMessage(activeConversationId, {
+        role: "user",
+        kind: operationMode === "ask" ? "question" : "prompt",
+        content: message,
+        metadata: { operation_mode: operationMode },
+        state,
+      });
+      queryClient.setQueryData(["conversation", activeConversationId], updated);
+      queryClient.invalidateQueries({ queryKey: ["conversation-list"] });
+      return activeConversationId;
+    } catch (error) {
+      appendActivity(
+        "warning",
+        `Chat history could not be saved, but the main request can continue: ${parseFailureDetail(error)}`
+      );
+      return activeConversationId;
+    }
+  };
+
   const submitPrompt = async (value) => {
     if (!zendeskValidated) return false;
     if (!operationMode) {
@@ -1282,6 +1410,7 @@ function App() {
     const promptText = String(value || "").trim();
     if (!promptText) return false;
 
+    const conversationId = await ensureConversationForMessage(promptText);
     setInferenceAssumptionMessages([]);
     setLastFailureDetail(null);
     appendTimeline("user", promptText);
@@ -1295,12 +1424,13 @@ function App() {
     if (operationMode === "ask") {
       try {
         await contextQuestionMutation.mutateAsync({
+          chat_conversation_id: conversationId,
           question: promptForModel,
           question_mode: "instance",
           batch_id: null,
           instance_sync_id: zendeskContextQuery.data?.sync_id || null,
           selected_objects: selectedRelatedObjects.map((item) => compactContextReference(item)),
-          conversation: buildQuestionConversation(instanceQuestionHistory),
+      conversation: buildQuestionConversation(instanceQuestionHistory),
           subdomain: zendeskCredentials.subdomain,
           email: zendeskCredentials.email,
           api_token: zendeskCredentials.api_token,
@@ -1355,6 +1485,7 @@ function App() {
           : "No explicit object selections were included in generation context.",
         attachmentNote,
       ].filter(Boolean).join(" "),
+      conversation_id: conversationId,
     });
     return true;
   };
@@ -1369,6 +1500,7 @@ function App() {
     deployMutation.error,
     integrationsQuery.error,
     jobsQuery.error,
+    conversationsQuery.error,
     zendeskContextQuery.error,
     zendeskValidationError,
     attachmentExtractMutation.error,
@@ -1391,6 +1523,10 @@ function App() {
     : generateMutation.data;
   const effectiveGenerateMetadata = jobQuery.data?.metadata || generatedData?.metadata || {};
   const historyItems = jobsQuery.data?.jobs || [];
+  const conversationItems = conversationsQuery.data?.conversations || [];
+  const activeConversation = conversationItems.find(
+    (conversation) => conversation.conversation_id === activeConversationId
+  ) || null;
   const contextCatalog = zendeskContextQuery.data?.catalogs || null;
   const resolvedUpdateTarget = operationMode === "update" && updateTarget && contextCatalog
     ? Object.values(contextCatalog)
@@ -1532,6 +1668,9 @@ function App() {
     setInstanceQuestionHistory([]);
     setChangeQuestionHistory([]);
     setHistorySearch("");
+    setConversationSearch("");
+    setActiveConversationId(null);
+    setResumingConversationId(null);
     setSelectedContext({});
     setOperationMode(null);
     setUpdateTarget(null);
@@ -1565,6 +1704,8 @@ function App() {
     setChatHistory([]);
     setInstanceQuestionHistory([]);
     setChangeQuestionHistory([]);
+    setActiveConversationId(null);
+    setResumingConversationId(null);
     setOperationMode(null);
     setUpdateTarget(null);
     setSelectedContext({});
@@ -1592,11 +1733,112 @@ function App() {
     appendActivity("info", "Started a new chat. Zendesk context remains loaded for this session.");
   };
 
+  const resumeConversation = async (conversationId, selectedBatchId = null) => {
+    setResumingConversationId(conversationId);
+    try {
+      const detail = await queryClient.fetchQuery({
+        queryKey: ["conversation", conversationId],
+        queryFn: () => getConversation(conversationId),
+        staleTime: 0,
+      });
+      const state = detail?.state || {};
+      const messages = Array.isArray(detail?.messages) ? detail.messages : [];
+      const restoredMode = state.operation_mode || detail.operation_mode || "create";
+      const selectedEntries = Array.isArray(state.selected_context)
+        ? state.selected_context
+        : [];
+      const restoredSelectedContext = Object.fromEntries(
+        selectedEntries
+          .filter((item) => item?.object_type && item?.id)
+          .map((item) => [`${item.object_type}:${item.id}`, item])
+      );
+      const restoredTimeline = messages.map((message) => ({
+        id: message.message_id,
+        role: message.role,
+        text: message.content,
+        at: message.at,
+      }));
+      const restoredQuestionHistory = messages
+        .filter((message) => message.kind === "context_answer" && message.metadata?.question_response)
+        .map((message) => ({
+          ...message.metadata.question_response,
+          question: message.metadata.question || "",
+        }));
+      const resolvedBatchId = selectedBatchId
+        || detail.active_batch_id
+        || detail.batches?.[0]?.batch_id
+        || null;
+
+      setActiveConversationId(conversationId);
+      setOperationMode(restoredMode);
+      setDependencyMode(state.dependency_mode || (
+        restoredMode === "update" || restoredMode === "ask"
+          ? "force_existing_only"
+          : "match_existing_or_create_new"
+      ));
+      setOnExistingMode(state.on_existing_mode || (
+        ["update", "create_update"].includes(restoredMode) ? "overwrite_existing" : "create_new"
+      ));
+      setExistingItemBehavior(state.existing_item_behavior || "relate_or_update");
+      setFocusObjectTypes(Array.isArray(state.focus_object_types) ? state.focus_object_types : []);
+      setSelectedContext(restoredSelectedContext);
+      setUpdateTarget(state.update_target || null);
+      setTimeline(restoredTimeline);
+      setChatHistory(
+        messages.map((message) => `${message.role}: ${message.content}`).slice(-12)
+      );
+      setInstanceQuestionHistory(
+        restoredQuestionHistory.filter((item) => item.question_mode === "instance")
+      );
+      setChangeQuestionHistory(
+        restoredQuestionHistory.filter((item) => item.question_mode === "change_review")
+      );
+      setDecisions({});
+      setAttachments([]);
+      setInferenceAssumptionMessages([]);
+      setLastFailureDetail(null);
+      setHelpCenterReadiness(null);
+      setHelpCenterArticleMode("draft");
+      setShowProcessingDetails(false);
+      setBatchId(resolvedBatchId);
+      setChatSessionId((value) => value + 1);
+      (detail.batches || []).forEach((batch) => {
+        if (batch?.batch_id) terminalBatchNotifiedRef.current.add(batch.batch_id);
+      });
+
+      if (resolvedBatchId) {
+        queryClient.invalidateQueries({ queryKey: ["job", resolvedBatchId] });
+        queryClient.invalidateQueries({ queryKey: ["preview", resolvedBatchId] });
+        queryClient.invalidateQueries({ queryKey: ["checkpoints", resolvedBatchId] });
+        if (resolvedBatchId !== detail.active_batch_id) {
+          void updateConversation(conversationId, {
+            active_batch_id: resolvedBatchId,
+          }).then(() => {
+            queryClient.invalidateQueries({ queryKey: ["conversation-list"] });
+          }).catch(() => {});
+        }
+      }
+      appendActivity("info", `Continued chat "${detail.title}".`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      appendActivity("error", `Could not resume this chat: ${parseFailureDetail(error)}`);
+    } finally {
+      setResumingConversationId(null);
+    }
+  };
+
   const selectHistoryBatch = (selectedBatchId) => {
+    const parent = conversationItems.find((conversation) =>
+      (conversation.batches || []).some((batch) => batch.batch_id === selectedBatchId)
+    );
+    if (parent) {
+      void resumeConversation(parent.conversation_id, selectedBatchId);
+      return;
+    }
     setBatchId(selectedBatchId);
     setHelpCenterReadiness(null);
     setHelpCenterArticleMode("draft");
-    appendActivity("info", `Loaded batch ${selectedBatchId} from history.`);
+    appendActivity("info", `Loaded legacy batch ${selectedBatchId} from history.`);
     queryClient.invalidateQueries({ queryKey: ["job", selectedBatchId] });
     queryClient.invalidateQueries({ queryKey: ["preview", selectedBatchId] });
   };
@@ -1704,9 +1946,11 @@ function App() {
     if (!zendeskValidated || !zendeskContextQuery.data?.sync_id) {
       throw new Error("Refresh the synchronized Zendesk context before asking about impact.");
     }
+    const conversationId = await ensureConversationForMessage(cleaned);
     appendTimeline("user", cleaned);
     setChatHistory((prev) => [...prev.slice(-10), `user: ${cleaned}`]);
     return contextQuestionMutation.mutateAsync({
+      chat_conversation_id: conversationId,
       question: cleaned,
       question_mode: "change_review",
       batch_id: batchId,
@@ -2171,61 +2415,80 @@ function App() {
         </div>
       ) : null}
 
-      <aside className={`fixed inset-y-0 left-0 z-20 hidden w-[260px] border-r px-5 py-7 xl:block ${railSurface}`}>
-        <div className="flex items-center justify-center py-4">
-  <img
-    src={cxLogo}
-    alt="CX Experts"
-    className="max-h-24 w-auto object-contain"
-  />
-</div>
-        <nav className="mt-9 space-y-2">
+      <aside className={`fixed inset-y-0 left-0 z-20 hidden w-[280px] flex-col border-r px-4 py-4 xl:flex ${railSurface}`}>
+        <div className="flex h-16 shrink-0 items-center justify-center">
+          <img
+            src={cxLogo}
+            alt="CX Experts"
+            className="max-h-16 w-auto object-contain"
+          />
+        </div>
+        <nav className="mt-4 shrink-0 space-y-1">
           {NAV_ITEMS.map((item) => {
-  const Icon = item.icon;
-  return (
-    <button
-      key={item.label}
-      type="button"
-      onClick={() => handleSidebarNavigation(item.label)}
-      className={`flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition ${
-        item.active
-          ? darkMode
-            ? "bg-[#7B1FFF]/25 text-white"
-            : "bg-violet-50 text-violet-700"
-          : darkMode
-            ? "text-slate-300 hover:bg-[#7B1FFF]/15"
-            : "text-slate-700 hover:bg-slate-50"
-      }`}
-    >
-      <Icon size={18} />
-      {item.label}
-    </button>
-  );
-})}
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => handleSidebarNavigation(item.label)}
+                className={`flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition ${
+                  item.active
+                    ? darkMode
+                      ? "bg-[#7B1FFF]/25 text-white"
+                      : "bg-violet-50 text-violet-700"
+                    : darkMode
+                      ? "text-slate-300 hover:bg-[#7B1FFF]/15"
+                      : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <Icon size={17} />
+                {item.label}
+              </button>
+            );
+          })}
         </nav>
-        <div className={`mt-9 border-t pt-6 ${darkMode ? "border-[#7B1FFF]/20" : "border-slate-200"}`}>
+
+        <div className={`my-4 flex min-h-0 flex-1 flex-col overflow-hidden border-y py-3 ${darkMode ? "border-[#7B1FFF]/20" : "border-slate-200"}`}>
+          <ConversationHistoryNav
+            conversations={conversationItems}
+            activeConversationId={activeConversationId}
+            activeBatchId={batchId}
+            search={conversationSearch}
+            onSearchChange={setConversationSearch}
+            onSelectConversation={(conversationId) => {
+              void resumeConversation(conversationId);
+            }}
+            onSelectBatch={(conversationId, selectedBatchId) => {
+              void resumeConversation(conversationId, selectedBatchId);
+            }}
+            isLoading={conversationsQuery.isLoading}
+            isResuming={Boolean(resumingConversationId)}
+            darkMode={darkMode}
+          />
+        </div>
+
+        <div className="shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#6D28D9] text-sm font-semibold text-white">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#6D28D9] text-sm font-semibold text-white">
               A
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-semibold">Admin User</p>
-              <p className={`text-xs ${textSoft}`}>admin@cxexperts.com</p>
+              <p className={`truncate text-xs ${textSoft}`}>admin@cxexperts.com</p>
             </div>
           </div>
           <button
             type="button"
             onClick={signOutZendeskSession}
-            className={`mt-6 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm ${darkMode ? "text-slate-300 hover:bg-[#7B1FFF]/15" : "text-slate-700 hover:bg-slate-50"}`}
+            className={`mt-2 flex h-9 w-full items-center gap-3 rounded-md px-3 text-sm ${darkMode ? "text-slate-300 hover:bg-[#7B1FFF]/15" : "text-slate-700 hover:bg-slate-50"}`}
           >
             <LogOut size={17} />
             Sign Out
           </button>
         </div>
-      
       </aside>
 
-      <div className="relative z-10 xl:pl-[260px]">
+      <div className="relative z-10 xl:pl-[280px]">
         <header className="mx-auto flex max-w-[1480px] items-center justify-between gap-3 px-4 py-5 sm:px-6 lg:px-8">
           <div className="flex shrink-0 items-center gap-3 xl:hidden">
             <img src={cxIcon} alt="CX" className="h-10 w-10 rounded-lg" />
@@ -2234,7 +2497,12 @@ function App() {
               <p className={`text-xs ${textSoft}`}>AI Assistant</p>
             </div>
           </div>
-          <div className="hidden xl:block" />
+          <div className="hidden min-w-0 xl:block">
+            <p className={`text-[11px] uppercase ${textSoft}`}>Current chat</p>
+            <p className={`max-w-[420px] truncate text-sm font-semibold ${sectionTitle}`}>
+              {activeConversation?.title || "New Zendesk conversation"}
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"

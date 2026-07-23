@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: zendesk-ai-import-assistant-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.7
+      - key: LLM_DEFAULT_PROVIDER
+        value: gemini
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: XAI_API_KEY
+        sync: false
+      - key: XAI_API_KEY_SECONDARY
+        sync: false
+      - key: XAI_API_KEY_TERTIARY
+        sync: false
+      - key: APPS_SCRIPT_WEB_APP_URL
+        sync: false
+      - key: APPS_SCRIPT_API_KEY
+        sync: false

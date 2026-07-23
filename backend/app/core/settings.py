@@ -183,6 +183,9 @@ class Settings:
     batch_store_file: str
     batch_store_max_entries: int
     batch_store_trim_runtime_metadata: bool
+    conversation_store_file: str
+    conversation_store_max_entries: int
+    conversation_store_max_messages: int
     appscript_web_app_url: str
     appscript_api_key: str
     appscript_timeout_seconds: float
@@ -457,6 +460,18 @@ def get_settings() -> Settings:
         batch_store_trim_runtime_metadata=_as_bool(
             os.getenv("BATCH_STORE_TRIM_RUNTIME_METADATA"),
             True,
+        ),
+        conversation_store_file=(
+            os.getenv("CONVERSATION_STORE_FILE", "").strip()
+            or str((BASE_DIR / "data" / "conversations.json").resolve())
+        ),
+        conversation_store_max_entries=max(
+            _as_int(os.getenv("CONVERSATION_STORE_MAX_ENTRIES"), 100),
+            20,
+        ),
+        conversation_store_max_messages=max(
+            _as_int(os.getenv("CONVERSATION_STORE_MAX_MESSAGES"), 80),
+            20,
         ),
         appscript_web_app_url=os.getenv("APPS_SCRIPT_WEB_APP_URL", "").strip(),
         appscript_api_key=os.getenv("APPS_SCRIPT_API_KEY", "").strip(),

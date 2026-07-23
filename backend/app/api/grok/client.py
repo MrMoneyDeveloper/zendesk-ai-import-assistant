@@ -728,6 +728,7 @@ class GrokClient:
             "clarifier",
             "healthcheck",
             "context_qa",
+            "conversation_title",
         }
         gemini_failure: GeminiRequestError | None = None
         task_name = str(task or "default")

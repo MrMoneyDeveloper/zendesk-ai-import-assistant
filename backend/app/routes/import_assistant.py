@@ -18,6 +18,11 @@ from app.models.schemas import (
     CheckpointDecisionRequest,
     CheckpointDecisionResponse,
     CheckpointListResponse,
+    ConversationCreateRequest,
+    ConversationDetailResponse,
+    ConversationListResponse,
+    ConversationMessageCreateRequest,
+    ConversationPatchRequest,
     ContextQuestionRequest,
     ContextQuestionResponse,
     ImportAssistantGenerateRequest,
@@ -59,6 +64,15 @@ from app.services.attachment_extractor import (
     extract_attachment_payload,
 )
 from app.services.context_qa import answer_context_question
+from app.services.conversation_service import (
+    append_conversation_message,
+    assign_ai_conversation_title,
+    attach_batch_to_conversation,
+    create_conversation,
+    get_conversation,
+    list_conversations,
+    patch_conversation,
+)
 from app.services.sheets_service import SheetsService
 from app.services.zendesk import (
     check_zendesk_help_center_readiness,
@@ -69,6 +83,7 @@ from app.services.zendesk import (
 router = APIRouter(prefix="/import-assistant", tags=["import-assistant"])
 
 _BACKGROUND_GENERATION_TASKS: set[asyncio.Task[None]] = set()
+_BACKGROUND_CONVERSATION_TITLE_TASKS: set[asyncio.Task[None]] = set()
 
 SCHEMA_SYNC_MODELS = [
     "GenerateRequest",
@@ -93,6 +108,14 @@ SCHEMA_SYNC_MODELS = [
     "ContextQuestionRequest",
     "ContextQuestionCitation",
     "ContextQuestionResponse",
+    "ConversationMessage",
+    "ConversationBatchItem",
+    "ConversationListItem",
+    "ConversationListResponse",
+    "ConversationDetailResponse",
+    "ConversationCreateRequest",
+    "ConversationMessageCreateRequest",
+    "ConversationPatchRequest",
     "ApprovalRequest",
     "ApprovalResponse",
     "AppScriptActionRequest",
@@ -537,11 +560,15 @@ async def generate(request_payload: object = Body(...)) -> ImportAssistantGenera
         detail["compaction"] = compaction
         raise HTTPException(status_code=422, detail=detail) from exc
 
+    request = _ensure_request_conversation(request)
     try:
         preflight = await _sync_schema_preflight_if_enabled()
         if preflight.get("status") == "error":
             raise RuntimeError(preflight.get("detail") or "Apps Script schema sync preflight failed.")
-        return await generate_import_assistant_batch(request)
+        response = await generate_import_assistant_batch(request)
+        if request.conversation_id:
+            attach_batch_to_conversation(request.conversation_id, response.batch_id)
+        return response
     except GenerateFailureError as exc:
         detail = _build_failure_detail(
             stage=exc.stage,
@@ -619,6 +646,93 @@ def _schedule_reserved_generation(
     task.add_done_callback(_BACKGROUND_GENERATION_TASKS.discard)
 
 
+def _schedule_conversation_title(conversation_id: str, first_message: str) -> None:
+    task = asyncio.create_task(assign_ai_conversation_title(conversation_id, first_message))
+    _BACKGROUND_CONVERSATION_TITLE_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_CONVERSATION_TITLE_TASKS.discard)
+
+
+def _ensure_request_conversation(
+    request: ImportAssistantGenerateRequest,
+) -> ImportAssistantGenerateRequest:
+    if not request.conversation_id:
+        return request
+
+    try:
+        get_conversation(request.conversation_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found.") from exc
+    return request
+
+
+@router.get("/conversations", response_model=ConversationListResponse)
+async def conversation_history(limit: int = 60) -> ConversationListResponse:
+    safe_limit = max(1, min(limit, 100))
+    return ConversationListResponse(conversations=list_conversations(limit=safe_limit))
+
+
+@router.post("/conversations", response_model=ConversationDetailResponse, status_code=201)
+async def start_conversation(request: ConversationCreateRequest) -> ConversationDetailResponse:
+    conversation = create_conversation(
+        first_message=request.first_message,
+        operation_mode=request.operation_mode,
+        requester=request.requester,
+        state=request.state,
+    )
+    conversation_id = str(conversation["conversation_id"])
+    _schedule_conversation_title(conversation_id, request.first_message)
+    return ConversationDetailResponse(**get_conversation(conversation_id))
+
+
+@router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
+async def conversation_detail(conversation_id: str) -> ConversationDetailResponse:
+    try:
+        return ConversationDetailResponse(**get_conversation(conversation_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found.") from exc
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages",
+    response_model=ConversationDetailResponse,
+)
+async def add_conversation_message(
+    conversation_id: str,
+    request: ConversationMessageCreateRequest,
+) -> ConversationDetailResponse:
+    try:
+        append_conversation_message(
+            conversation_id,
+            role=request.role,
+            kind=request.kind,
+            content=request.content,
+            batch_id=request.batch_id,
+            metadata=request.metadata,
+            state=request.state,
+        )
+        return ConversationDetailResponse(**get_conversation(conversation_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found.") from exc
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
+async def update_conversation(
+    conversation_id: str,
+    request: ConversationPatchRequest,
+) -> ConversationDetailResponse:
+    try:
+        patch_conversation(
+            conversation_id,
+            active_batch_id=request.active_batch_id,
+            state=request.state,
+        )
+        return ConversationDetailResponse(**get_conversation(conversation_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/generate-async", response_model=JobStatusResponse, status_code=202)
 async def generate_async(request_payload: object = Body(...)) -> JobStatusResponse:
     """Reserve a pollable job and run the existing pipeline in the background."""
@@ -644,7 +758,10 @@ async def generate_async(request_payload: object = Body(...)) -> JobStatusRespon
         detail["compaction"] = compaction
         raise HTTPException(status_code=422, detail=detail) from exc
 
+    request = _ensure_request_conversation(request)
     reserved = reserve_import_assistant_batch(request)
+    if request.conversation_id:
+        attach_batch_to_conversation(request.conversation_id, reserved.batch_id)
     _schedule_reserved_generation(request, reserved.batch_id)
     return reserved
 

@@ -39,6 +39,7 @@ DependencyMode = Literal[
 ]
 OnExistingMode = Literal["create_new", "overwrite_existing", "skip_existing"]
 OperationMode = Literal["create", "update"]
+ConversationOperationMode = Literal["create", "update", "create_update", "ask"]
 ContextQuestionMode = Literal["instance", "change_review"]
 ZendeskDeploymentScope = Literal["support", "help_center", "all"]
 ZendeskArticleMode = Literal["draft", "publish"]
@@ -177,6 +178,90 @@ class ContextReference(BaseModel):
         return cleaned or None
 
 
+class ConversationMessage(BaseModel):
+    message_id: str
+    role: Literal["user", "assistant", "system"]
+    kind: str = "message"
+    content: str
+    at: str
+    batch_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationBatchItem(BaseModel):
+    batch_id: str
+    status: BatchStatus
+    created_at: str
+    updated_at: str
+    prompt_preview: str = ""
+
+
+class ConversationListItem(BaseModel):
+    conversation_id: str
+    title: str
+    title_source: Literal["ai", "deterministic", "legacy"] = "deterministic"
+    created_at: str
+    updated_at: str
+    operation_mode: ConversationOperationMode
+    active_batch_id: str | None = None
+    message_preview: str = ""
+    message_count: int = 0
+    batches: list[ConversationBatchItem] = Field(default_factory=list)
+
+
+class ConversationListResponse(BaseModel):
+    conversations: list[ConversationListItem] = Field(default_factory=list)
+
+
+class ConversationDetailResponse(ConversationListItem):
+    requester: str = "local-user"
+    state: dict[str, Any] = Field(default_factory=dict)
+    messages: list[ConversationMessage] = Field(default_factory=list)
+
+
+class ConversationCreateRequest(BaseModel):
+    first_message: str = Field(..., min_length=5, max_length=12000)
+    operation_mode: ConversationOperationMode
+    requester: str = Field(default="local-user", max_length=160)
+    state: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("first_message", "requester")
+    @classmethod
+    def trim_conversation_create_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class ConversationMessageCreateRequest(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    kind: str = Field(default="message", min_length=1, max_length=80)
+    content: str = Field(..., min_length=1, max_length=12000)
+    batch_id: str | None = Field(default=None, max_length=160)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    state: dict[str, Any] | None = None
+
+    @field_validator("kind", "content")
+    @classmethod
+    def trim_conversation_message_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("batch_id")
+    @classmethod
+    def trim_conversation_message_batch_id(cls, value: str | None) -> str | None:
+        cleaned = str(value or "").strip()
+        return cleaned or None
+
+
+class ConversationPatchRequest(BaseModel):
+    active_batch_id: str | None = Field(default=None, max_length=160)
+    state: dict[str, Any] | None = None
+
+    @field_validator("active_batch_id")
+    @classmethod
+    def trim_conversation_active_batch_id(cls, value: str | None) -> str | None:
+        cleaned = str(value or "").strip()
+        return cleaned or None
+
+
 class ImportAssistantGenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=5, max_length=12000)
     target_environment: Literal["sandbox"] = "sandbox"
@@ -191,6 +276,7 @@ class ImportAssistantGenerateRequest(BaseModel):
     operation_mode: OperationMode = "create"
     update_target: ContextReference | None = None
     instance_sync_id: str | None = Field(default=None, max_length=160)
+    conversation_id: str | None = Field(default=None, max_length=160)
 
     @field_validator("prompt")
     @classmethod
@@ -223,9 +309,9 @@ class ImportAssistantGenerateRequest(BaseModel):
                 normalized.append(canonical)
         return normalized
 
-    @field_validator("instance_sync_id")
+    @field_validator("instance_sync_id", "conversation_id")
     @classmethod
-    def trim_instance_sync_id(cls, value: str | None) -> str | None:
+    def trim_generate_identifier(cls, value: str | None) -> str | None:
         cleaned = str(value or "").strip()
         return cleaned or None
 
@@ -318,6 +404,7 @@ class JobStatusResponse(BaseModel):
     requester: str
     target_environment: str
     mode: str
+    conversation_id: str | None = None
     status_history: list[StatusHistoryItem] = Field(default_factory=list)
     generated_counts: dict[str, int] = Field(default_factory=dict)
     validation_summary: ValidationSummary = Field(default_factory=ValidationSummary)
@@ -331,6 +418,8 @@ class JobListItem(BaseModel):
     updated_at: str
     requester: str
     prompt_preview: str
+    conversation_id: str | None = None
+    conversation_title: str | None = None
 
 
 class JobListResponse(BaseModel):

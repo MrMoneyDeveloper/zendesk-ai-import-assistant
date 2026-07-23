@@ -1,6 +1,9 @@
 import axios from "axios";
 
-const API_ROOT = "/api";
+const API_ORIGIN = String(import.meta.env.VITE_API_BASE_URL || "")
+  .trim()
+  .replace(/\/+$/, "");
+const API_ROOT = `${API_ORIGIN}/api`;
 const IMPORT_ASSISTANT_ROOT = `${API_ROOT}/import-assistant`;
 
 export async function testApis() {
@@ -22,6 +25,39 @@ export async function listJobs(limit = 20) {
   const res = await axios.get(`${IMPORT_ASSISTANT_ROOT}/jobs`, {
     params: { limit },
   });
+  return res.data;
+}
+
+export async function listConversations(limit = 60) {
+  const res = await axios.get(`${IMPORT_ASSISTANT_ROOT}/conversations`, {
+    params: { limit },
+  });
+  return res.data;
+}
+
+export async function getConversation(conversationId) {
+  const res = await axios.get(`${IMPORT_ASSISTANT_ROOT}/conversations/${conversationId}`);
+  return res.data;
+}
+
+export async function createConversation(payload) {
+  const res = await axios.post(`${IMPORT_ASSISTANT_ROOT}/conversations`, payload);
+  return res.data;
+}
+
+export async function appendConversationMessage(conversationId, payload) {
+  const res = await axios.post(
+    `${IMPORT_ASSISTANT_ROOT}/conversations/${conversationId}/messages`,
+    payload
+  );
+  return res.data;
+}
+
+export async function updateConversation(conversationId, payload) {
+  const res = await axios.patch(
+    `${IMPORT_ASSISTANT_ROOT}/conversations/${conversationId}`,
+    payload
+  );
   return res.data;
 }
 
