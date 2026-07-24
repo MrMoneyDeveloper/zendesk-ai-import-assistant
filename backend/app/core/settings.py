@@ -190,6 +190,9 @@ class Settings:
     appscript_api_key: str
     appscript_timeout_seconds: float
     appscript_health_timeout_seconds: float
+    appscript_wave_checkpoint_enabled: bool
+    appscript_wave_checkpoint_timeout_seconds: float
+    appscript_batch_recovery_enabled: bool
     integrations_health_cache_seconds: float
     deploy_watchdog_seconds: float
     deploy_stale_recovery_seconds: float
@@ -479,6 +482,18 @@ def get_settings() -> Settings:
         appscript_health_timeout_seconds=max(
             _as_float(os.getenv("APPS_SCRIPT_HEALTH_TIMEOUT_SECONDS"), 3.0),
             0.5,
+        ),
+        appscript_wave_checkpoint_enabled=_as_bool(
+            os.getenv("APPS_SCRIPT_WAVE_CHECKPOINT_ENABLED"),
+            False,
+        ),
+        appscript_wave_checkpoint_timeout_seconds=max(
+            _as_float(os.getenv("APPS_SCRIPT_WAVE_CHECKPOINT_TIMEOUT_SECONDS"), 20.0),
+            2.0,
+        ),
+        appscript_batch_recovery_enabled=_as_bool(
+            os.getenv("APPS_SCRIPT_BATCH_RECOVERY_ENABLED"),
+            False,
         ),
         integrations_health_cache_seconds=max(
             _as_float(os.getenv("INTEGRATIONS_HEALTH_CACHE_SECONDS"), 45.0),

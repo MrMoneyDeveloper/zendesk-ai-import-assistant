@@ -6604,6 +6604,12 @@ def _build_preview_records(
                 "before_configuration": item.get("before_configuration"),
                 "after_configuration": item.get("after_configuration"),
                 "change_summary": list(item.get("change_summary", []) or []),
+                "chunk_id": item.get("chunk_id") or item.get("_supervisor_chunk_id"),
+                "record_key": item.get("record_key") or item.get("_supervisor_record_key"),
+                "department": item.get("department") or item.get("department_name"),
+                "topic": item.get("topic"),
+                "source_provider": item.get("source_provider"),
+                "source_model": item.get("source_model"),
             }
         )
 
@@ -7968,6 +7974,9 @@ async def _generate_import_assistant_batch_impl(
         "fallback_count": 0,
         "appscript_flushes": 0,
         "appscript_flush_failures": 0,
+        "wave_checkpoint_successes": 0,
+        "wave_checkpoint_failures": 0,
+        "wave_checkpoints": [],
         "events": [],
     }
 
@@ -8987,6 +8996,7 @@ async def _generate_import_assistant_batch_impl(
 
     async def _honor_run_control(*, checkpoint: str, wave_checkpoint: bool = False) -> None:
         nonlocal pause_notified
+        await asyncio.sleep(0)
         current = store.get_batch(batch_id) or {}
         metadata = _metadata_dict(current)
         control = _normalize_run_control(metadata.get("run_control", {}))
@@ -9640,6 +9650,130 @@ async def _generate_import_assistant_batch_impl(
     total_duplicates_dropped = 0
     total_generated_before_dedupe = 0
     total_pacing_wait_ms = 0.0
+
+    async def _persist_wave_checkpoint(
+        *,
+        wave: int,
+        wave_position: int,
+        total_waves: int,
+    ) -> None:
+        checkpoint_records, checkpoint_validation = _build_preview_records(plan, generated_data)
+        checkpoint_counts = _count_generated(checkpoint_records)
+        checkpoint_result = {
+            "wave": int(wave),
+            "wave_position": int(wave_position),
+            "total_waves": int(total_waves),
+            "record_count": len(checkpoint_records),
+            "generated_counts": checkpoint_counts,
+            "persisted_at": _utc_now(),
+            "local_status": "persisted",
+            "appscript_status": "pending",
+        }
+        checkpoint_history = progress_metadata.setdefault("wave_checkpoints", [])
+        checkpoint_history.append(checkpoint_result)
+        progress_metadata["wave_checkpoints"] = checkpoint_history[-10:]
+
+        def checkpoint_metadata() -> dict:
+            return _merge_control_metadata(
+                {
+                    "benchmark": {"enabled": benchmark_mode},
+                    "operation": operation_metadata,
+                    "planning": {
+                        "planner_bypassed": planner_bypassed,
+                        "mode": "deterministic" if planner_bypassed else "llm",
+                        "estimated_requested_records": estimated_requested_records,
+                        "force_wave_chunk_path": force_wave_chunk_path,
+                        "force_wave_chunk_reason": force_wave_chunk_reason,
+                    },
+                    "coverage_manifest": coverage_manifest,
+                    "department_coverage": department_coverage_metadata,
+                    "quality_gates": quality_gates_metadata,
+                    "orchestration": orchestration_metadata,
+                    "chunking": chunking_metadata,
+                    "supervisor": supervisor_metadata,
+                    "progress_narration": progress_metadata,
+                    "llm_routes": llm_routes_metadata,
+                    "recovery_checkpoint": checkpoint_result,
+                }
+            )
+
+        store.update_batch(
+            batch_id,
+            {
+                "records": checkpoint_records,
+                "generated_counts": checkpoint_counts,
+                "validation_summary": checkpoint_validation.model_dump(),
+                "planning_summary": planning_summary,
+                "metadata": checkpoint_metadata(),
+            },
+        )
+
+        checkpoint_enabled = bool(
+            getattr(settings, "appscript_wave_checkpoint_enabled", False)
+        )
+        if not checkpoint_enabled:
+            checkpoint_result["appscript_status"] = "disabled"
+            store.update_batch(batch_id, {"metadata": checkpoint_metadata()})
+            return
+        if not appscript.enabled:
+            checkpoint_result["appscript_status"] = "unavailable"
+            checkpoint_result["detail"] = "Apps Script integration is not configured."
+            progress_metadata["wave_checkpoint_failures"] = int(
+                progress_metadata.get("wave_checkpoint_failures", 0) or 0
+            ) + 1
+            store.update_batch(batch_id, {"metadata": checkpoint_metadata()})
+            return
+
+        status_history = list(
+            (store.get_batch(batch_id) or {}).get("status_history", []) or []
+        )[-100:]
+        timeout_seconds = float(
+            getattr(settings, "appscript_wave_checkpoint_timeout_seconds", 20.0)
+        )
+        try:
+            raw_result = await appscript.invoke(
+                action="write_batch_to_sheets",
+                payload={
+                    "batch_id": batch_id,
+                    "prompt": request.prompt,
+                    "requester": request.requester,
+                    "status": "generating_wave_checkpoint",
+                    "target_environment": request.target_environment,
+                    "created_at": created_at,
+                    "planning_summary": planning_summary,
+                    "records": checkpoint_records,
+                    "metadata": checkpoint_metadata(),
+                    "progress_events": status_history,
+                },
+                timeout_seconds=timeout_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raw_result = {
+                "action": "write_batch_to_sheets",
+                "status": "error",
+                "detail": _truncate_text(str(exc), 300),
+                "http_status": None,
+                "data": {},
+            }
+        normalized_result = _normalize_appscript_action_result(
+            raw_result,
+            action="write_batch_to_sheets",
+        )
+        checkpoint_result["appscript_status"] = normalized_result.get("status", "error")
+        checkpoint_result["http_status"] = normalized_result.get("http_status")
+        detail = str(normalized_result.get("detail") or "").strip()
+        if detail:
+            checkpoint_result["detail"] = _truncate_text(detail, 300)
+        if normalized_result.get("status") == "ok":
+            progress_metadata["wave_checkpoint_successes"] = int(
+                progress_metadata.get("wave_checkpoint_successes", 0) or 0
+            ) + 1
+        else:
+            progress_metadata["wave_checkpoint_failures"] = int(
+                progress_metadata.get("wave_checkpoint_failures", 0) or 0
+            ) + 1
+        store.update_batch(batch_id, {"metadata": checkpoint_metadata()})
+
     try:
         if orchestration_mode == "business_blueprint":
             store.append_status(batch_id, "wave_execution", "Executing deterministic orchestration waves.")
@@ -10613,6 +10747,11 @@ async def _generate_import_assistant_batch_impl(
                     generated_counts=cumulative_counts,
                 )
                 wave_meta["checkpoint_id"] = checkpoint_item.get("checkpoint_id")
+                await _persist_wave_checkpoint(
+                    wave=int(wave),
+                    wave_position=wave_position,
+                    total_waves=total_wave_count,
+                )
                 await _honor_run_control(
                     checkpoint=f"wave {wave_position}/{total_wave_count} checkpoint",
                     wave_checkpoint=True,

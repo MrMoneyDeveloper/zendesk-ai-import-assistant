@@ -14,6 +14,20 @@ services:
         value: gemini
       - key: FRONTEND_ORIGIN
         value: https://zendesk-ai-import-assistant.vercel.app
+      - key: BATCH_STORE_FILE
+        value: /tmp/zendesk-ai-import-assistant/batches.json
+      - key: BATCH_STORE_MAX_ENTRIES
+        value: 25
+      - key: CONVERSATION_STORE_FILE
+        value: /tmp/zendesk-ai-import-assistant/conversations.json
+      - key: CONVERSATION_STORE_MAX_ENTRIES
+        value: 60
+      - key: APPS_SCRIPT_WAVE_CHECKPOINT_ENABLED
+        value: true
+      - key: APPS_SCRIPT_WAVE_CHECKPOINT_TIMEOUT_SECONDS
+        value: 20
+      - key: APPS_SCRIPT_BATCH_RECOVERY_ENABLED
+        value: true
       - key: GEMINI_API_KEY
         sync: false
       - key: XAI_API_KEY

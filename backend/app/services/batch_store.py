@@ -44,7 +44,7 @@ class BatchStore:
         for attempt in range(1, 4):
             try:
                 with temp_path.open("w", encoding="utf-8") as f:
-                    json.dump(payload, f, indent=2)
+                    json.dump(payload, f, separators=(",", ":"), ensure_ascii=True)
                 os.replace(temp_path, self.path)
                 return
             except OSError as exc:

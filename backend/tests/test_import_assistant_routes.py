@@ -56,6 +56,119 @@ class CountingAppScriptBridgeService:
         }
 
 
+class RecoveryAppScriptBridgeService:
+    @property
+    def enabled(self):
+        return True
+
+    async def invoke(self, action, payload=None, method="POST", timeout_seconds=None):
+        batch_id = str((payload or {}).get("batch_id") or "")
+        if action == "get_batch_preview":
+            return {
+                "action": action,
+                "status": "ok",
+                "detail": None,
+                "http_status": 200,
+                "data": {
+                    "ok": True,
+                    "batch_id": batch_id,
+                    "planning_summary": {
+                        "object_type": "groups",
+                        "intent": "Recovered operating model",
+                        "confidence": "0.9",
+                    },
+                    "generated_counts": {"groups": 1},
+                    "validation_summary": {"passed": 1, "warnings": 0, "blocked": 0},
+                    "records": [
+                        {
+                            "record_id": "REC-0001",
+                            "object_type": "groups",
+                            "title": "Claims Operations",
+                            "preview_summary": "Claims support group.",
+                            "validation_status": "passed",
+                            "warnings": [],
+                            "blocked_reason": "",
+                            "import_decision": "pending_review",
+                            "deployable": True,
+                            "conditions": [],
+                            "actions": [],
+                            "deployment_status": "pending",
+                            "zendesk_object_id": "",
+                        }
+                    ],
+                },
+            }
+        if action == "get_batch_operational_state":
+            return {
+                "action": action,
+                "status": "ok",
+                "detail": None,
+                "http_status": 200,
+                "data": {
+                    "ok": True,
+                    "batch_id": batch_id,
+                    "metadata": {
+                        "status": "generating_wave_checkpoint",
+                        "coverage_manifest_json": '{"enabled":true}',
+                        "supervisor_json": '{"enabled":true,"call_counts":{"total":2}}',
+                        "updated_at": "2026-07-25T00:00:00+00:00",
+                    },
+                    "progress_events": [
+                        {
+                            "event_id": "EVT-RECOVERY",
+                            "status": "wave_execution",
+                            "message": "Wave 2 completed.",
+                            "wave": "2",
+                            "at": "2026-07-25T00:00:00+00:00",
+                        }
+                    ],
+                },
+            }
+        return {
+            "action": action,
+            "status": "error",
+            "detail": "unsupported",
+            "http_status": 400,
+            "data": {},
+        }
+
+
+def test_missing_job_recovers_last_appscript_wave_checkpoint(monkeypatch, tmp_path):
+    store_file = tmp_path / "batches.json"
+    monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))
+    monkeypatch.setenv("APPS_SCRIPT_BATCH_RECOVERY_ENABLED", "true")
+    monkeypatch.setenv("APPS_SCRIPT_WEB_APP_URL", "https://example.com/apps-script")
+    monkeypatch.setenv("APPS_SCRIPT_API_KEY", "test-key")
+    get_settings.cache_clear()
+    reset_batch_store()
+    monkeypatch.setattr(
+        "app.routes.import_assistant.AppScriptBridgeService",
+        RecoveryAppScriptBridgeService,
+    )
+
+    from app.main import app
+
+    client = TestClient(app)
+    batch_id = "BATCH-RECOVERED-CHECKPOINT"
+    job_response = client.get(f"/api/import-assistant/jobs/{batch_id}")
+
+    assert job_response.status_code == 200
+    job = job_response.json()
+    assert job["status"] == "failed"
+    assert job["generated_counts"] == {"groups": 1}
+    assert job["validation_summary"]["blocked"] == 1
+    assert job["metadata"]["failure"]["failure_code"] == (
+        "generation_interrupted_after_checkpoint"
+    )
+    assert job["metadata"]["recovery"]["source"] == "appscript_wave_checkpoint"
+
+    preview_response = client.get(f"/api/import-assistant/preview/{batch_id}")
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    assert preview["records"][0]["import_decision"] == "blocked"
+    assert "runtime restarted" in preview["records"][0]["warnings"][0]
+
+
 def test_generate_async_reserves_pollable_batch_before_generation(monkeypatch, tmp_path):
     store_file = tmp_path / "batches.json"
     monkeypatch.setenv("BATCH_STORE_FILE", str(store_file))

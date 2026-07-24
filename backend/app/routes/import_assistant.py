@@ -59,6 +59,7 @@ from app.services.import_assistant_service import (
 )
 from app.services.perf_capture import emit_perf_event
 from app.services.appscript_bridge import AppScriptBridgeService
+from app.services.batch_store import get_batch_store
 from app.services.attachment_extractor import (
     AttachmentExtractionError,
     extract_attachment_payload,
@@ -652,6 +653,208 @@ def _schedule_conversation_title(conversation_id: str, first_message: str) -> No
     task.add_done_callback(_BACKGROUND_CONVERSATION_TITLE_TASKS.discard)
 
 
+def _parse_checkpoint_json_cell(value: object) -> dict:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+async def _recover_job_from_appscript_checkpoint(
+    batch_id: str,
+) -> JobStatusResponse | None:
+    settings = get_settings()
+    if not settings.appscript_batch_recovery_enabled:
+        return None
+    appscript = AppScriptBridgeService()
+    if not appscript.enabled:
+        return None
+
+    try:
+        preview_result, state_result = await asyncio.gather(
+            appscript.invoke(
+                action="get_batch_preview",
+                payload={"batch_id": batch_id},
+                timeout_seconds=settings.appscript_wave_checkpoint_timeout_seconds,
+            ),
+            appscript.invoke(
+                action="get_batch_operational_state",
+                payload={"batch_id": batch_id},
+                timeout_seconds=settings.appscript_wave_checkpoint_timeout_seconds,
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if str(preview_result.get("status", "")).strip().lower() != "ok":
+        return None
+
+    preview_data = preview_result.get("data", {})
+    state_data = state_result.get("data", {}) if isinstance(state_result, dict) else {}
+    if not isinstance(preview_data, dict):
+        return None
+    records = preview_data.get("records", [])
+    metadata_row = state_data.get("metadata", {}) if isinstance(state_data, dict) else {}
+    if not isinstance(records, list) or not records:
+        return None
+    if not isinstance(metadata_row, dict):
+        metadata_row = {}
+
+    now = datetime.now(UTC).isoformat()
+    recovered_records: list[dict] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        recovered = dict(record)
+        warnings = recovered.get("warnings", [])
+        if not isinstance(warnings, list):
+            warnings = [str(warnings)] if str(warnings).strip() else []
+        warning = (
+            "Recovered from the last durable wave checkpoint after the backend runtime restarted."
+        )
+        if warning not in warnings:
+            warnings.append(warning)
+        recovered.update(
+            {
+                "warnings": warnings,
+                "validation_status": "failed",
+                "blocked_reason": (
+                    "Generation was interrupted after this wave checkpoint. "
+                    "Review these partial records and rerun the request before deployment."
+                ),
+                "import_decision": "blocked",
+                "deployable": False,
+            }
+        )
+        recovered_records.append(recovered)
+    if not recovered_records:
+        return None
+
+    metadata = {
+        "coverage_manifest": _parse_checkpoint_json_cell(
+            metadata_row.get("coverage_manifest_json")
+        ),
+        "department_coverage": _parse_checkpoint_json_cell(
+            metadata_row.get("department_coverage_json")
+        ),
+        "quality_gates": _parse_checkpoint_json_cell(
+            metadata_row.get("quality_gates_json")
+        ),
+        "supervisor": _parse_checkpoint_json_cell(metadata_row.get("supervisor_json")),
+        "llm_routes": _parse_checkpoint_json_cell(metadata_row.get("llm_routes_json")),
+        "usage_report": _parse_checkpoint_json_cell(metadata_row.get("usage_report_json")),
+        "orchestration": _parse_checkpoint_json_cell(
+            metadata_row.get("orchestration_json")
+        ),
+        "progress_narration": _parse_checkpoint_json_cell(
+            metadata_row.get("progress_narration_json")
+        ),
+        "recovery": {
+            "source": "appscript_wave_checkpoint",
+            "recovered_at": now,
+            "checkpoint_status": str(metadata_row.get("status") or ""),
+            "record_count": len(recovered_records),
+        },
+        "failure": {
+            "failure_stage": "generate",
+            "failure_code": "generation_interrupted_after_checkpoint",
+            "failure_reason": (
+                "The Render runtime restarted before generation reached final preview. "
+                "The last durable Sheet checkpoint was recovered."
+            ),
+            "next_step": "Review the recovered partial records, then rerun the original request.",
+        },
+    }
+
+    allowed_progress_statuses = {
+        "received",
+        "planning",
+        "business_blueprinting",
+        "backlog_building",
+        "wave_execution",
+        "supervisor_review",
+        "generating",
+        "staging",
+    }
+    status_history: list[dict] = []
+    progress_events = (
+        state_data.get("progress_events", []) if isinstance(state_data, dict) else []
+    )
+    for event in progress_events if isinstance(progress_events, list) else []:
+        if not isinstance(event, dict):
+            continue
+        raw_status = str(event.get("status") or "wave_execution").strip()
+        status = raw_status if raw_status in allowed_progress_statuses else "wave_execution"
+        item = {
+            "status": status,
+            "message": str(event.get("message") or ""),
+            "at": str(event.get("at") or now),
+        }
+        for key in ("event_id", "source", "provider", "model", "department", "object_type"):
+            value = event.get(key)
+            if value not in (None, ""):
+                item[key] = value
+        try:
+            wave = int(event.get("wave"))
+        except (TypeError, ValueError):
+            wave = None
+        if wave is not None:
+            item["wave"] = wave
+        status_history.append(item)
+    status_history.append(
+        {
+            "status": "failed",
+            "message": metadata["failure"]["failure_reason"],
+            "at": now,
+            "source": "checkpoint_recovery",
+        }
+    )
+
+    generated_counts = preview_data.get("generated_counts", {})
+    if not isinstance(generated_counts, dict):
+        generated_counts = dict(
+            Counter(str(record.get("object_type") or "recommendations") for record in recovered_records)
+        )
+    validation_summary = {
+        "passed": 0,
+        "warnings": 0,
+        "blocked": len(recovered_records),
+    }
+    created_at = str(
+        (status_history[0].get("at") if status_history else None)
+        or metadata_row.get("updated_at")
+        or now
+    )
+    batch = {
+        "batch_id": batch_id,
+        "status": "failed",
+        "prompt": "Recovered durable wave checkpoint.",
+        "requester": "checkpoint-recovery",
+        "target_environment": "sandbox",
+        "mode": "generate_validate_preview",
+        "operation_mode": "create",
+        "conversation_id": None,
+        "created_at": created_at,
+        "updated_at": now,
+        "status_history": status_history,
+        "records": recovered_records,
+        "generated_counts": generated_counts,
+        "validation_summary": validation_summary,
+        "planning_summary": (
+            preview_data.get("planning_summary", {})
+            if isinstance(preview_data.get("planning_summary"), dict)
+            else {}
+        ),
+        "metadata": metadata,
+    }
+    get_batch_store().save_batch(batch)
+    return JobStatusResponse(**batch)
+
+
 def _ensure_request_conversation(
     request: ImportAssistantGenerateRequest,
 ) -> ImportAssistantGenerateRequest:
@@ -771,6 +974,9 @@ async def get_job(batch_id: str) -> JobStatusResponse:
     try:
         return get_job_status(batch_id)
     except KeyError as exc:
+        recovered = await _recover_job_from_appscript_checkpoint(batch_id)
+        if recovered is not None:
+            return recovered
         raise HTTPException(status_code=404, detail="Batch not found.") from exc
 
 
@@ -839,6 +1045,9 @@ async def preview(batch_id: str) -> PreviewResponse:
     try:
         return get_preview(batch_id)
     except KeyError as exc:
+        recovered = await _recover_job_from_appscript_checkpoint(batch_id)
+        if recovered is not None:
+            return get_preview(batch_id)
         raise HTTPException(status_code=404, detail="Batch not found.") from exc
 
 

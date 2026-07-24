@@ -62,6 +62,7 @@ import {
   validateZendeskCredentials,
   updateConversation,
 } from "./services/api";
+import { compactConversationMessage } from "./lib/conversationPayload";
 import { useImportAssistantStore } from "./store/importAssistantStore";
 
 const ZENDESK_SESSION_STORAGE_KEY = "zendesk_session_credentials_v1";
@@ -666,7 +667,7 @@ function App() {
       void appendConversationMessage(conversationId, {
         role: "assistant",
         kind,
-        content,
+        content: compactConversationMessage(content),
         batch_id: resolvedBatchId,
         metadata,
       }).then((updated) => {
@@ -839,7 +840,9 @@ function App() {
         void appendConversationMessage(conversationId, {
           role: "assistant",
           kind: "context_answer",
-          content: data?.answer || "Read-only question answered.",
+          content: compactConversationMessage(
+            data?.answer || "Read-only question answered.",
+          ),
           metadata: {
             question: variables?.question || "",
             question_mode: variables?.question_mode || "instance",
@@ -1376,10 +1379,11 @@ function App() {
 
   const ensureConversationForMessage = async (message) => {
     const state = buildConversationState();
+    const historyMessage = compactConversationMessage(message);
     try {
       if (!activeConversationId) {
         const created = await createConversation({
-          first_message: message,
+          first_message: historyMessage,
           operation_mode: operationMode,
           requester: "local-user",
           state,
@@ -1396,7 +1400,7 @@ function App() {
       const updated = await appendConversationMessage(activeConversationId, {
         role: "user",
         kind: operationMode === "ask" ? "question" : "prompt",
-        content: message,
+        content: historyMessage,
         metadata: { operation_mode: operationMode },
         state,
       });
