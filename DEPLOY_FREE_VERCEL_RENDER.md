@@ -46,15 +46,18 @@ VITE_API_BASE_URL=https://YOUR-RENDER-SERVICE.onrender.com
 
 6. Deploy and copy the resulting Vercel URL.
 
-## 3. Complete CORS
+## 3. Confirm CORS
 
-In the Render service, set:
+The Blueprint pins this production origin:
 
 ```text
-FRONTEND_ORIGIN=https://YOUR-VERCEL-PROJECT.vercel.app
+FRONTEND_ORIGIN=https://zendesk-ai-import-assistant.vercel.app
 ```
 
-Save and redeploy the Render service.
+If the Vercel project URL changes, update both `render.yaml` and the Render
+environment value to the exact new origin, including `https://` and without a
+trailing slash. Saving a Render environment change restarts the service, so do
+not change environment variables or redeploy while a generation run is active.
 
 ## 4. Verify
 

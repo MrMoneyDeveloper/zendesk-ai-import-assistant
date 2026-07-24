@@ -88,7 +88,16 @@ function extractFailurePayload(error) {
   return null;
 }
 
+function isBatchNotFoundError(error) {
+  const status = Number(error?.response?.status || 0);
+  const detail = error?.response?.data?.detail;
+  return status === 404 && String(detail || "").toLowerCase().includes("batch not found");
+}
+
 function parseFailureDetail(error) {
+  if (isBatchNotFoundError(error)) {
+    return "This run is no longer available on the backend. The service may have restarted or been redeployed while generation was running. Start the run again.";
+  }
   const structured = extractFailurePayload(error);
   if (structured) {
     const friendlyByCode = {
@@ -600,6 +609,7 @@ function App() {
   const lastContextErrorRef = useRef("");
   const conversationEndRef = useRef(null);
   const terminalBatchNotifiedRef = useRef(new Set());
+  const unavailableBatchNotifiedRef = useRef(new Set());
   const [zendeskValidated, setZendeskValidated] = useState(false);
   const [bootZendeskSession] = useState(() => readZendeskSessionCredentials());
   const [zendeskCredentials, setZendeskCredentials] = useState(() =>
@@ -904,7 +914,10 @@ function App() {
     queryKey: ["job", batchId],
     queryFn: () => getJob(batchId),
     enabled: Boolean(batchId),
+    retry: (failureCount, error) => !isBatchNotFoundError(error) && failureCount < 2,
     refetchInterval: (query) => {
+      if (isBatchNotFoundError(query.state.error)) return false;
+      if (query.state.error) return 10_000;
       const status = query.state.data?.status;
       if (!status) return 1_500;
       if (
@@ -923,6 +936,8 @@ function App() {
       return 1_500;
     },
   });
+  const batchUnavailable = Boolean(batchId && isBatchNotFoundError(jobQuery.error));
+  const jobPollingError = Boolean(batchId && jobQuery.error && !batchUnavailable);
 
   useEffect(() => {
     const status = String(jobQuery.data?.status || "");
@@ -932,6 +947,28 @@ function App() {
     }
     return undefined;
   }, [jobQuery.data, notifyGenerationTerminal]);
+
+  useEffect(() => {
+    const resolvedBatchId = String(batchId || "").trim();
+    if (
+      !batchUnavailable
+      || !resolvedBatchId
+      || unavailableBatchNotifiedRef.current.has(resolvedBatchId)
+    ) {
+      return;
+    }
+    unavailableBatchNotifiedRef.current.add(resolvedBatchId);
+    const reason = "The backend no longer has this run. This usually means the Render service restarted or was redeployed while generation was active.";
+    const nextStep = "Refresh the page and start the run again. Do not redeploy Render or change its environment variables until the run reaches preview.";
+    setLastFailureDetail({
+      stage: "polling",
+      code: "batch_state_lost",
+      reason,
+      nextStep,
+    });
+    appendActivity("error", `${reason} Next: ${nextStep}`);
+    appendTimeline("assistant", `Generation stopped: ${reason} Next: ${nextStep}`);
+  }, [appendActivity, appendTimeline, batchId, batchUnavailable]);
 
   const approveMutation = useMutation({
     mutationFn: approveBatch,
@@ -1042,9 +1079,9 @@ function App() {
   const checkpointsQuery = useQuery({
     queryKey: ["checkpoints", batchId],
     queryFn: () => getCheckpoints(batchId),
-    enabled: Boolean(batchId),
+    enabled: Boolean(batchId && !batchUnavailable && !jobPollingError),
     refetchInterval: () => {
-      if (!batchId) return false;
+      if (!batchId || batchUnavailable || jobPollingError) return false;
       const current = String(jobQuery.data?.status || "");
       if (current && TERMINAL_BATCH_STATUSES.has(current)) {
         return false;
@@ -1101,6 +1138,8 @@ function App() {
     queryFn: () => getPreview(batchId),
     enabled: Boolean(
       batchId
+      && !batchUnavailable
+      && !jobPollingError
       && (
         PREVIEW_POLL_ACTIVE_STATUSES.has(String(jobQuery.data?.status || ""))
         || ["approved", "partially_approved", "deployed", "deployed_partial", "deploy_failed"].includes(
@@ -1109,7 +1148,7 @@ function App() {
       )
     ),
     refetchInterval: () => {
-      if (!batchId) return false;
+      if (!batchId || batchUnavailable || jobPollingError) return false;
       const current = String(jobQuery.data?.status || "");
       if (current && TERMINAL_BATCH_STATUSES.has(current)) {
         return false;
@@ -1188,7 +1227,9 @@ function App() {
     }
   }, [zendeskContextQuery.error, appendActivity]);
 
-  const currentStatus = jobQuery.data?.status || generateMutation.data?.status || null;
+  const currentStatus = batchUnavailable
+    ? "failed"
+    : (jobQuery.data?.status || generateMutation.data?.status || null);
   const runControlState = useMemo(() => {
     const metadata = jobQuery.data?.metadata;
     const source = metadata?.run_control || {};
@@ -2155,6 +2196,7 @@ function App() {
       deploy_failed: "Deployment failed.",
       approved: "Approval decisions saved.",
       partially_approved: "Partial approval saved.",
+      failed: "Run stopped. Review the recovery message below.",
     };
     return phaseMap[status] || "Idle";
   })();
@@ -2185,6 +2227,26 @@ function App() {
         department: item.department || null,
         objectType: item.object_type || null,
       }));
+
+    if (batchUnavailable) {
+      lines.unshift({
+        at: jobQuery.errorUpdatedAt
+          ? new Date(jobQuery.errorUpdatedAt).toISOString()
+          : new Date().toISOString(),
+        stage: "failed",
+        text: "The backend restarted or was redeployed and no longer has this batch. This run cannot continue; refresh and start it again.",
+        source: "polling",
+      });
+    } else if (jobPollingError) {
+      lines.unshift({
+        at: jobQuery.errorUpdatedAt
+          ? new Date(jobQuery.errorUpdatedAt).toISOString()
+          : new Date().toISOString(),
+        stage: "connection",
+        text: "Connection to the backend was interrupted. Progress polling has slowed while the app retries.",
+        source: "polling",
+      });
+    }
 
     if (waveRows.length > 0) {
       const waveProgress = waveRows
@@ -2275,7 +2337,10 @@ function App() {
     attachmentExtractMutation.isPending,
     generateMutation.isPending,
     generatedData?.metadata,
+    batchUnavailable,
+    jobPollingError,
     jobQuery.data?.metadata,
+    jobQuery.errorUpdatedAt,
     jobQuery.data?.status_history,
   ]);
 

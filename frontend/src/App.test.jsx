@@ -586,6 +586,38 @@ test("shows verified live wave activity while the async batch is running", async
   expect(screen.queryByText("Review and Confirm")).not.toBeInTheDocument();
 });
 
+test("stops cached progress when the backend loses an active batch", async () => {
+  api.getJob.mockRejectedValue({
+    response: {
+      status: 404,
+      data: { detail: "Batch not found." },
+    },
+    message: "Request failed with status code 404",
+  });
+
+  renderApp();
+  fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
+  fireEvent.change(screen.getByPlaceholderText("agent@acme.com"), { target: { value: "admin@acme.com" } });
+  fireEvent.change(screen.getByPlaceholderText("Zendesk API token"), { target: { value: "tok_test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Validate and Unlock" }));
+
+  await waitFor(() => {
+    expect(screen.getByText("What would you like to do today?")).toBeInTheDocument();
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Create new/i }));
+  const input = screen.getByPlaceholderText(/Create a trigger that closes tickets/i);
+  fireEvent.change(input, { target: { value: "Build the claims operating model." } });
+  fireEvent.submit(input.closest("form"));
+
+  await waitFor(() => {
+    expect(
+      screen.getAllByText(/backend no longer has this run/i).length
+    ).toBeGreaterThan(0);
+  });
+  expect(screen.getByText("Run activity")).toBeInTheDocument();
+  expect(screen.queryByText("Live build activity")).not.toBeInTheDocument();
+});
+
 test("sends selected object focus in generate payload", async () => {
   renderApp();
   fireEvent.change(screen.getByPlaceholderText("example: acme"), { target: { value: "acme" } });
