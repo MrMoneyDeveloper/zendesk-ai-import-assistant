@@ -168,6 +168,56 @@ Requirements:
 - Do not exceed 20 generated records
 """
 
+SOLARNEST_REGRESSION_PROMPT = """Create a compact Zendesk preview for SolarNest Energy Services.
+
+Business context:
+SolarNest installs and supports residential solar and battery systems in South Africa.
+They have two support teams: Customer Care, and Repairs and Warranty.
+
+Create exactly these objects:
+
+1. Brand
+- SolarNest Energy Services
+
+2. Help Center structure
+- Category: SolarNest Support
+- Section: Solar and Battery Help
+
+3. Groups
+- Customer Care
+- Repairs and Warranty
+
+4. Ticket fields
+- Support Reason: dropdown with Installation Question, System Offline, Battery Issue, Warranty Claim, Billing Question
+- Installation Reference: text field
+
+5. Ticket form
+- SolarNest Support Request
+- Include Subject, Description, Support Reason, Installation Reference and Priority
+
+6. Views
+- New SolarNest Requests: new and open tickets assigned to Customer Care
+- Urgent Warranty Cases: high and urgent Warranty Claim tickets assigned to Repairs and Warranty
+- Include status, priority, requester, assignee and updated columns
+
+7. Triggers
+- Route Warranty Claim tickets to Repairs and Warranty, add tag solarnest_warranty, and set priority to high
+- Route all other SolarNest Support Request tickets to Customer Care and add tag solarnest_intake
+
+8. Macro
+- Request Installation Reference: ask the customer for their installation reference and add tag awaiting_installation_reference
+
+9. Help Center article
+- How to Prepare for SolarNest Technical Support
+- Place it in Solar and Battery Help
+- Explain what account and equipment details to gather, safe diagnostic checks, escalation guidance, and expected next steps
+
+Requirements:
+- Use exact names and name-based dependencies
+- Preview only; do not deploy anything to Zendesk
+- Do not add objects beyond this list
+"""
+
 NEXACONNECT_REGRESSION_PROMPT = """We are setting up Zendesk for a company called NexaConnect Telecommunications.
 They provide mobile, fibre, and business connectivity solutions across South Africa.
 They have five support teams: Technical Support, Billing and Accounts,
@@ -408,6 +458,127 @@ def test_view_update_snapshot_reads_nested_conditions_and_execution_settings():
     assert _trusted_update_reference_values(request) == {
         "group_id": {"29141784735644"}
     }
+
+
+def test_view_update_preserves_explicit_columns_and_avoids_false_tag_constraint():
+    request = ImportAssistantGenerateRequest(
+        prompt=(
+            "Change only the status condition from Status is open to Status category is "
+            "greater than open. Preserve the current bursary_application tag condition, "
+            "group condition, output columns, sort by created ascending, group order "
+            "descending, active state, title, and every other setting."
+        ),
+        operation_mode="update",
+        instance_sync_id="SYNC-VIEW-PRESERVE",
+        update_target={
+            "object_type": "view",
+            "id": "29141829244700",
+            "name": "Open Bursary Application Tickets",
+            "updated_at": "2026-07-24T17:32:47Z",
+            "snapshot_hash": "view-preserve-sha",
+            "editable": True,
+            "snapshot": {
+                "id": 29141829244700,
+                "title": "Open Bursary Application Tickets",
+                "active": True,
+                "conditions": {
+                    "all": [
+                        {"field": "status", "operator": "is", "value": "open"},
+                        {
+                            "field": "current_tags",
+                            "operator": "includes",
+                            "value": "bursary_application",
+                        },
+                        {
+                            "field": "group_id",
+                            "operator": "is",
+                            "value": "29141784735644",
+                        },
+                    ],
+                    "any": [],
+                },
+                "execution": {
+                    "columns": [
+                        {"id": "status", "title": "Status category"},
+                        {"id": "created", "title": "Requested"},
+                        {"id": "subject", "title": "Subject"},
+                        {"id": "requester", "title": "Requester"},
+                        {"id": "assignee", "title": "Assignee"},
+                        {"id": "updated", "title": "Updated"},
+                    ],
+                    "sort_by": "created",
+                    "sort_order": "asc",
+                    "group_order": "desc",
+                },
+            },
+        },
+    )
+    rows, metadata = _bind_update_target_to_generated_rows(
+        [
+            {
+                "object_type": "views",
+                "title": "Open Bursary Application Tickets",
+                "active": False,
+                "conditions": [
+                    {
+                        "field": "status_category",
+                        "operator": "greater_than",
+                        "value": "open",
+                        "scope": "all",
+                    },
+                    {
+                        "field": "current_tags",
+                        "operator": "includes",
+                        "value": "bursary_application",
+                        "scope": "all",
+                    },
+                    {
+                        "field": "group_id",
+                        "operator": "is",
+                        "value": "29141784735644",
+                        "scope": "all",
+                    },
+                ],
+                "actions": [
+                    {
+                        "field": "output_columns",
+                        "value": ["status", "updated", "subject"],
+                    },
+                    {"field": "sort_by", "value": "created"},
+                    {"field": "sort_order", "value": "asc"},
+                    {"field": "group_order", "value": "desc"},
+                ],
+            }
+        ],
+        request=request,
+    )
+
+    row = rows[0]
+    action_map = {
+        item["field"]: item["value"]
+        for item in row["after_configuration"]["actions"]
+    }
+    assert action_map["output_columns"] == [
+        "status",
+        "created",
+        "subject",
+        "requester",
+        "assignee",
+        "updated",
+    ]
+    assert row["after_configuration"]["active"] is True
+    assert metadata["changed_fields"] == ["conditions"]
+    assert _extract_explicit_constraints(request.prompt)["tags"] == []
+
+    safety = _evaluate_generation_safety(
+        prompt=request.prompt,
+        plan={"confidence": 0.9},
+        generated_rows=rows,
+        focus_object_types={"views"},
+        min_confidence=0.65,
+    )
+    assert safety["blocked"] is False
+    assert safety["explicit_constraint_violations"] == []
 
 
 def test_canonicalizer_allows_only_reference_ids_proven_by_update_snapshot():
@@ -1285,6 +1456,52 @@ def test_aquashield_numbered_manifest_preserves_exact_counts_and_specs():
             object_type=object_type,
             target_count=target_count,
         )
+
+
+def test_solarnest_manifest_ignores_article_instructions_and_keeps_view_field_condition():
+    estimate = _estimate_requested_record_count(SOLARNEST_REGRESSION_PROMPT)
+    targets = _extract_object_type_targets(
+        prompt=SOLARNEST_REGRESSION_PROMPT,
+        focus_object_types=[],
+        estimated_count=estimate["estimated_count"],
+        chunk_estimate=estimate,
+    )
+
+    assert targets == {
+        "brands": 1,
+        "categories": 1,
+        "sections": 1,
+        "groups": 2,
+        "ticket_fields": 2,
+        "ticket_forms": 1,
+        "views": 2,
+        "triggers": 2,
+        "macros": 1,
+        "articles": 1,
+    }
+    assert sum(targets.values()) == 14
+    assert _extract_article_specs_from_prompt(SOLARNEST_REGRESSION_PROMPT) == [
+        {
+            "title": "How to Prepare for SolarNest Technical Support",
+            "category": "Solar and Battery Help",
+            "section": "Solar and Battery Help",
+            "requirements": (
+                "Explain what account and equipment details to gather, safe diagnostic "
+                "checks, escalation guidance, and expected next steps"
+            ),
+        }
+    ]
+
+    urgent_view = next(
+        item
+        for item in _extract_view_specs_from_prompt(SOLARNEST_REGRESSION_PROMPT)
+        if item["title"] == "Urgent Warranty Cases"
+    )
+    assert {
+        "field": "custom_field_support_reason",
+        "operator": "is",
+        "value": "warranty_claim",
+    } in urgent_view["conditions"]
 
 
 def test_aquashield_templates_generate_complete_safe_preview_manifest():

@@ -2170,6 +2170,10 @@ def _numbered_section_record_items(prompt: str, object_type: str) -> list[str]:
             "ensure ",
             "write ",
             "use ",
+            "explain ",
+            "describe ",
+            "cover ",
+            "contain ",
         ),
     }
     prefixes = instruction_prefixes.get(normalized, ())
@@ -2305,6 +2309,29 @@ def _extract_article_specs_from_prompt(prompt: str) -> list[dict[str, str]]:
     section_names = _extract_article_section_names(text)
     destination = section_names[0] if section_names else ""
     section_items = _extract_numbered_prompt_sections(text).get("articles", [])
+    requirements_by_title: dict[str, list[str]] = {}
+    current_title_key = ""
+    article_requirement_prefixes = ("explain ", "describe ", "cover ", "contain ")
+    article_non_title_prefixes = (
+        "place ",
+        "put ",
+        "each ",
+        "include ",
+        "ensure ",
+        "write ",
+        "use ",
+    )
+    for item in section_items:
+        cleaned_item = re.sub(r"\s+", " ", str(item or "")).strip(" .")
+        lowered_item = cleaned_item.lower()
+        if current_title_key and lowered_item.startswith(article_requirement_prefixes):
+            requirements_by_title.setdefault(current_title_key, []).append(cleaned_item)
+            continue
+        if lowered_item.startswith(article_non_title_prefixes):
+            continue
+        candidate_key = _coverage_key(cleaned_item)
+        if candidate_key:
+            current_title_key = candidate_key
     shared_requirements = next(
         (
             re.sub(r"^each\s+article\s+(?:must|should)\s+", "", item, flags=re.IGNORECASE)
@@ -2325,16 +2352,21 @@ def _extract_article_specs_from_prompt(prompt: str) -> list[dict[str, str]]:
         if not key or key in seen:
             continue
         seen.add(key)
+        article_requirements = requirements_by_title.get(key, [])
+        requirement_parts = [
+            *(
+                [f"This article must {shared_requirements.strip(' .')}."]
+                if shared_requirements.strip(" .")
+                else []
+            ),
+            *article_requirements,
+        ]
         specs.append(
             {
                 "title": title,
                 "category": destination,
                 "section": destination,
-                "requirements": (
-                    f"This article must {shared_requirements.strip(' .')}."
-                    if shared_requirements.strip(" .")
-                    else ""
-                ),
+                "requirements": " ".join(requirement_parts).strip(),
             }
         )
     return specs[:80]
@@ -2398,6 +2430,60 @@ def _extract_ticket_form_specs_from_prompt(prompt: str) -> list[dict[str, object
     return specs[:40]
 
 
+def _extract_custom_field_conditions(
+    *,
+    field_specs: list[dict[str, object]],
+    body: str,
+) -> tuple[list[dict[str, str]], list[str]]:
+    conditions: list[dict[str, str]] = []
+    display_values: list[str] = []
+    seen_fields: set[str] = set()
+    for field_spec in field_specs:
+        field_title = str(field_spec.get("title", "")).strip()
+        if not field_title:
+            continue
+        field_name = f"custom_field_{_slugify_option_value(field_title)}"
+        if field_name in seen_fields:
+            continue
+        value_match = re.search(
+            rf"\b{re.escape(field_title)}\s+(?:is|equals?)\s+"
+            r"(?:[\"'](?P<quoted>[^\"']+)[\"']|"
+            r"(?P<plain>[a-z0-9][a-z0-9 &/_-]{0,80}?))"
+            r"(?=\s*(?:,|\.|\band\b|\bthen\b|\bassign\b|\badd\b|\bset\b|$))",
+            body,
+            flags=re.IGNORECASE,
+        )
+        display_value = ""
+        if value_match:
+            display_value = re.sub(
+                r"\s+",
+                " ",
+                str(value_match.group("quoted") or value_match.group("plain") or ""),
+            ).strip()
+        if not display_value:
+            for option in list(field_spec.get("options", []) or []):
+                candidate = str(option).strip()
+                if candidate and re.search(
+                    rf"\b{re.escape(candidate)}\b",
+                    body,
+                    flags=re.IGNORECASE,
+                ):
+                    display_value = candidate
+                    break
+        if not display_value:
+            continue
+        seen_fields.add(field_name)
+        conditions.append(
+            {
+                "field": field_name,
+                "operator": "is",
+                "value": _slugify_option_value(display_value),
+            }
+        )
+        display_values.append(display_value)
+    return conditions, display_values
+
+
 def _extract_trigger_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
     text = str(prompt or "")
     if not text.strip():
@@ -2435,46 +2521,11 @@ def _extract_trigger_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
         if re.search(r"\bticket\s+is\s+created\b", body, flags=re.IGNORECASE):
             conditions.append({"field": "status", "operator": "is", "value": "new"})
 
-        title_parts: list[str] = []
-        for field_spec in field_specs:
-            field_title = str(field_spec.get("title", "")).strip()
-            if not field_title:
-                continue
-            value_match = re.search(
-                rf"\b{re.escape(field_title)}\s+(?:is|equals?)\s+"
-                r"(?:[\"'](?P<quoted>[^\"']+)[\"']|"
-                r"(?P<plain>[a-z0-9][a-z0-9 &/_-]{0,80}?))"
-                r"(?=\s*(?:,|\.|\band\b|\bthen\b|\bassign\b|\badd\b|\bset\b|$))",
-                body,
-                flags=re.IGNORECASE,
-            )
-            display_value = ""
-            if value_match:
-                display_value = re.sub(
-                    r"\s+",
-                    " ",
-                    str(value_match.group("quoted") or value_match.group("plain") or ""),
-                ).strip()
-            if not display_value:
-                for option in list(field_spec.get("options", []) or []):
-                    candidate = str(option).strip()
-                    if candidate and re.search(
-                        rf"\b{re.escape(candidate)}\b",
-                        body,
-                        flags=re.IGNORECASE,
-                    ):
-                        display_value = candidate
-                        break
-            if not display_value:
-                continue
-            conditions.append(
-                {
-                    "field": f"custom_field_{_slugify_option_value(field_title)}",
-                    "operator": "is",
-                    "value": _slugify_option_value(display_value),
-                }
-            )
-            title_parts.append(display_value)
+        custom_conditions, title_parts = _extract_custom_field_conditions(
+            field_specs=field_specs,
+            body=body,
+        )
+        conditions.extend(custom_conditions)
 
         group_name = next(
             (
@@ -2779,6 +2830,7 @@ def _extract_view_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
     structured_items = _numbered_section_record_items(text, "views")
     if structured_items and all(":" in str(item) for item in structured_items):
         all_view_items = _extract_numbered_prompt_sections(text).get("views", [])
+        field_specs = _extract_ticket_field_specs_from_prompt(text)
         columns = ["status", "priority", "requester", "assignee", "updated"]
         column_instruction = next(
             (
@@ -2826,6 +2878,11 @@ def _extract_view_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
                 conditions.append(
                     {"field": "status", "operator": "less_than", "value": "solved"}
                 )
+            custom_conditions, _ = _extract_custom_field_conditions(
+                field_specs=field_specs,
+                body=body,
+            )
+            conditions.extend(custom_conditions)
             group_name = next(
                 (
                     name
@@ -5556,7 +5613,26 @@ def _snapshot_actions(snapshot: dict, object_type: str) -> list[dict]:
             else {}
         )
         view_settings = {**execution, **output}
-        add("output_columns", view_settings.get("columns"))
+        raw_columns = view_settings.get("columns")
+        normalized_columns: list[str] = []
+        seen_columns: set[str] = set()
+        for item in raw_columns if isinstance(raw_columns, list) else []:
+            if isinstance(item, dict):
+                value = str(
+                    item.get("id")
+                    or item.get("value")
+                    or item.get("key")
+                    or item.get("name")
+                    or ""
+                ).strip()
+            else:
+                value = str(item or "").strip()
+            normalized_value = value.lower()
+            if not value or normalized_value in seen_columns:
+                continue
+            seen_columns.add(normalized_value)
+            normalized_columns.append(value)
+        add("output_columns", normalized_columns)
         add("sort_by", view_settings.get("sort_by"))
         add("sort_order", view_settings.get("sort_order"))
         add("group_by", view_settings.get("group_by"))
@@ -5683,6 +5759,64 @@ def _update_prompt_mentions_field(prompt: str, field: str) -> bool:
     )
 
 
+def _update_prompt_preserves_field(prompt: str, field: str) -> bool:
+    normalized_prompt = re.sub(r"\s+", " ", str(prompt or "").lower()).strip()
+    normalized_field = str(field or "").strip().lower()
+    aliases = {
+        "group_id": ("group condition", "group assignment", "group"),
+        "ticket_form_id": ("ticket form condition", "ticket form", "form condition"),
+        "brand_id": ("brand condition", "brand"),
+        "current_tags": ("tag condition", "current tags", "tags"),
+        "set_tags": ("tag action", "set tags", "tags"),
+        "output_columns": ("output columns", "columns"),
+        "sort_by": ("sort by", "sort field"),
+        "sort_order": ("sort order", "sorting"),
+        "group_by": ("group by",),
+        "group_order": ("group order",),
+        "active": ("active state", "enabled state", "active"),
+    }
+    candidates = aliases.get(
+        normalized_field,
+        (normalized_field.replace("_id", "").replace("_", " "),),
+    )
+    direct_patterns = (
+        r"\b(?:do\s+not|don't)\s+(?:change|modify|replace|alter)\b[^.\n]{0,140}",
+        r"\bwithout\s+(?:changing|modifying|replacing|altering)\b[^.\n]{0,140}",
+    )
+    for pattern in direct_patterns:
+        for match in re.finditer(pattern, normalized_prompt):
+            segment = match.group(0)
+            if any(
+                re.search(rf"\b{re.escape(candidate)}\b", segment)
+                for candidate in candidates
+                if candidate
+            ):
+                return True
+
+    preserve_pattern = re.compile(r"\b(?:preserve|retain|keep|leave)\b(?P<body>[^.\n]{0,260})")
+    for match in preserve_pattern.finditer(normalized_prompt):
+        segment = str(match.group("body") or "")
+        segment = re.split(
+            r"[,;]\s*(?:but\s+)?(?:add|change|update|set|remove|replace|delete|clear)\b",
+            segment,
+            maxsplit=1,
+        )[0]
+        if any(
+            re.search(rf"\b{re.escape(candidate)}\b", segment)
+            for candidate in candidates
+            if candidate
+        ):
+            return True
+    return any(
+        re.search(
+            rf"\b{re.escape(candidate)}\b[^.\n]{{0,60}}\b(?:unchanged|as[- ]is|the\s+same)\b",
+            normalized_prompt,
+        )
+        for candidate in candidates
+        if candidate
+    )
+
+
 def _preserve_unmentioned_update_entries(
     *,
     before_entries: list[dict],
@@ -5691,6 +5825,44 @@ def _preserve_unmentioned_update_entries(
     bucket_name: str,
 ) -> tuple[list[dict], list[str]]:
     result = [dict(item) for item in proposed_entries if isinstance(item, dict)]
+    explicitly_preserved_fields = {
+        str(item.get("field", "")).strip().lower()
+        for item in before_entries
+        if isinstance(item, dict)
+        and str(item.get("field", "")).strip()
+        and _update_prompt_preserves_field(
+            prompt,
+            str(item.get("field", "")).strip().lower(),
+        )
+    }
+    if explicitly_preserved_fields:
+        baseline_by_field: dict[str, list[dict]] = {}
+        for item in before_entries:
+            if not isinstance(item, dict):
+                continue
+            field = str(item.get("field", "")).strip().lower()
+            if field in explicitly_preserved_fields:
+                baseline_by_field.setdefault(field, []).append(dict(item))
+        replaced_result: list[dict] = []
+        restored_fields: set[str] = set()
+        for item in result:
+            field = str(item.get("field", "")).strip().lower()
+            if field not in explicitly_preserved_fields:
+                replaced_result.append(item)
+                continue
+            if field in restored_fields:
+                continue
+            replaced_result.extend(baseline_by_field.get(field, []))
+            restored_fields.add(field)
+        for item in before_entries:
+            if not isinstance(item, dict):
+                continue
+            field = str(item.get("field", "")).strip().lower()
+            if field not in explicitly_preserved_fields or field in restored_fields:
+                continue
+            replaced_result.extend(baseline_by_field.get(field, []))
+            restored_fields.add(field)
+        result = replaced_result
     proposed_fields = {
         str(item.get("field", "")).strip().lower()
         for item in result
@@ -5718,7 +5890,7 @@ def _preserve_unmentioned_update_entries(
         ]
         return restored, list(dict.fromkeys(restored_fields))
 
-    preserved_fields: list[str] = []
+    preserved_fields: list[str] = sorted(explicitly_preserved_fields)
     for baseline in before_entries:
         if not isinstance(baseline, dict):
             continue
@@ -5800,7 +5972,10 @@ def _bind_update_target_to_generated_rows(
             + ", ".join(preserved_labels)
             + "."
         )
-    if "active" not in row and before.get("active") is not None:
+    if before.get("active") is not None and (
+        "active" not in row
+        or _update_prompt_preserves_field(request.prompt, "active")
+    ):
         row["active"] = before.get("active")
 
     additive_tag_requested = bool(
@@ -7147,9 +7322,15 @@ def _extract_explicit_constraints(prompt: str) -> dict:
             break
 
     tag_match = re.search(
-        r"\btag(?:\s+name)?\s*(?:is|=|to|as|called)?\s*[\"']?([a-z0-9_-]{2,})",
+        r"\btag(?:\s+name)?\s*(?:(?:is|to|as|called)\s+|[:=]\s*)"
+        r"[\"']?([a-z0-9_-]{2,})[\"']?",
         text,
     )
+    if not tag_match:
+        tag_match = re.search(
+            r"\btag(?:\s+name)?\s+[\"']([a-z0-9_-]{2,})[\"']",
+            text,
+        )
     if tag_match:
         explicit["tag"] = tag_match.group(1).strip()
     explicit_tags: list[str] = []
