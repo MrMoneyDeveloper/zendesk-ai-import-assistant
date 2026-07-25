@@ -1666,6 +1666,13 @@ def _extract_object_type_targets(
         targets["categories"] = max(int(targets.get("categories", 0) or 0), dependency_count)
         targets["sections"] = max(int(targets.get("sections", 0) or 0), dependency_count)
 
+    explicit_group_names = _extract_inline_support_team_names(text)
+    if explicit_group_names:
+        targets["groups"] = max(
+            int(targets.get("groups", 0) or 0),
+            len(explicit_group_names),
+        )
+
     if not targets and focus_object_types:
         for item in focus_object_types:
             canonical = _normalize_object_type(item)
@@ -1818,7 +1825,17 @@ def _normalize_blueprint_target_objects(
         if target_count <= 0:
             continue
         wave = _resolve_wave_for_object_type(object_type)
-        priority = int(item.get("priority", wave) or wave)
+        raw_priority = item.get("priority", wave)
+        try:
+            priority = int(raw_priority or wave)
+        except (TypeError, ValueError):
+            priority = {
+                "critical": 0,
+                "high": 1,
+                "medium": wave,
+                "normal": wave,
+                "low": 9,
+            }.get(str(raw_priority or "").strip().lower(), wave)
         normalized.append(
             {
                 "object_type": object_type,
@@ -1965,18 +1982,72 @@ def _extract_department_specs_from_prompt(prompt: str) -> list[dict[str, str]]:
 
 
 def _extract_inline_support_team_names(prompt: str) -> list[str]:
-    text = re.sub(r"\s+", " ", str(prompt or "")).strip()
+    raw_text = str(prompt or "")
+    text = re.sub(r"\s+", " ", raw_text).strip()
     if not text:
         return []
-    match = re.search(
+
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def add_name(value: str) -> None:
+        name = re.sub(r"\s+", " ", str(value or "")).strip(" .,:;\"'")
+        key = _coverage_key(name)
+        if not key or key in seen or len(name) > 100:
+            return
+        seen.add(key)
+        names.append(name)
+
+    inline_pattern = re.compile(
         r"\b(?:has|have)\s+(?:(?:\d+|[a-z]+)\s+)?(?:named\s+)?"
         r"(?:support\s+)?teams?\s*:\s*(?P<items>[^.]+)",
-        text,
         flags=re.IGNORECASE,
     )
-    if not match:
-        return []
-    return _split_prompt_list(match.group("items"))[:20]
+    for match in inline_pattern.finditer(text):
+        for item in _split_prompt_list(match.group("items")):
+            add_name(item)
+
+    group_heading_pattern = re.compile(
+        r"^(?:#{1,6}\s*)?(?:\*\*|__)?(?:zendesk\s+)?"
+        r"(?:support\s+)?groups?(?:\*\*|__)?\s*:?\s*$",
+        flags=re.IGNORECASE,
+    )
+    in_group_section = False
+    section_item_count = 0
+    for raw_line in raw_text.splitlines():
+        stripped = raw_line.strip()
+        if group_heading_pattern.match(stripped):
+            in_group_section = True
+            section_item_count = 0
+            continue
+        if not in_group_section:
+            continue
+        if re.match(r"^#{1,6}\s+", stripped):
+            in_group_section = False
+            continue
+        if not stripped:
+            continue
+
+        bullet = re.match(r"^[-*+]\s+(?P<item>.+)$", stripped)
+        if not bullet:
+            if section_item_count:
+                in_group_section = False
+            continue
+
+        item = re.sub(r"^\[[ xX]\]\s*", "", bullet.group("item")).strip()
+        item = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", item)
+        item = re.sub(r"[*_`]+", "", item).strip()
+        name = re.split(
+            r"\s+(?:-|\u2013|\u2014)\s+|:\s*",
+            item,
+            maxsplit=1,
+        )[0].strip()
+        if not name:
+            continue
+        add_name(name)
+        section_item_count += 1
+
+    return names[:40]
 
 
 def _extract_article_category_names(prompt: str) -> list[str]:
@@ -2737,6 +2808,15 @@ def _build_department_supervisor_review_manifest(backlog: list[dict]) -> list[di
     return sorted(units.values(), key=lambda item: (item["wave"], item["bundle_key"]))
 
 
+def _planner_used_heuristic_fallback(plan: object) -> bool:
+    if not isinstance(plan, dict):
+        return False
+    return any(
+        "planner fallback used" in str(reason or "").strip().lower()
+        for reason in plan.get("ambiguity_reasons", [])
+    )
+
+
 async def _run_business_blueprint_compiler(
     *,
     prompt: str,
@@ -2745,6 +2825,7 @@ async def _run_business_blueprint_compiler(
     object_targets: dict[str, int],
     planner_route,
     deterministic_only: bool = False,
+    deterministic_reason: str | None = None,
 ) -> tuple[dict, dict]:
     coverage_manifest = _build_department_coverage_manifest(
         prompt=prompt,
@@ -2774,7 +2855,10 @@ async def _run_business_blueprint_compiler(
     if deterministic_only:
         return fallback_blueprint, {
             "bypassed": True,
-            "reason": "explicit_numbered_operating_model",
+            "reason": (
+                str(deterministic_reason or "").strip()
+                or "explicit_numbered_operating_model"
+            ),
         }
 
     client = GrokClient()
@@ -2804,17 +2888,7 @@ async def _run_business_blueprint_compiler(
         },
     ]
 
-    try:
-        raw = await client.chat(
-            messages,
-            temperature=0.0,
-            model=planner_route.model,
-            max_output_tokens=max(280, int(planner_route.max_output_tokens or 300)),
-            response_schema=None,
-            strict_schema=False,
-            task="planner",
-            response_format_override="json_object",
-        )
+    def compile_blueprint(raw: str) -> dict:
         payload = extract_json_payload(raw)
         if not isinstance(payload, dict):
             raise ValueError("Business compiler response must be a JSON object.")
@@ -2830,7 +2904,7 @@ async def _run_business_blueprint_compiler(
             target_objects,
             coverage_manifest,
         )
-        blueprint = {
+        return {
             "mode": "compiler",
             "capabilities": [
                 str(item).strip()
@@ -2855,15 +2929,107 @@ async def _run_business_blueprint_compiler(
             "coverage_manifest": coverage_manifest,
             "target_objects": target_objects,
         }
+
+    provider_attempts: list[dict] = []
+    fallback_reason = "compiler_output_invalid"
+    try:
+        raw = await client.chat(
+            messages,
+            temperature=0.0,
+            model=planner_route.model,
+            max_output_tokens=max(280, int(planner_route.max_output_tokens or 300)),
+            response_schema=None,
+            strict_schema=False,
+            task="planner",
+            response_format_override="json_object",
+        )
+        blueprint = compile_blueprint(raw)
         telemetry = GrokClient.get_last_call_metrics("planner")
         return blueprint, telemetry
     except LLMRequestError as exc:
-        if str(exc.error_class or "").strip().lower() == "rate_limited":
-            raise
-    except Exception:
-        pass
+        fallback_reason = str(exc.error_class or "llm_request_failed").strip().lower()
+        provider_attempts.append(
+            {
+                "profile": "gemini_then_primary",
+                "error_class": fallback_reason,
+                "http_status": exc.http_status,
+            }
+        )
+        if fallback_reason == "rate_limited":
+            for route in _build_wave_generator_routes(
+                settings=client.settings,
+                wave=1,
+            ):
+                if str(route.get("profile", "")).strip() == "primary":
+                    continue
+                profile = str(route.get("profile", "")).strip() or "fallback"
+                try:
+                    raw = await client.chat(
+                        messages,
+                        temperature=0.0,
+                        model=str(route.get("model", "")).strip(),
+                        max_output_tokens=max(
+                            280,
+                            int(planner_route.max_output_tokens or 300),
+                        ),
+                        response_schema=None,
+                        strict_schema=False,
+                        task="planner",
+                        response_format_override="json_object",
+                        api_key_override=str(route.get("api_key", "")).strip(),
+                        prefer_provider="groq",
+                    )
+                    blueprint = compile_blueprint(raw)
+                    telemetry = dict(GrokClient.get_last_call_metrics("planner") or {})
+                    telemetry.update(
+                        {
+                            "blueprint_failover_used": True,
+                            "blueprint_failover_profile": profile,
+                            "blueprint_provider_attempts": provider_attempts,
+                        }
+                    )
+                    return blueprint, telemetry
+                except LLMRequestError as route_exc:
+                    provider_attempts.append(
+                        {
+                            "profile": profile,
+                            "error_class": str(
+                                route_exc.error_class or "llm_request_failed"
+                            ).strip().lower(),
+                            "http_status": route_exc.http_status,
+                        }
+                    )
+                    fallback_reason = str(
+                        route_exc.error_class or fallback_reason
+                    ).strip().lower()
+                except Exception as route_exc:  # noqa: BLE001
+                    provider_attempts.append(
+                        {
+                            "profile": profile,
+                            "error_class": type(route_exc).__name__,
+                            "http_status": None,
+                        }
+                    )
+                    fallback_reason = type(route_exc).__name__
+    except Exception as exc:  # noqa: BLE001
+        fallback_reason = type(exc).__name__
+        provider_attempts.append(
+            {
+                "profile": "gemini_then_primary",
+                "error_class": fallback_reason,
+                "http_status": None,
+            }
+        )
 
-    return fallback_blueprint, GrokClient.get_last_call_metrics("planner")
+    telemetry = dict(GrokClient.get_last_call_metrics("planner") or {})
+    telemetry.update(
+        {
+            "blueprint_fallback_used": True,
+            "blueprint_fallback_reason": fallback_reason,
+            "blueprint_provider_attempts": provider_attempts,
+        }
+    )
+    return fallback_blueprint, telemetry
 
 
 def _build_orchestration_backlog(
@@ -9277,6 +9443,7 @@ async def _generate_import_assistant_batch_impl(
         if isinstance(plan, dict)
         else {}
     )
+    planner_used_heuristic_fallback = _planner_used_heuristic_fallback(plan)
     if not planner_telemetry:
         planner_telemetry = GrokClient.get_last_call_metrics("planner")
     store.append_status(batch_id, "planned", "Planner output received.")
@@ -9358,10 +9525,57 @@ async def _generate_import_assistant_batch_impl(
                     focus_object_types=focus_object_types,
                     object_targets=object_targets,
                     planner_route=planner_route,
-                    deterministic_only=explicit_manifest_planner_bypass,
+                    deterministic_only=(
+                        explicit_manifest_planner_bypass
+                        or planner_used_heuristic_fallback
+                    ),
+                    deterministic_reason=(
+                        "planner_heuristic_fallback"
+                        if planner_used_heuristic_fallback
+                        else "explicit_numbered_operating_model"
+                    ),
                 )
                 if not planner_telemetry and isinstance(blueprint_telemetry, dict):
                     planner_telemetry = blueprint_telemetry
+                if isinstance(blueprint_telemetry, dict):
+                    if blueprint_telemetry.get("blueprint_failover_used"):
+                        profile = str(
+                            blueprint_telemetry.get("blueprint_failover_profile")
+                            or "alternate"
+                        ).strip()
+                        store.append_status(
+                            batch_id,
+                            "business_blueprinting",
+                            (
+                                "Primary blueprint model route was unavailable; "
+                                f"continued with the {profile} Groq lane."
+                            ),
+                        )
+                    elif blueprint_telemetry.get("blueprint_fallback_used"):
+                        reason = str(
+                            blueprint_telemetry.get("blueprint_fallback_reason")
+                            or "model route unavailable"
+                        ).strip()
+                        store.append_status(
+                            batch_id,
+                            "business_blueprinting",
+                            (
+                                "Model blueprint routes were unavailable "
+                                f"({reason}); continuing with the deterministic blueprint."
+                            ),
+                        )
+                    elif (
+                        str(blueprint_telemetry.get("reason") or "").strip()
+                        == "planner_heuristic_fallback"
+                    ):
+                        store.append_status(
+                            batch_id,
+                            "business_blueprinting",
+                            (
+                                "Planner already selected deterministic inference; "
+                                "skipped the redundant model compiler call."
+                            ),
+                        )
                 if isinstance(blueprint_payload.get("coverage_manifest"), dict):
                     coverage_manifest = blueprint_payload["coverage_manifest"]
                     department_coverage_metadata = {

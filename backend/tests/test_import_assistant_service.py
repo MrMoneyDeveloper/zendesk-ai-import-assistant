@@ -2,6 +2,7 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+from app.api.grok.client import GrokClient, LLMRequestError
 from app.models.schemas import ImportAssistantGenerateRequest, ValidationSummary
 from app.services.import_assistant_service import (
     _annotate_focus_object_constraints,
@@ -51,6 +52,7 @@ from app.services.import_assistant_service import (
     _run_business_blueprint_compiler,
     _reconcile_backlog_item,
     _prepare_update_request,
+    _planner_used_heuristic_fallback,
     apply_approval,
 )
 from app.services.batch_store import get_batch_store, reset_batch_store
@@ -967,6 +969,48 @@ def test_extract_object_type_targets_detects_multi_object_numeric_intent():
     assert targets["ticket_forms"] >= 2
 
 
+def test_markdown_groups_section_preserves_named_groups_and_target_count():
+    prompt = """# Build a Multi-Brand Zendesk AI Copilot
+
+# Groups
+- HomeSphere Tier 1 Support
+- AquaShield Technical Support
+- Billing and Refunds - handles payment escalations
+
+# User Roles
+- Administrator
+"""
+
+    assert _extract_inline_support_team_names(prompt) == [
+        "HomeSphere Tier 1 Support",
+        "AquaShield Technical Support",
+        "Billing and Refunds",
+    ]
+
+    targets = _extract_object_type_targets(
+        prompt=prompt,
+        focus_object_types=[],
+        estimated_count=1,
+        chunk_estimate=None,
+    )
+    assert targets["groups"] == 3
+
+    rows = _build_deterministic_chunk_rows(
+        object_type="groups",
+        target_count=3,
+        prompt=prompt,
+        reference_catalog={},
+        existing_titles=[],
+        generated_rows=[],
+        reason="planner fallback",
+    )
+    assert [row["title"] for row in rows] == [
+        "HomeSphere Tier 1 Support",
+        "AquaShield Technical Support",
+        "Billing and Refunds",
+    ]
+
+
 def test_clearsky_prompt_extracts_exact_teams_categories_forms_and_targets():
     assert _extract_inline_support_team_names(CLEARSKY_REGRESSION_PROMPT) == [
         "Personal Lines Support",
@@ -1614,6 +1658,151 @@ def test_explicit_numbered_blueprint_compiler_uses_deterministic_targets():
         for item in blueprint["target_objects"]
     } == targets
     assert telemetry == {"bypassed": True, "reason": "explicit_numbered_operating_model"}
+
+
+def test_planner_fallback_detection_skips_redundant_blueprint_model_call():
+    assert _planner_used_heuristic_fallback(
+        {
+            "ambiguity_reasons": [
+                "Planner fallback used due to model output parse failure."
+            ]
+        }
+    )
+    assert not _planner_used_heuristic_fallback(
+        {"ambiguity_reasons": ["Prompt contains inferred routing details."]}
+    )
+
+
+def test_business_blueprint_rate_limit_rotates_to_secondary_groq_key(monkeypatch):
+    route_settings = SimpleNamespace(
+        llm_model_generator="openai/gpt-oss-20b",
+        llm_model_generator_secondary="openai/gpt-oss-20b",
+        llm_model_generator_tertiary="openai/gpt-oss-20b",
+        llm_model_generator_wave3="",
+        llm_model_generator_wave4="",
+        xai_api_key="primary-key",
+        xai_api_key_secondary="secondary-key",
+        xai_api_key_tertiary="tertiary-key",
+        xai_api_key_wave3="",
+        xai_api_key_wave4="",
+    )
+    calls = []
+
+    def fake_init(self):
+        self.settings = route_settings
+
+    async def fake_chat(self, messages, **kwargs):
+        calls.append(kwargs)
+        if kwargs.get("api_key_override") == "secondary-key":
+            return json.dumps(
+                {
+                    "capabilities": ["routing"],
+                    "target_objects": [
+                        {
+                            "object_type": "groups",
+                            "target_count": 2,
+                            "priority": "high",
+                            "wave": 2,
+                        }
+                    ],
+                    "assumptions": [],
+                    "priorities": [],
+                    "dependency_hints": [],
+                }
+            )
+        raise LLMRequestError(
+            "rate limited",
+            error_class="rate_limited",
+            http_status=429,
+        )
+
+    monkeypatch.setattr(GrokClient, "__init__", fake_init)
+    monkeypatch.setattr(GrokClient, "chat", fake_chat)
+    monkeypatch.setattr(
+        GrokClient,
+        "get_last_call_metrics",
+        classmethod(lambda cls, task: {"task": task}),
+    )
+
+    blueprint, telemetry = asyncio.run(
+        _run_business_blueprint_compiler(
+            prompt="Create two groups and two triggers for a multi-brand support operation.",
+            dependency_mode="match_existing_or_create_new",
+            focus_object_types=[],
+            object_targets={"groups": 2, "triggers": 2},
+            planner_route=SimpleNamespace(
+                model="openai/gpt-oss-20b",
+                max_output_tokens=300,
+            ),
+        )
+    )
+
+    assert blueprint["mode"] == "compiler"
+    assert telemetry["blueprint_failover_used"] is True
+    assert telemetry["blueprint_failover_profile"] == "secondary"
+    assert calls[0].get("api_key_override") is None
+    assert calls[1]["api_key_override"] == "secondary-key"
+    assert calls[1]["prefer_provider"] == "groq"
+
+
+def test_business_blueprint_uses_deterministic_fallback_when_all_keys_are_limited(
+    monkeypatch,
+):
+    route_settings = SimpleNamespace(
+        llm_model_generator="openai/gpt-oss-20b",
+        llm_model_generator_secondary="openai/gpt-oss-20b",
+        llm_model_generator_tertiary="openai/gpt-oss-20b",
+        llm_model_generator_wave3="",
+        llm_model_generator_wave4="",
+        xai_api_key="primary-key",
+        xai_api_key_secondary="secondary-key",
+        xai_api_key_tertiary="tertiary-key",
+        xai_api_key_wave3="",
+        xai_api_key_wave4="",
+    )
+    calls = []
+
+    def fake_init(self):
+        self.settings = route_settings
+
+    async def fake_chat(self, messages, **kwargs):
+        calls.append(kwargs)
+        raise LLMRequestError(
+            "rate limited",
+            error_class="rate_limited",
+            http_status=429,
+        )
+
+    monkeypatch.setattr(GrokClient, "__init__", fake_init)
+    monkeypatch.setattr(GrokClient, "chat", fake_chat)
+    monkeypatch.setattr(
+        GrokClient,
+        "get_last_call_metrics",
+        classmethod(lambda cls, task: {"task": task}),
+    )
+
+    blueprint, telemetry = asyncio.run(
+        _run_business_blueprint_compiler(
+            prompt="Create two groups and two triggers for a multi-brand support operation.",
+            dependency_mode="match_existing_or_create_new",
+            focus_object_types=[],
+            object_targets={"groups": 2, "triggers": 2},
+            planner_route=SimpleNamespace(
+                model="openai/gpt-oss-20b",
+                max_output_tokens=300,
+            ),
+        )
+    )
+
+    assert blueprint["mode"] == "deterministic_fallback"
+    assert telemetry["blueprint_fallback_used"] is True
+    assert telemetry["blueprint_fallback_reason"] == "rate_limited"
+    assert [item["profile"] for item in telemetry["blueprint_provider_attempts"]] == [
+        "gemini_then_primary",
+        "secondary",
+        "tertiary",
+    ]
+    assert len(calls) == 3
 
 
 def test_apex_deterministic_department_chunks_pass_enforced_supervisor_gate():
