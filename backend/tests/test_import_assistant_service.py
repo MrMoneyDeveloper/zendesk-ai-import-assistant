@@ -17,6 +17,7 @@ from app.services.import_assistant_service import (
     _build_chunk_plan,
     _build_llm_routes_metadata,
     _canonicalize_generated_rows,
+    _canonicalize_rule_record,
     _canonicalize_ticket_field_record,
     _build_orchestration_backlog,
     _build_clarification_questions,
@@ -54,6 +55,7 @@ from app.services.import_assistant_service import (
     _run_business_blueprint_compiler,
     _reconcile_backlog_item,
     _prepare_update_request,
+    _trusted_update_reference_values,
     _planner_used_heuristic_fallback,
     apply_approval,
 )
@@ -166,6 +168,52 @@ Requirements:
 - Do not exceed 20 generated records
 """
 
+NEXACONNECT_REGRESSION_PROMPT = """We are setting up Zendesk for a company called NexaConnect Telecommunications.
+They provide mobile, fibre, and business connectivity solutions across South Africa.
+They have five support teams: Technical Support, Billing and Accounts,
+Sales and Upgrades, Business Solutions, and Network Operations.
+
+1. Four ticket fields:
+- A dropdown called "Contact Reason" with options: No Connectivity, Billing Dispute, Upgrade Request
+- A dropdown called "Service Type" with options: Mobile Prepaid, Home Fibre, Business Fibre
+- A dropdown called "Client Category" with options: Individual, Corporate, Government
+- A text field called "Account or SIM Number"
+
+2. Five triggers:
+- Route Business Fibre outages to Network Operations
+- Route Billing Disputes to Billing and Accounts
+- Route Corporate Cancellations to Business Solutions
+- Route Upgrade Requests to Sales and Upgrades
+- Route Government Line Faults to Business Solutions
+
+3. Five views:
+- Open Business Fibre Outages
+- Open Billing Disputes
+- Urgent Corporate Cancellations
+- Open Upgrade Requests
+- Unassigned Tickets
+
+4. Four macros:
+- Acknowledge Business Fibre Outage
+- Request Account or SIM Number
+- Retention Offer for Cancellation
+- Escalate Government Line Fault
+
+5. Two ticket forms:
+- NexaConnect Consumer Support Form
+- NexaConnect Business and Corporate Form
+
+6. Four knowledge base articles:
+- An article called "How to Report a NexaConnect Network Fault or Outage"
+  in the category Network Support that explains fault reporting, response times, and ticket tracking
+- An article called "Understanding Your NexaConnect Bill"
+  in the category Billing and Accounts that explains monthly invoices, data bundles, and charge disputes
+- An article called "How to Upgrade Your NexaConnect Service or Device"
+  in the category Sales and Upgrades that explains eligibility, contract dates, and upgrade options
+- An article called "NexaConnect Business Connectivity Solutions Guide"
+  in the category Business Solutions that explains fibre, LTE, VoIP, installation timeframes, and SLAs
+"""
+
 
 def _update_request(prompt: str = "Add the vip tag and keep the current routing logic."):
     return ImportAssistantGenerateRequest(
@@ -271,6 +319,140 @@ def test_update_binding_blocks_noop_replacement():
     preview, summary = _build_preview_records({"object_type": "triggers"}, rows)
     assert summary.blocked == 1
     assert "does not change" in preview[0]["blocked_reason"].lower()
+
+
+def test_view_update_snapshot_reads_nested_conditions_and_execution_settings():
+    request = ImportAssistantGenerateRequest(
+        prompt="Change status is open to status category greater than open.",
+        operation_mode="update",
+        instance_sync_id="SYNC-VIEW",
+        update_target={
+            "object_type": "view",
+            "id": "29141829244700",
+            "name": "Open Bursary Application Tickets",
+            "updated_at": "2026-07-24T17:32:47Z",
+            "snapshot_hash": "view-sha",
+            "editable": True,
+            "snapshot": {
+                "id": 29141829244700,
+                "title": "Open Bursary Application Tickets",
+                "active": True,
+                "conditions": {
+                    "all": [
+                        {"field": "status", "operator": "is", "value": "open"},
+                        {
+                            "field": "current_tags",
+                            "operator": "includes",
+                            "value": "bursary_application",
+                        },
+                        {
+                            "field": "group_id",
+                            "operator": "is",
+                            "value": "29141784735644",
+                        },
+                    ],
+                    "any": [],
+                },
+                "execution": {
+                    "columns": ["status", "updated", "subject"],
+                    "sort_by": "updated_at",
+                    "sort_order": "asc",
+                },
+            },
+        },
+    )
+    rows, _ = _bind_update_target_to_generated_rows(
+        [
+            {
+                "object_type": "views",
+                "title": "Open Bursary Application Tickets",
+                "conditions": [
+                    {
+                        "field": "status_category",
+                        "operator": "greater_than",
+                        "value": "open",
+                        "scope": "all",
+                    }
+                ],
+                "actions": [{"field": "output_columns", "value": ["status", "updated", "subject"]}],
+            }
+        ],
+        request=request,
+    )
+
+    before = rows[0]["before_configuration"]
+    assert [item["field"] for item in before["conditions"]] == [
+        "status",
+        "current_tags",
+        "group_id",
+    ]
+    assert {item["field"]: item["value"] for item in before["actions"]} == {
+        "output_columns": ["status", "updated", "subject"],
+        "sort_by": "updated_at",
+        "sort_order": "asc",
+    }
+    assert [item["field"] for item in rows[0]["after_configuration"]["conditions"]] == [
+        "status_category",
+        "current_tags",
+        "group_id",
+    ]
+    assert {item["field"]: item["value"] for item in rows[0]["after_configuration"]["actions"]} == {
+        "output_columns": ["status", "updated", "subject"],
+        "sort_by": "updated_at",
+        "sort_order": "asc",
+    }
+    assert any(
+        "Preserved unmentioned synchronized logic" in note
+        for note in rows[0]["dependency_notes"]
+    )
+    assert _trusted_update_reference_values(request) == {
+        "group_id": {"29141784735644"}
+    }
+
+
+def test_canonicalizer_allows_only_reference_ids_proven_by_update_snapshot():
+    trusted_id = "29141784735644"
+    trusted_row = {
+        "object_type": "views",
+        "title": "Open Bursary Application Tickets",
+        "conditions": [
+            {"field": "group_id", "operator": "is", "value": trusted_id}
+        ],
+        "actions": [{"field": "output_columns", "value": ["status", "updated", "subject"]}],
+    }
+    trusted_info = _canonicalize_rule_record(
+        trusted_row,
+        object_type="views",
+        related_lookup={},
+        catalog_lookup={"group": {"Other Group": "999"}},
+        trusted_reference_values={"group_id": {trusted_id}},
+    )
+
+    assert trusted_info["blocked"] is False
+    assert "blocked_reason" not in trusted_row.get("validation_overrides", {})
+    assert any(
+        "selected update target snapshot" in note
+        for note in trusted_row.get("dependency_notes", [])
+    )
+
+    invented_row = {
+        "object_type": "views",
+        "title": "Unsafe View",
+        "conditions": [
+            {"field": "group_id", "operator": "is", "value": "123456789"}
+        ],
+        "actions": [{"field": "output_columns", "value": ["status"]}],
+    }
+    invented_info = _canonicalize_rule_record(
+        invented_row,
+        object_type="views",
+        related_lookup={},
+        catalog_lookup={"group": {"Other Group": "999"}},
+        trusted_reference_values={"group_id": {trusted_id}},
+    )
+
+    assert invented_info["blocked"] is True
+    assert "known Zendesk group" in invented_row["validation_overrides"]["blocked_reason"]
 
 
 def test_build_preview_records_sets_warnings_and_blocks():
@@ -1294,6 +1476,36 @@ def test_clearsky_prompt_extracts_exact_teams_categories_forms_and_targets():
         "Priority",
     ]
 
+
+def test_nexaconnect_preserves_team_names_containing_and_and_targets_37_records():
+    assert _extract_inline_support_team_names(NEXACONNECT_REGRESSION_PROMPT) == [
+        "Technical Support",
+        "Billing and Accounts",
+        "Sales and Upgrades",
+        "Business Solutions",
+        "Network Operations",
+    ]
+    estimate = _estimate_requested_record_count(NEXACONNECT_REGRESSION_PROMPT)
+    targets = _extract_object_type_targets(
+        prompt=NEXACONNECT_REGRESSION_PROMPT,
+        focus_object_types=[],
+        estimated_count=estimate["estimated_count"],
+        chunk_estimate=estimate,
+    )
+
+    assert targets == {
+        "groups": 5,
+        "ticket_fields": 4,
+        "triggers": 5,
+        "views": 5,
+        "macros": 4,
+        "ticket_forms": 2,
+        "articles": 4,
+        "categories": 4,
+        "sections": 4,
+    }
+    assert sum(targets.values()) == 37
+
     targets = _extract_object_type_targets(
         prompt=CLEARSKY_REGRESSION_PROMPT,
         focus_object_types=[],
@@ -1534,6 +1746,32 @@ def test_clearsky_article_fallback_preserves_titles_and_same_batch_sections():
         len(next(action["value"] for action in row["actions"] if action["field"] == "body")) > 180
         for row in rows
     )
+
+
+def test_article_fallback_is_grounded_and_never_inherits_aquashield_instructions():
+    rows = _build_deterministic_chunk_rows(
+        object_type="articles",
+        target_count=4,
+        prompt=NEXACONNECT_REGRESSION_PROMPT,
+        reference_catalog={},
+        existing_titles=[],
+        generated_rows=[],
+        reason="model output malformed",
+        backlog_item={"_chunk_offset": 0},
+    )
+    bodies = [
+        next(action["value"] for action in row["actions"] if action["field"] == "body")
+        for row in rows
+    ]
+    combined = " ".join(bodies).lower()
+
+    assert len(rows) == 4
+    assert all(len(body) >= 350 for body in bodies)
+    assert "monthly invoices" in combined
+    assert "nexaconnect telecommunications" in combined
+    assert "aquashield" not in combined
+    assert "water supply" not in combined
+    assert "filtration" not in combined
 
 
 def test_clearsky_runtime_chunks_consolidate_to_nine_initial_review_bundles():

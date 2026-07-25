@@ -41,6 +41,12 @@ function deployBadge(value) {
   return <Badge variant="neutral">pending</Badge>;
 }
 
+function validationFailureReason(record) {
+  if (String(record?.blocked_reason || "").trim()) return String(record.blocked_reason).trim();
+  if (String(record?.validation_status || "").toLowerCase() !== "failed") return "";
+  return String((record?.warnings || [])[0] || "").trim();
+}
+
 function humanize(value) {
   return String(value || "")
     .replaceAll("_", " ")
@@ -205,6 +211,14 @@ export default function PreviewWorkspace({
   const changeQuestionInputRef = useRef(null);
   const records = useMemo(() => previewData?.records || [], [previewData?.records]);
   const isUpdatePreview = records.some((record) => record.operation_mode === "update");
+  const deploymentResultByRecord = useMemo(
+    () => Object.fromEntries(
+      (deployResult?.results || [])
+        .filter((item) => item?.record_id)
+        .map((item) => [item.record_id, item])
+    ),
+    [deployResult?.results]
+  );
 
   const filteredRecords = useMemo(() => {
     const query = recordSearch.trim().toLowerCase();
@@ -234,7 +248,19 @@ export default function PreviewWorkspace({
       }),
       columnHelper.accessor("validation_status", {
         header: "Validation",
-        cell: (info) => statusBadge(info.getValue()),
+        cell: (info) => {
+          const reason = validationFailureReason(info.row.original);
+          return (
+            <div className="min-w-40 max-w-72">
+              {statusBadge(info.getValue())}
+              {reason ? (
+                <p className="mt-1 break-words text-[11px] leading-4 text-rose-700 dark:text-rose-200">
+                  {reason}
+                </p>
+              ) : null}
+            </div>
+          );
+        },
       }),
       columnHelper.display({
         id: "decision",
@@ -253,7 +279,10 @@ export default function PreviewWorkspace({
       }),
       columnHelper.accessor("deployment_status", {
         header: "Deploy",
-        cell: (info) => deployBadge(info.getValue() || "pending"),
+        cell: (info) => {
+          const result = deploymentResultByRecord[info.row.original.record_id];
+          return deployBadge(result?.deployment_status || info.getValue() || "pending");
+        },
       }),
       columnHelper.accessor("zendesk_object_id", {
         header: "Zendesk ID",
@@ -261,10 +290,14 @@ export default function PreviewWorkspace({
       }),
       columnHelper.accessor("execution_message", {
         header: "Execution",
-        cell: (info) => <span className="text-xs text-slate-600 dark:text-slate-300">{info.getValue() || "-"}</span>,
+        cell: (info) => {
+          const result = deploymentResultByRecord[info.row.original.record_id];
+          const message = result?.execution_message || info.getValue() || "-";
+          return <span className="block min-w-40 max-w-72 break-words text-xs text-slate-600 dark:text-slate-300">{message}</span>;
+        },
       }),
     ],
-    [decisions, onDecisionChange]
+    [decisions, deploymentResultByRecord, onDecisionChange]
   );
 
   const table = useReactTable({
@@ -319,6 +352,9 @@ export default function PreviewWorkspace({
     && approvedHelpCenterRecords.length > 0
     && (!requiresPublishConfirmation || confirmPublish)
     && !isDeploying
+  );
+  const failedDeployResults = (deployResult?.results || []).filter(
+    (item) => item?.deployment_status === "failed"
   );
 
   const submitChangeQuestion = async (event) => {
@@ -383,6 +419,16 @@ export default function PreviewWorkspace({
               {deployResult.summary?.deployed || 0} | failed={deployResult.summary?.failed || 0} | skipped=
               {deployResult.summary?.skipped || 0}
             </p>
+            {failedDeployResults.length > 0 ? (
+              <div className="mt-3 border-t border-sky-200 pt-2 dark:border-sky-300/20">
+                <p className="font-semibold">Why deployment failed</p>
+                {failedDeployResults.slice(0, 8).map((result) => (
+                  <p key={`${result.record_id}-deploy-failure`} className="mt-1 break-words leading-5">
+                    {result.title || result.record_id}: {result.execution_message || "Zendesk rejected this record without a detailed response."}
+                  </p>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -530,6 +576,12 @@ export default function PreviewWorkspace({
                 {filteredRecords[0].warnings.map((warning) => <p key={warning}>{warning}</p>)}
               </div>
             ) : null}
+            {validationFailureReason(filteredRecords[0]) ? (
+              <div className="mt-4 border-l-2 border-rose-500 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:bg-rose-950/20 dark:text-rose-100">
+                <p className="font-semibold">Why this record is blocked</p>
+                <p className="mt-1 leading-5">{validationFailureReason(filteredRecords[0])}</p>
+              </div>
+            ) : null}
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3 dark:border-[#7B1FFF]/20">
               <span className="text-xs text-slate-500 dark:text-slate-400">Decision</span>
               <DecisionPills
@@ -557,6 +609,12 @@ export default function PreviewWorkspace({
                         label="Configuration logic"
                       />
                     )}
+                    {validationFailureReason(record) ? (
+                      <div className="mt-3 border-l-2 border-rose-500 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:bg-rose-950/20 dark:text-rose-100">
+                        <p className="font-semibold">Why this record is blocked</p>
+                        <p className="mt-1 leading-5">{validationFailureReason(record)}</p>
+                      </div>
+                    ) : null}
                   </div>
                 </details>
               ))}

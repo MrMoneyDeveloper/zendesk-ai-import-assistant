@@ -2029,7 +2029,15 @@ def _extract_inline_support_team_names(prompt: str) -> list[str]:
         flags=re.IGNORECASE,
     )
     for match in inline_pattern.finditer(text):
-        for item in _split_prompt_list(match.group("items")):
+        raw_items = str(match.group("items") or "").strip()
+        if re.search(r"[,;]", raw_items):
+            split_items = [
+                re.sub(r"^\s*and\s+", "", item, flags=re.IGNORECASE)
+                for item in re.split(r"[,;]", raw_items)
+            ]
+        else:
+            split_items = _split_prompt_list(raw_items)
+        for item in split_items:
             add_name(item)
 
     group_heading_pattern = re.compile(
@@ -4964,6 +4972,7 @@ def _build_deterministic_chunk_rows(
 
     if normalized_object_type == "articles":
         article_specs = _extract_article_specs_from_prompt(prompt_text)
+        company_label = _extract_company_name_from_prompt(prompt_text) or "the organization"
         used_article_names = {
             _normalize_title_for_dedupe(str(row.get("title", "")))
             for row in (generated_rows or [])
@@ -4999,14 +5008,19 @@ def _build_deterministic_chunk_rows(
             article_title = str(spec.get("title", "")).strip() or base_title
             section_name = str(spec.get("section") or spec.get("category") or "").strip()
             requirements = str(spec.get("requirements", "")).strip()
+            support_destination = (
+                f"the appropriate {company_label} support team"
+                if company_label.lower() != "the organization"
+                else "the appropriate support team"
+            )
             body = _html_paragraphs(
-                f"This guide explains {article_title.lower()}.",
+                f"This guide explains {article_title.lower()} for customers and support teams working with {company_label}.",
                 requirements
-                or "Review the product details, gather supporting photos, and confirm the outcome you need before starting.",
-                "Preparation: locate the product serial number, keep the installation or replacement area accessible, and have a clean cloth, container, and the manufacturer-approved parts ready. Record any leaks, unusual pressure, warning lights, or changes in water quality before proceeding.",
-                "Process: isolate the water supply when the task requires it, follow the product instructions in order, check every connection, and restore service slowly. Confirm that the system operates normally and keep the ticket reference together with photos of the completed work.",
-                "Safety and escalation: stop immediately if you find damaged electrical components, uncontrolled leaking, unsafe pressure, or a part that does not fit correctly. Do not force fittings or bypass safety controls. Contact AquaShield Customer Support with the serial number, photos, and a description of the step that failed so the team can arrange technical assistance.",
-                "Expected outcome: the customer can complete the standard preparation or maintenance safely, verify the result, and provide enough evidence for support to resolve exceptions without repeating the initial checks.",
+                or "Review the relevant service or product details and confirm the outcome you need before contacting support.",
+                "Preparation: gather the account, service, order, device, policy, or product reference that applies to the request. Record important dates, the exact issue or question, its customer or business impact, and any clear screenshots or documents that support the case.",
+                "Process: follow only verified instructions supplied by the organization, record each completed check and its result, and keep all updates on the same support request. Do not share passwords, one-time authentication codes, payment credentials, or unrelated personal information.",
+                f"Escalation: contact {support_destination} when the documented steps do not resolve the request, a deadline or service commitment is at risk, or specialist access is required. Include the reference number, evidence, checks already completed, current impact, and the outcome requested.",
+                "Expected outcome: the customer understands the next step, the responsible team receives enough verified context to act without repeating intake, and any unresolved risk or dependency remains visible on the support request.",
             )
             actions = [
                 {"field": "locale", "value": "en-us"},
@@ -5496,11 +5510,15 @@ def _prepare_update_request(
 
 
 def _snapshot_conditions(snapshot: dict, object_type: str) -> list[dict]:
-    if object_type == "views":
+    raw_conditions = snapshot.get("conditions")
+    if isinstance(raw_conditions, dict):
+        raw_groups = raw_conditions
+    elif isinstance(raw_conditions, list):
+        raw_groups = {"all": raw_conditions}
+    elif object_type == "views":
         raw_groups = {"all": snapshot.get("all", []), "any": snapshot.get("any", [])}
     else:
-        raw_conditions = snapshot.get("conditions", {})
-        raw_groups = raw_conditions if isinstance(raw_conditions, dict) else {"all": raw_conditions}
+        raw_groups = {}
     output: list[dict] = []
     for scope in ("all", "any"):
         entries = raw_groups.get(scope, []) if isinstance(raw_groups, dict) else []
@@ -5532,9 +5550,17 @@ def _snapshot_actions(snapshot: dict, object_type: str) -> list[dict]:
 
     if object_type == "views":
         output = snapshot.get("output", {}) if isinstance(snapshot.get("output"), dict) else {}
-        add("output_columns", output.get("columns"))
-        add("sort_by", output.get("sort_by"))
-        add("sort_order", output.get("sort_order"))
+        execution = (
+            snapshot.get("execution", {})
+            if isinstance(snapshot.get("execution"), dict)
+            else {}
+        )
+        view_settings = {**execution, **output}
+        add("output_columns", view_settings.get("columns"))
+        add("sort_by", view_settings.get("sort_by"))
+        add("sort_order", view_settings.get("sort_order"))
+        add("group_by", view_settings.get("group_by"))
+        add("group_order", view_settings.get("group_order"))
     elif object_type == "ticket_forms":
         add("ticket_field_ids", snapshot.get("ticket_field_ids"))
     elif object_type == "ticket_fields":
@@ -5580,6 +5606,29 @@ def _snapshot_configuration(target: dict, object_type: str) -> dict:
     }
 
 
+def _trusted_update_reference_values(
+    request: ImportAssistantGenerateRequest,
+) -> dict[str, set[str]]:
+    if request.operation_mode != "update" or request.update_target is None:
+        return {}
+    expected_type = UPDATE_FOCUS_BY_CONTEXT_TYPE.get(request.update_target.object_type)
+    if not expected_type:
+        return {}
+    target = request.update_target.model_dump()
+    before = _snapshot_configuration(target, expected_type)
+    trusted: dict[str, set[str]] = {}
+    for bucket_name in ("conditions", "actions"):
+        for entry in list(before.get(bucket_name, []) or []):
+            if not isinstance(entry, dict):
+                continue
+            field = str(entry.get("field", "")).strip().lower()
+            value = str(entry.get("value", "")).strip()
+            if field not in REFERENCE_OBJECT_BY_FIELD or not value:
+                continue
+            trusted.setdefault(field, set()).add(value)
+    return trusted
+
+
 def _configuration_change_summary(before: dict, after: dict) -> list[dict]:
     summary: list[dict] = []
     for field, label in (
@@ -5604,6 +5653,86 @@ def _configuration_change_summary(before: dict, after: dict) -> list[dict]:
             entry["after"] = after_value
         summary.append(entry)
     return summary
+
+
+def _update_prompt_mentions_field(prompt: str, field: str) -> bool:
+    normalized_prompt = re.sub(r"[_\s]+", " ", str(prompt or "").lower()).strip()
+    normalized_field = str(field or "").strip().lower()
+    aliases = {
+        "group_id": ("group", "team", "assign", "route"),
+        "ticket_form_id": ("ticket form", "form"),
+        "brand_id": ("brand",),
+        "current_tags": ("tag", "tags"),
+        "set_tags": ("tag", "tags"),
+        "output_columns": ("column", "columns", "output"),
+        "sort_by": ("sort", "oldest", "newest"),
+        "sort_order": ("sort", "ascending", "descending", "oldest", "newest"),
+        "group_by": ("group by",),
+        "group_order": ("group order",),
+        "comment_value": ("comment", "reply", "note", "message"),
+        "comment_value_html": ("comment", "reply", "note", "message"),
+    }
+    candidates = aliases.get(
+        normalized_field,
+        (normalized_field.replace("_id", "").replace("_", " "),),
+    )
+    return any(
+        re.search(rf"\b{re.escape(candidate)}\b", normalized_prompt)
+        for candidate in candidates
+        if candidate
+    )
+
+
+def _preserve_unmentioned_update_entries(
+    *,
+    before_entries: list[dict],
+    proposed_entries: list[dict],
+    prompt: str,
+    bucket_name: str,
+) -> tuple[list[dict], list[str]]:
+    result = [dict(item) for item in proposed_entries if isinstance(item, dict)]
+    proposed_fields = {
+        str(item.get("field", "")).strip().lower()
+        for item in result
+        if str(item.get("field", "")).strip()
+    }
+    normalized_prompt = re.sub(r"\s+", " ", str(prompt or "").lower())
+    explicit_bucket_replacement = bool(
+        re.search(
+            rf"\b(?:clear|delete|remove|replace)\b.{{0,60}}\b(?:all\s+)?{re.escape(bucket_name)}\b",
+            normalized_prompt,
+        )
+        or re.search(
+            rf"\bonly\s+(?:the\s+)?{re.escape(bucket_name.rstrip('s'))}\b",
+            normalized_prompt,
+        )
+    )
+    if explicit_bucket_replacement:
+        return result, []
+    if not result:
+        restored = [dict(item) for item in before_entries if isinstance(item, dict)]
+        restored_fields = [
+            str(item.get("field", "")).strip().lower()
+            for item in restored
+            if str(item.get("field", "")).strip()
+        ]
+        return restored, list(dict.fromkeys(restored_fields))
+
+    preserved_fields: list[str] = []
+    for baseline in before_entries:
+        if not isinstance(baseline, dict):
+            continue
+        field = str(baseline.get("field", "")).strip().lower()
+        if (
+            not field
+            or field in proposed_fields
+            or _update_prompt_mentions_field(prompt, field)
+        ):
+            continue
+        result.append(dict(baseline))
+        proposed_fields.add(field)
+        preserved_fields.append(field)
+    return result, preserved_fields
 
 
 def _bind_update_target_to_generated_rows(
@@ -5649,10 +5778,28 @@ def _bind_update_target_to_generated_rows(
     )
     if not rename_requested:
         row["title"] = before.get("title") or request.update_target.name
-    if not list(row.get("conditions", []) or []) and before.get("conditions"):
-        row["conditions"] = list(before.get("conditions", []) or [])
-    if not list(row.get("actions", []) or []) and before.get("actions"):
-        row["actions"] = list(before.get("actions", []) or [])
+    row["conditions"], preserved_condition_fields = _preserve_unmentioned_update_entries(
+        before_entries=list(before.get("conditions", []) or []),
+        proposed_entries=list(row.get("conditions", []) or []),
+        prompt=request.prompt,
+        bucket_name="conditions",
+    )
+    row["actions"], preserved_action_fields = _preserve_unmentioned_update_entries(
+        before_entries=list(before.get("actions", []) or []),
+        proposed_entries=list(row.get("actions", []) or []),
+        prompt=request.prompt,
+        bucket_name="actions",
+    )
+    if preserved_condition_fields or preserved_action_fields:
+        preserved_labels = [
+            *[f"condition:{field}" for field in preserved_condition_fields],
+            *[f"action:{field}" for field in preserved_action_fields],
+        ]
+        binding_warnings.append(
+            "Preserved unmentioned synchronized logic: "
+            + ", ".join(preserved_labels)
+            + "."
+        )
     if "active" not in row and before.get("active") is not None:
         row["active"] = before.get("active")
 
@@ -6370,6 +6517,7 @@ def _canonicalize_rule_record(
     object_type: str,
     related_lookup: dict[str, dict[str, str]] | None = None,
     catalog_lookup: dict[str, dict[str, str]] | None = None,
+    trusted_reference_values: dict[str, set[str]] | None = None,
 ) -> dict:
     info = {
         "title": str(row.get("title", "Untitled Rule")).strip() or "Untitled Rule",
@@ -6425,6 +6573,8 @@ def _canonicalize_rule_record(
                 continue
             field = str(entry.get("field", "")).strip().lower()
             value_text = str(entry.get("value", "")).strip()
+            trusted_values = (trusted_reference_values or {}).get(field, set())
+            is_trusted_update_reference = value_text in trusted_values
             if _is_placeholder_reference_token(value_text):
                 row.setdefault("validation_overrides", {})
                 row["validation_overrides"]["blocked_reason"] = (
@@ -6447,7 +6597,13 @@ def _canonicalize_rule_record(
                         "Converted assignee_id to group_id based on title intent (team/group assignment heuristic)."
                     )
                     field = "group_id"
-            if field == "group_id" and value_text.isdigit() and known_group_ids and value_text not in known_group_ids:
+            if (
+                field == "group_id"
+                and value_text.isdigit()
+                and known_group_ids
+                and value_text not in known_group_ids
+                and not is_trusted_update_reference
+            ):
                 row.setdefault("validation_overrides", {})
                 row["validation_overrides"]["blocked_reason"] = (
                     "group_id does not match any known Zendesk group in current context. "
@@ -6464,6 +6620,7 @@ def _canonicalize_rule_record(
                 and value_text.isdigit()
                 and known_ids_by_type.get(reference_type)
                 and value_text not in known_ids_by_type.get(reference_type, set())
+                and not is_trusted_update_reference
             ):
                 row.setdefault("validation_overrides", {})
                 row["validation_overrides"]["blocked_reason"] = (
@@ -6474,6 +6631,16 @@ def _canonicalize_rule_record(
                     f"Blocked: {field} '{value_text}' does not match any synced {reference_type}."
                 )
                 break
+            if (
+                is_trusted_update_reference
+                and value_text.isdigit()
+                and reference_type in known_ids_by_type
+                and known_ids_by_type.get(reference_type)
+                and value_text not in known_ids_by_type.get(reference_type, set())
+            ):
+                warnings.append(
+                    f"Preserved trusted {field} '{value_text}' from the selected update target snapshot."
+                )
 
     if object_type in {"triggers", "automations", "macros"} and not list(row.get("actions", []) or []):
         row.setdefault("validation_overrides", {})
@@ -8013,6 +8180,7 @@ def _canonicalize_generated_rows(
     related_lookup: dict[str, dict[str, str]] | None,
     catalog_lookup: dict[str, dict[str, str]] | None,
     settings,
+    trusted_reference_values: dict[str, set[str]] | None = None,
 ) -> tuple[list[dict], dict, dict, dict]:
     normalized_rows: list[dict] = []
     field_inference_records: list[dict] = []
@@ -8102,6 +8270,7 @@ def _canonicalize_generated_rows(
                 object_type=row["object_type"],
                 related_lookup=related_lookup,
                 catalog_lookup=catalog_lookup,
+                trusted_reference_values=trusted_reference_values,
             )
             trigger_article_summary["rules_processed"] += 1
             trigger_article_summary["alias_mappings"] += len(info.get("alias_mappings", []))
@@ -12311,6 +12480,7 @@ async def _generate_import_assistant_batch_impl(
             related_lookup=related_lookup,
             catalog_lookup=catalog_lookup,
             settings=settings,
+            trusted_reference_values=_trusted_update_reference_values(request),
         )
         trigger_article_meta = (
             canonicalization_metadata.get("trigger_article", {})

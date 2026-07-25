@@ -39,7 +39,16 @@ function snapshotCounts(target) {
     ...(Array.isArray(conditionSource.any) ? conditionSource.any : []),
   ];
   const actions = Array.isArray(snapshot.actions) ? snapshot.actions : [];
-  return { conditions: conditions.length, actions: actions.length };
+  const viewSettings = snapshot.execution && typeof snapshot.execution === "object"
+    ? snapshot.execution
+    : (snapshot.output && typeof snapshot.output === "object" ? snapshot.output : {});
+  const configuredViewSettings = Object.values(viewSettings).filter((value) => (
+    value !== null
+    && value !== undefined
+    && value !== ""
+    && (!Array.isArray(value) || value.length > 0)
+  )).length;
+  return { conditions: conditions.length, actions: actions.length + configuredViewSettings };
 }
 
 function humanize(value) {
@@ -84,6 +93,9 @@ function snapshotDetails(target) {
       : []),
   ];
   const actions = Array.isArray(snapshot.actions) ? snapshot.actions : [];
+  const viewSettings = snapshot.execution && typeof snapshot.execution === "object"
+    ? snapshot.execution
+    : (snapshot.output && typeof snapshot.output === "object" ? snapshot.output : {});
   const properties = [
     ["Status", snapshot.active],
     ["Type", snapshot.type],
@@ -93,7 +105,11 @@ function snapshotDetails(target) {
     ["Draft", snapshot.draft],
     ["Ticket fields", snapshot.ticket_field_ids],
     ["Options", snapshot.custom_field_options],
-    ["Output columns", snapshot.output?.columns],
+    ["Output columns", viewSettings.columns],
+    ["Sort by", viewSettings.sort_by],
+    ["Sort order", viewSettings.sort_order],
+    ["Group by", viewSettings.group_by],
+    ["Group order", viewSettings.group_order],
     ["Description", snapshot.description],
     ["Body", snapshot.body],
   ].filter(([, value]) => value !== null && value !== undefined && value !== "");

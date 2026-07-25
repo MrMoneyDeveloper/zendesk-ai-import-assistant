@@ -607,6 +607,7 @@ async def answer_context_question(
             "Distinguish confirmed facts, likely impact, risks, and facts that cannot be verified.",
             "For change review, explain effects on routing, agents, customers, reporting, dependencies, ordering, and overlapping existing objects when evidence exists.",
             "Use exact names and IDs. Cite only supplied source records.",
+            "Zendesk ticket_fields inventory contains both built-in and custom fields. Do not call a field custom unless the supplied snapshot explicitly proves that classification.",
             "Write for a non-technical Zendesk administrator and return JSON matching the schema.",
         ],
         "scope": scope,

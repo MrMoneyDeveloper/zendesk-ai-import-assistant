@@ -142,3 +142,65 @@ test("shows the verified Help Center deployment phase after Support deployment",
   expect(onVerify).toHaveBeenCalledOnce();
   expect(onDeploy).toHaveBeenCalledOnce();
 });
+
+test("keeps validation and deployment failure reasons visible at approval time", () => {
+  render(
+    <PreviewWorkspace
+      previewData={{
+        records: [
+          {
+            record_id: "REC-FAILED",
+            object_type: "views",
+            title: "Unsafe routing view",
+            validation_status: "failed",
+            blocked_reason: "The selected group no longer exists in the synchronized instance.",
+            import_decision: "blocked",
+            deployment_status: "pending",
+            deployable: false,
+            warnings: [],
+          },
+          {
+            record_id: "REC-DEPLOY",
+            object_type: "triggers",
+            title: "Route urgent requests",
+            validation_status: "passed",
+            import_decision: "approved",
+            deployment_status: "pending",
+            deployable: true,
+            warnings: [],
+          },
+        ],
+        planning_summary: { object_type: "operating_model" },
+        generated_counts: { views: 1, triggers: 1 },
+        validation_summary: { passed: 1, warnings: 0, blocked: 1 },
+      }}
+      generatedData={null}
+      decisions={{}}
+      onDecisionChange={vi.fn()}
+      onApproveDecisions={vi.fn()}
+      onApproveAndDeploy={vi.fn()}
+      isApproving={false}
+      onDeployToZendesk={vi.fn()}
+      isDeploying={false}
+      deployResult={{
+        status: "deployed_partial",
+        summary: { attempted: 1, deployed: 0, failed: 1, skipped: 0 },
+        results: [
+          {
+            record_id: "REC-DEPLOY",
+            title: "Route urgent requests",
+            deployment_status: "failed",
+            execution_message: "Zendesk rejected the condition operator.",
+          },
+        ],
+      }}
+      deploymentMetadata={{}}
+    />
+  );
+
+  expect(
+    screen.getAllByText("The selected group no longer exists in the synchronized instance.").length
+  ).toBeGreaterThan(0);
+  expect(screen.getByText("Why deployment failed")).toBeInTheDocument();
+  expect(screen.getAllByText("Zendesk rejected the condition operator.").length).toBeGreaterThan(0);
+});
