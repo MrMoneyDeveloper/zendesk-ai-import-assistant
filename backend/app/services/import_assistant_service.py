@@ -1654,6 +1654,31 @@ def _extract_object_type_targets(
         if extracted_value > 0:
             targets[object_type] = extracted_value
 
+    for object_type in (
+        "brands",
+        "categories",
+        "sections",
+        "groups",
+        "ticket_fields",
+        "ticket_forms",
+        "views",
+        "triggers",
+        "macros",
+        "automations",
+        "articles",
+    ):
+        section_count = len(_numbered_section_record_items(text, object_type))
+        if section_count > 0:
+            targets[object_type] = max(int(targets.get(object_type, 0) or 0), section_count)
+    help_center_structure = _extract_help_center_structure_names(text)
+    for object_type in ("categories", "sections"):
+        structure_count = len(help_center_structure[object_type])
+        if structure_count > 0:
+            targets[object_type] = max(
+                int(targets.get(object_type, 0) or 0),
+                structure_count,
+            )
+
     for object_type, patterns in BUSINESS_BLUEPRINT_OBJECT_HINTS.items():
         if object_type in targets:
             continue
@@ -1666,7 +1691,7 @@ def _extract_object_type_targets(
         targets["categories"] = max(int(targets.get("categories", 0) or 0), dependency_count)
         targets["sections"] = max(int(targets.get("sections", 0) or 0), dependency_count)
 
-    explicit_group_names = _extract_inline_support_team_names(text)
+    explicit_group_names = _extract_explicit_group_names(text)
     if explicit_group_names:
         targets["groups"] = max(
             int(targets.get("groups", 0) or 0),
@@ -2050,12 +2075,155 @@ def _extract_inline_support_team_names(prompt: str) -> list[str]:
     return names[:40]
 
 
+def _numbered_prompt_section_key(title: str) -> str | None:
+    normalized = _coverage_key(title)
+    if not normalized:
+        return None
+    if "help center structure" in normalized or "help centre structure" in normalized:
+        return "help_center_structure"
+    if (
+        "help center article" in normalized
+        or "help centre article" in normalized
+        or normalized == "articles"
+    ):
+        return "articles"
+    ordered_keys = (
+        ("ticket_fields", ("ticket field",)),
+        ("ticket_forms", ("ticket form",)),
+        ("automations", ("automation",)),
+        ("triggers", ("trigger",)),
+        ("macros", ("macro",)),
+        ("views", ("view", "queue")),
+        ("groups", ("group", "support team")),
+        ("brands", ("brand",)),
+        ("categories", ("category",)),
+        ("sections", ("section",)),
+        ("articles", ("article",)),
+    )
+    for key, markers in ordered_keys:
+        if any(marker in normalized for marker in markers):
+            return key
+    return None
+
+
+def _extract_numbered_prompt_sections(prompt: str) -> dict[str, list[str]]:
+    sections: dict[str, list[str]] = {}
+    current_key: str | None = None
+    heading_pattern = re.compile(
+        r"^\s*(?:#{1,6}\s*)?\d{1,2}[\).]\s*(?P<title>.+?)\s*:?\s*$",
+        flags=re.IGNORECASE,
+    )
+    bullet_pattern = re.compile(r"^\s*[-*\u2022]\s+(?P<body>.+?)\s*$")
+
+    for raw_line in str(prompt or "").splitlines():
+        stripped = raw_line.strip()
+        heading = heading_pattern.match(raw_line)
+        if heading:
+            current_key = _numbered_prompt_section_key(heading.group("title"))
+            if current_key:
+                sections.setdefault(current_key, [])
+            continue
+        if re.match(r"^\s*(?:requirements?|constraints?)\s*:", raw_line, flags=re.IGNORECASE):
+            current_key = None
+            continue
+        if not current_key or not stripped:
+            continue
+        bullet = bullet_pattern.match(raw_line)
+        if bullet:
+            body = re.sub(r"\s+", " ", bullet.group("body")).strip()
+            if body:
+                sections[current_key].append(body)
+            continue
+        if sections.get(current_key) and (
+            raw_line[:1].isspace()
+            or stripped.lower().startswith(("and ", "or ", "with "))
+        ):
+            continuation = re.sub(r"\s+", " ", stripped)
+            sections[current_key][-1] = (
+                f"{sections[current_key][-1]} {continuation}"
+            ).strip()
+    return sections
+
+
+def _numbered_section_record_items(prompt: str, object_type: str) -> list[str]:
+    normalized = _normalize_object_type(object_type)
+    items = list(_extract_numbered_prompt_sections(prompt).get(normalized, []) or [])
+    instruction_prefixes = {
+        "ticket_forms": ("include ", "use ", "ensure ", "fields "),
+        "views": ("include ", "use ", "show ", "display ", "sort ", "columns "),
+        "triggers": ("include ", "ensure ", "use "),
+        "macros": ("include ", "ensure ", "use "),
+        "automations": ("include ", "ensure ", "use "),
+        "articles": (
+            "place ",
+            "put ",
+            "each ",
+            "include ",
+            "ensure ",
+            "write ",
+            "use ",
+        ),
+    }
+    prefixes = instruction_prefixes.get(normalized, ())
+    return [
+        item
+        for item in items
+        if item and not str(item).strip().lower().startswith(prefixes)
+    ]
+
+
+def _extract_help_center_structure_names(prompt: str) -> dict[str, list[str]]:
+    result = {"categories": [], "sections": []}
+    seen = {"categories": set(), "sections": set()}
+    for item in _extract_numbered_prompt_sections(prompt).get("help_center_structure", []):
+        match = re.match(
+            r"^(?P<kind>category|section)\s*:\s*(?P<name>.+?)\s*$",
+            str(item).strip(),
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            continue
+        key = "categories" if match.group("kind").lower() == "category" else "sections"
+        name = re.sub(r"\s+", " ", match.group("name")).strip(" .,:;\"'")
+        normalized_name = _coverage_key(name)
+        if not normalized_name or normalized_name in seen[key]:
+            continue
+        seen[key].add(normalized_name)
+        result[key].append(name)
+    return result
+
+
+def _extract_explicit_brand_names(prompt: str) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in _numbered_section_record_items(prompt, "brands"):
+        name = re.sub(r"\s+", " ", str(item)).strip(" .,:;\"'")
+        key = _coverage_key(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    return names[:40]
+
+
+def _extract_explicit_group_names(prompt: str) -> list[str]:
+    structured_names = [
+        re.sub(r"\s+", " ", str(item)).strip(" .,:;\"'")
+        for item in _numbered_section_record_items(prompt, "groups")
+        if str(item).strip()
+    ]
+    if structured_names:
+        return list(dict.fromkeys(structured_names))[:40]
+    return _extract_inline_support_team_names(prompt)
+
+
 def _extract_article_category_names(prompt: str) -> list[str]:
     text = re.sub(r"\s+", " ", str(prompt or "")).strip()
     if not text:
         return []
-    names: list[str] = []
+    names: list[str] = list(_extract_help_center_structure_names(prompt)["categories"])
     seen: set[str] = set()
+    seen.update(_coverage_key(name) for name in names)
     pattern = re.compile(
         r"\bin\s+(?:the\s+)?category\s+[\"']?"
         r"(?P<name>[a-z0-9][a-z0-9 &/\-]{1,80}?)[\"']?"
@@ -2064,6 +2232,28 @@ def _extract_article_category_names(prompt: str) -> list[str]:
     )
     for match in pattern.finditer(text):
         name = str(match.group("name") or "").strip(" .,:;\"'")
+        key = _coverage_key(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    return names[:40]
+
+
+def _extract_article_section_names(prompt: str) -> list[str]:
+    names = list(_extract_help_center_structure_names(prompt)["sections"])
+    seen = {_coverage_key(name) for name in names}
+    article_items = _extract_numbered_prompt_sections(prompt).get("articles", [])
+    pattern = re.compile(
+        r"^(?:place|put)\s+(?:all|both|the|\d+)?\s*articles?\s+in\s+"
+        r"(?:the\s+)?(?P<name>.+?)\s*$",
+        flags=re.IGNORECASE,
+    )
+    for item in article_items:
+        match = pattern.match(str(item).strip())
+        if not match:
+            continue
+        name = re.sub(r"\s+", " ", match.group("name")).strip(" .,:;\"'")
         key = _coverage_key(name)
         if not key or key in seen:
             continue
@@ -2104,6 +2294,41 @@ def _extract_article_specs_from_prompt(prompt: str) -> list[dict[str, str]]:
                 "requirements": requirements,
             }
         )
+    section_names = _extract_article_section_names(text)
+    destination = section_names[0] if section_names else ""
+    section_items = _extract_numbered_prompt_sections(text).get("articles", [])
+    shared_requirements = next(
+        (
+            re.sub(r"^each\s+article\s+(?:must|should)\s+", "", item, flags=re.IGNORECASE)
+            for item in section_items
+            if re.match(r"^each\s+article\s+(?:must|should)\s+", item, flags=re.IGNORECASE)
+        ),
+        "",
+    )
+    for item in _numbered_section_record_items(text, "articles"):
+        if re.match(
+            r"^(?:an?\s+)?article\s+(?:called|named)\b",
+            str(item).strip(),
+            flags=re.IGNORECASE,
+        ):
+            continue
+        title = re.sub(r"\s+", " ", str(item)).strip(" .,:;\"'")
+        key = _coverage_key(title)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        specs.append(
+            {
+                "title": title,
+                "category": destination,
+                "section": destination,
+                "requirements": (
+                    f"This article must {shared_requirements.strip(' .')}."
+                    if shared_requirements.strip(" .")
+                    else ""
+                ),
+            }
+        )
     return specs[:80]
 
 
@@ -2130,6 +2355,38 @@ def _extract_ticket_form_specs_from_prompt(prompt: str) -> list[dict[str, object
             continue
         seen.add(key)
         specs.append({"title": title, "fields": fields[:30]})
+    structured_items = _extract_numbered_prompt_sections(text).get("ticket_forms", [])
+    shared_fields: list[str] = []
+    for item in structured_items:
+        include_match = re.match(
+            r"^(?:include|use)\s+(?P<fields>.+?)\s*$",
+            str(item).strip(),
+            flags=re.IGNORECASE,
+        )
+        if include_match:
+            shared_fields = _split_prompt_list(include_match.group("fields"))[:30]
+            break
+    for item in _numbered_section_record_items(text, "ticket_forms"):
+        title, separator, inline_fields = str(item).partition(":")
+        title = re.sub(r"^(?:form\s+)?(?:called|named)\s+", "", title, flags=re.IGNORECASE)
+        title = re.sub(r"\s+", " ", title).strip(" .,:;\"'")
+        key = _coverage_key(title)
+        if not key or key in seen:
+            continue
+        fields = shared_fields
+        if separator and re.search(r"\b(?:include|use|fields?)\b", inline_fields, flags=re.IGNORECASE):
+            inline_fields = re.sub(
+                r"^.*?\b(?:include|use|fields?)\b\s*:?",
+                "",
+                inline_fields,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            fields = _split_prompt_list(inline_fields)[:30]
+        if not fields:
+            continue
+        seen.add(key)
+        specs.append({"title": title, "fields": fields})
     return specs[:40]
 
 
@@ -2137,34 +2394,71 @@ def _extract_trigger_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
     text = str(prompt or "")
     if not text.strip():
         return []
-    pattern = re.compile(
-        r"[-*]\s+(?P<body>When\s+.*?)"
-        r"(?=\n\s*[-*]\s+When\b|\n\s*\d+\.\s|\Z)",
-        flags=re.IGNORECASE | re.DOTALL,
-    )
+    field_specs = _extract_ticket_field_specs_from_prompt(text)
     field_titles = [
         str(spec.get("title", "")).strip()
-        for spec in _extract_ticket_field_specs_from_prompt(text)
+        for spec in field_specs
         if str(spec.get("title", "")).strip()
     ]
+    structured_bodies = _numbered_section_record_items(text, "triggers")
+    if structured_bodies:
+        bodies = structured_bodies
+    else:
+        pattern = re.compile(
+            r"[-*]\s+(?P<body>When\s+.*?)"
+            r"(?=\n\s*[-*]\s+When\b|\n\s*\d+\.\s|\Z)",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        bodies = [
+            re.sub(r"\s+", " ", str(match.group("body") or "")).strip(" .")
+            for match in pattern.finditer(text)
+        ]
     specs: list[dict[str, object]] = []
     seen: set[str] = set()
-    for match in pattern.finditer(text):
-        body = re.sub(r"\s+", " ", str(match.group("body") or "")).strip(" .")
+    group_names = _extract_explicit_group_names(text)
+    form_names = [
+        str(spec.get("title", "")).strip()
+        for spec in _extract_ticket_form_specs_from_prompt(text)
+        if str(spec.get("title", "")).strip()
+    ]
+    for raw_body in bodies:
+        body = re.sub(r"\s+", " ", str(raw_body or "")).strip(" .")
         conditions: list[dict[str, str]] = []
         if re.search(r"\bticket\s+is\s+created\b", body, flags=re.IGNORECASE):
             conditions.append({"field": "status", "operator": "is", "value": "new"})
 
         title_parts: list[str] = []
-        for field_title in field_titles:
+        for field_spec in field_specs:
+            field_title = str(field_spec.get("title", "")).strip()
+            if not field_title:
+                continue
             value_match = re.search(
-                rf"\b{re.escape(field_title)}\s+is\s+[\"'](?P<value>[^\"']+)[\"']",
+                rf"\b{re.escape(field_title)}\s+(?:is|equals?)\s+"
+                r"(?:[\"'](?P<quoted>[^\"']+)[\"']|"
+                r"(?P<plain>[a-z0-9][a-z0-9 &/_-]{0,80}?))"
+                r"(?=\s*(?:,|\.|\band\b|\bthen\b|\bassign\b|\badd\b|\bset\b|$))",
                 body,
                 flags=re.IGNORECASE,
             )
-            if not value_match:
+            display_value = ""
+            if value_match:
+                display_value = re.sub(
+                    r"\s+",
+                    " ",
+                    str(value_match.group("quoted") or value_match.group("plain") or ""),
+                ).strip()
+            if not display_value:
+                for option in list(field_spec.get("options", []) or []):
+                    candidate = str(option).strip()
+                    if candidate and re.search(
+                        rf"\b{re.escape(candidate)}\b",
+                        body,
+                        flags=re.IGNORECASE,
+                    ):
+                        display_value = candidate
+                        break
+            if not display_value:
                 continue
-            display_value = re.sub(r"\s+", " ", value_match.group("value")).strip()
             conditions.append(
                 {
                     "field": f"custom_field_{_slugify_option_value(field_title)}",
@@ -2174,28 +2468,72 @@ def _extract_trigger_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
             )
             title_parts.append(display_value)
 
-        group_match = re.search(
-            r"\bassign(?:s)?(?:\s+the\s+ticket)?\s+to\s+"
-            r"(?P<group>[^,.]+?)(?=\s*,|\s+and\s+(?:add|set)\b|\.|$)",
-            body,
-            flags=re.IGNORECASE,
+        group_name = next(
+            (
+                name
+                for name in group_names
+                if _coverage_key(name) and _coverage_key(name) in _coverage_key(body)
+            ),
+            "",
         )
+        if not group_name:
+            group_match = re.search(
+                r"\b(?:assign(?:s)?(?:\s+the\s+ticket)?|route(?:s)?(?:\s+.+?)?)\s+to\s+"
+                r"(?P<group>[^,.]+?)(?=\s*,|\s+and\s+(?:add|set|notify)\b|\.|$)",
+                body,
+                flags=re.IGNORECASE,
+            )
+            group_name = (
+                re.sub(r"\s+", " ", group_match.group("group")).strip()
+                if group_match
+                else ""
+            )
+        if not group_name and len(group_names) == 1:
+            group_name = group_names[0]
         tag_match = re.search(
-            r"\badd(?:s)?\s+(?:the\s+)?tag\s+[\"'](?P<tag>[a-z0-9_-]+)[\"']",
+            r"\badd(?:s)?\s+(?:the\s+)?tag\s+[\"']?(?P<tag>[a-z0-9_-]+)[\"']?",
             body,
             flags=re.IGNORECASE,
         )
         priority_match = re.search(
-            r"\bset(?:s)?\s+priority\s+to\s+(?P<priority>low|normal|high|urgent)\b",
+            r"\b(?:set(?:s)?|mark(?:s)?.*?\bas)\s+(?:the\s+)?priority(?:\s+to)?\s+"
+            r"(?P<priority>low|normal|high|urgent)\b",
             body,
             flags=re.IGNORECASE,
         )
+        if not priority_match:
+            priority_match = re.search(
+                r"\bas\s+(?P<priority>low|normal|high|urgent)\s+priority\b",
+                body,
+                flags=re.IGNORECASE,
+            )
         actions: list[dict[str, str]] = []
-        group_name = re.sub(r"\s+", " ", group_match.group("group")).strip() if group_match else ""
+        if not conditions and re.search(r"\bsupport requests?\b", body, flags=re.IGNORECASE):
+            form_name = next(
+                (
+                    name
+                    for name in form_names
+                    if _coverage_key(name).removesuffix(" request")
+                    in _coverage_key(body)
+                ),
+                form_names[0] if len(form_names) == 1 else "",
+            )
+            if form_name:
+                conditions.append(
+                    {"field": "ticket_form_id", "operator": "is", "value": form_name}
+                )
         if group_name:
             actions.append({"field": "group_id", "value": group_name})
         if tag_match:
             actions.append({"field": "current_tags", "value": tag_match.group("tag").lower()})
+        elif re.search(r"\broute", body, flags=re.IGNORECASE):
+            form_tag_source = form_names[0] if form_names else (group_name or "support_request")
+            actions.append(
+                {
+                    "field": "current_tags",
+                    "value": _slugify_option_value(form_tag_source),
+                }
+            )
         if priority_match:
             actions.append({"field": "priority", "value": priority_match.group("priority").lower()})
 
@@ -2285,11 +2623,235 @@ def _extract_macro_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
                 "tags": list(dict.fromkeys(tags)),
             }
         )
+    group_names = _extract_explicit_group_names(text)
+    for item in _numbered_section_record_items(text, "macros"):
+        if re.match(
+            r"^(?:a\s+)?macro\s+(?:called|named)\b",
+            str(item).strip(),
+            flags=re.IGNORECASE,
+        ):
+            continue
+        raw_title, separator, raw_body = str(item).partition(":")
+        if not separator:
+            continue
+        title = re.sub(
+            r"^(?:a\s+)?macro\s+(?:called|named)\s+",
+            "",
+            raw_title,
+            flags=re.IGNORECASE,
+        )
+        title = re.sub(r"\s+", " ", title).strip(" .,:;\"'")
+        title_key = _normalize_title_for_dedupe(title)
+        if not title_key or title_key in seen:
+            continue
+        body = re.sub(r"\s+", " ", raw_body).strip(" .")
+        tags = [
+            value.lower()
+            for value in re.findall(
+                r"\badd(?:s)?\s+(?:the\s+)?tag\s+[\"']?([a-z0-9_-]+)[\"']?",
+                body,
+                flags=re.IGNORECASE,
+            )
+        ]
+        group_name = next(
+            (
+                name
+                for name in group_names
+                if _coverage_key(name) and _coverage_key(name) in _coverage_key(body)
+            ),
+            "",
+        )
+        if "serial number" in _coverage_key(title):
+            comment = (
+                "Thanks for contacting AquaShield Support. Please reply with the product serial "
+                "number shown on the label attached to your filtration unit. A clear photo of the "
+                "label is also acceptable. Once received, we will verify the product and confirm "
+                "the correct troubleshooting or replacement steps."
+            )
+        elif "installation preparation" in _coverage_key(title):
+            comment = (
+                "Before the installation visit, clear access to the water inlet and filtration "
+                "location, secure pets, and confirm that an adult will be present. Keep the product "
+                "and plumbing area accessible, and tell us about any existing leaks or electrical "
+                "hazards. Contact support before the appointment if these conditions cannot be met."
+            )
+        else:
+            comment = (
+                f"{body.rstrip('.')}."
+                " Please reply with the relevant reference details and any supporting photos or "
+                "documents so the support team can confirm the next step."
+            )
+        seen.add(title_key)
+        specs.append(
+            {
+                "title": title,
+                "comment": comment,
+                "comment_is_public": True,
+                "group": group_name,
+                "priority": "",
+                "tags": list(dict.fromkeys(tags)),
+            }
+        )
+    return specs[:80]
+
+
+def _extract_automation_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
+    text = str(prompt or "")
+    if not text.strip():
+        return []
+    specs: list[dict[str, object]] = []
+    group_names = _extract_explicit_group_names(text)
+    for index, item in enumerate(
+        _numbered_section_record_items(text, "automations"),
+        start=1,
+    ):
+        body = re.sub(r"\s+", " ", str(item)).strip(" .")
+        hours_match = re.search(
+            r"\b(?:for|after)\s+(?P<hours>\d{1,4})\s+hours?\b",
+            body,
+            flags=re.IGNORECASE,
+        )
+        status_match = re.search(
+            r"\b(?:remained?|status\s+is|been)\s+(?P<status>new|open|pending|hold|solved|closed)\b",
+            body,
+            flags=re.IGNORECASE,
+        )
+        status = status_match.group("status").lower() if status_match else "pending"
+        if status == "hold":
+            status = "on-hold"
+        hours = hours_match.group("hours") if hours_match else "24"
+        tags = [
+            value.lower()
+            for value in re.findall(
+                r"\badd(?:s)?\s+(?:the\s+)?tag\s+[\"']?([a-z0-9_-]+)[\"']?",
+                body,
+                flags=re.IGNORECASE,
+            )
+        ]
+        group_name = next(
+            (
+                name
+                for name in group_names
+                if _coverage_key(name) and _coverage_key(name) in _coverage_key(body)
+            ),
+            group_names[0] if len(group_names) == 1 else "",
+        )
+        actions: list[dict[str, object]] = []
+        if tags:
+            actions.append({"field": "current_tags", "value": " ".join(dict.fromkeys(tags))})
+        if re.search(r"\bnotify\b", body, flags=re.IGNORECASE) and group_name:
+            actions.append({"field": "notification_group", "value": group_name})
+        if not actions:
+            actions.append({"field": "current_tags", "value": "scheduled_follow_up"})
+        specs.append(
+            {
+                "title": (
+                    f"{status.title()} Follow-up After {hours} Hours"
+                    if len(_numbered_section_record_items(text, "automations")) > 1
+                    else f"Pending Follow-up Notification for {_extract_company_name_from_prompt(text) or 'Support'}"
+                ),
+                "conditions": [
+                    {"field": "status", "operator": "is", "value": status},
+                    {
+                        "field": "hours_since_update",
+                        "operator": "greater_than",
+                        "value": hours,
+                    },
+                ],
+                "actions": actions,
+                "source_text": body,
+                "index": index,
+            }
+        )
     return specs[:80]
 
 
 def _extract_view_specs_from_prompt(prompt: str) -> list[dict[str, object]]:
     text = str(prompt or "")
+    structured_items = _numbered_section_record_items(text, "views")
+    if structured_items and all(":" in str(item) for item in structured_items):
+        all_view_items = _extract_numbered_prompt_sections(text).get("views", [])
+        columns = ["status", "priority", "requester", "assignee", "updated"]
+        column_instruction = next(
+            (
+                item
+                for item in all_view_items
+                if str(item).strip().lower().startswith(("include ", "columns "))
+            ),
+            "",
+        )
+        if column_instruction:
+            supported_columns = [
+                ("status", "status"),
+                ("priority", "priority"),
+                ("requester", "requester"),
+                ("assignee", "assignee"),
+                ("updated", "updated"),
+                ("created", "created"),
+                ("subject", "description"),
+            ]
+            parsed_columns = [
+                target
+                for marker, target in supported_columns
+                if re.search(rf"\b{re.escape(marker)}\b", column_instruction, flags=re.IGNORECASE)
+            ]
+            if parsed_columns:
+                columns = list(dict.fromkeys(parsed_columns))
+        group_names = _extract_explicit_group_names(text)
+        specs: list[dict[str, object]] = []
+        for item in structured_items:
+            raw_title, separator, raw_body = str(item).partition(":")
+            title = re.sub(r"\s+", " ", raw_title).strip(" .,:;\"'")
+            body = re.sub(r"\s+", " ", raw_body if separator else item).strip(" .")
+            conditions: list[dict[str, str]] = []
+            if re.search(r"\bnew\s+and\s+open\b", body, flags=re.IGNORECASE):
+                conditions.append(
+                    {"field": "status", "operator": "less_than", "value": "pending"}
+                )
+            elif re.search(r"\bopen\b", body, flags=re.IGNORECASE):
+                conditions.append({"field": "status", "operator": "is", "value": "open"})
+            elif re.search(r"\bhigh\s+and\s+urgent\b", body, flags=re.IGNORECASE):
+                conditions.append(
+                    {"field": "priority", "operator": "greater_than", "value": "normal"}
+                )
+            else:
+                conditions.append(
+                    {"field": "status", "operator": "less_than", "value": "solved"}
+                )
+            group_name = next(
+                (
+                    name
+                    for name in group_names
+                    if _coverage_key(name) and _coverage_key(name) in _coverage_key(body)
+                ),
+                "",
+            )
+            if group_name:
+                conditions.append(
+                    {"field": "group_id", "operator": "is", "value": group_name}
+                )
+            specs.append(
+                {
+                    "title": title,
+                    "conditions": conditions,
+                    "actions": [
+                        {"field": "output_columns", "value": columns},
+                        {
+                            "field": "sort_by",
+                            "value": (
+                                "priority"
+                                if any(
+                                    condition.get("field") == "priority"
+                                    for condition in conditions
+                                )
+                                else "updated"
+                            ),
+                        },
+                        {"field": "sort_order", "value": "desc"},
+                    ],
+                }
+            )
+        return specs[:80]
     section_match = re.search(
         r"\n\s*\d+\.\s+[^\n:]*\bviews?\s*:\s*(?P<section>.*?)"
         r"(?=\n\s*\d+\.\s|\Z)",
@@ -3324,7 +3886,7 @@ def _build_chunk_plan(
             "max_chunks": max_chunks,
             "trigger_min_records": trigger_min_records,
             "total_chunks": 1,
-            "chunk_targets": [1],
+            "chunk_targets": [max(int(estimated_count or 1), 1)],
             "exceeds_cap": False,
         }
 
@@ -3431,10 +3993,14 @@ def _should_use_explicit_template_first(
 ) -> bool:
     normalized = _normalize_object_type(object_type)
     required = max(int(target_count or 1), 1)
+    if normalized == "brands":
+        return len(_extract_explicit_brand_names(prompt)) >= required
     if normalized == "groups":
-        return len(_extract_inline_support_team_names(prompt)) >= required
-    if normalized == "categories" or normalized == "sections":
+        return len(_extract_explicit_group_names(prompt)) >= required
+    if normalized == "categories":
         return len(_extract_article_category_names(prompt)) >= required
+    if normalized == "sections":
+        return len(_extract_article_section_names(prompt)) >= required
     if normalized == "ticket_fields":
         return len(_extract_ticket_field_specs_from_prompt(prompt)) >= required
     if normalized == "ticket_forms":
@@ -3445,6 +4011,10 @@ def _should_use_explicit_template_first(
         return len(_extract_trigger_specs_from_prompt(prompt)) >= required
     if normalized == "macros":
         return len(_extract_macro_specs_from_prompt(prompt)) >= required
+    if normalized == "automations":
+        return len(_extract_automation_specs_from_prompt(prompt)) >= required
+    if normalized == "articles":
+        return len(_extract_article_specs_from_prompt(prompt)) >= required
     return False
 
 
@@ -3972,6 +4542,35 @@ def _build_deterministic_chunk_rows(
     if coverage_rows:
         return coverage_rows
 
+    if normalized_object_type == "automations":
+        automation_specs = _extract_automation_specs_from_prompt(prompt_text)
+        selected_specs = automation_specs[
+            explicit_chunk_offset : explicit_chunk_offset + requested_count
+        ]
+        if selected_specs:
+            for spec in selected_specs:
+                rows.append(
+                    {
+                        "object_type": "automations",
+                        "title": str(spec.get("title", "")).strip(),
+                        "conditions": [
+                            dict(item)
+                            for item in list(spec.get("conditions", []) or [])
+                            if isinstance(item, dict)
+                        ],
+                        "actions": [
+                            dict(item)
+                            for item in list(spec.get("actions", []) or [])
+                            if isinstance(item, dict)
+                        ],
+                        "dependency_notes": [
+                            fallback_note,
+                            "Compiled from the matching explicit automation rule in the prompt.",
+                        ],
+                    }
+                )
+            return rows
+
     if normalized_object_type == "triggers":
         trigger_specs = _extract_trigger_specs_from_prompt(prompt_text)
         selected_specs = trigger_specs[
@@ -4138,7 +4737,7 @@ def _build_deterministic_chunk_rows(
         return rows
 
     if normalized_object_type == "groups":
-        team_names = _extract_inline_support_team_names(prompt_text)
+        team_names = _extract_explicit_group_names(prompt_text)
         used_team_names = {
             _normalize_title_for_dedupe(str(row.get("title", "")))
             for row in (generated_rows or [])
@@ -4179,16 +4778,26 @@ def _build_deterministic_chunk_rows(
         return rows
 
     if normalized_object_type == "brands":
+        explicit_brand_names = _extract_explicit_brand_names(prompt_text)
         title_hints = _extract_title_hints(prompt_text)
-        base_title = title_hints[0] if title_hints else "Generated Brand"
+        base_title = (
+            explicit_brand_names[0]
+            if explicit_brand_names
+            else (title_hints[0] if title_hints else "Generated Brand")
+        )
         for index in range(1, requested_count + 1):
+            title = (
+                explicit_brand_names[index - 1]
+                if index <= len(explicit_brand_names)
+                else base_title
+            )
             rows.append(
                 {
                     "object_type": "brands",
-                    "title": _next_unique_title(base_title, index),
+                    "title": _next_unique_title(title, index),
                     "conditions": [],
                     "actions": [
-                        {"field": "subdomain", "value": _slugify_option_value(f"{base_title}-{index}")[:25]},
+                        {"field": "subdomain", "value": _slugify_option_value(title)[:25]},
                     ],
                     "dependency_notes": [fallback_note],
                 }
@@ -4239,6 +4848,7 @@ def _build_deterministic_chunk_rows(
                 category_id = candidate
                 break
         category_names = _extract_article_category_names(prompt_text)
+        section_names = _extract_article_section_names(prompt_text)
         used_section_names = {
             _normalize_title_for_dedupe(str(row.get("title", "")))
             for row in (generated_rows or [])
@@ -4247,7 +4857,7 @@ def _build_deterministic_chunk_rows(
         }
         available_section_names = [
             name
-            for name in category_names
+            for name in section_names
             if _normalize_title_for_dedupe(name) not in used_section_names
         ]
         title_hints = _extract_title_hints(prompt_text)
@@ -4259,10 +4869,11 @@ def _build_deterministic_chunk_rows(
                 else base_title
             )
             actions = [{"field": "locale", "value": "en-us"}]
-            if category_id:
+            category_name = category_names[min(index - 1, len(category_names) - 1)] if category_names else ""
+            if category_name:
+                actions.append({"field": "category_name", "value": category_name})
+            elif category_id:
                 actions.append({"field": "category_id", "value": category_id})
-            elif title in category_names:
-                actions.append({"field": "category_name", "value": title})
             rows.append(
                 {
                     "object_type": "sections",
@@ -4386,22 +4997,25 @@ def _build_deterministic_chunk_rows(
                 else {}
             )
             article_title = str(spec.get("title", "")).strip() or base_title
-            category_name = str(spec.get("category", "")).strip()
+            section_name = str(spec.get("section") or spec.get("category") or "").strip()
             requirements = str(spec.get("requirements", "")).strip()
             body = _html_paragraphs(
                 f"This guide explains {article_title.lower()}.",
                 requirements
-                or "Review the relevant policy details, gather supporting documents, and contact support with the outcome you need.",
-                "Keep the request and supporting evidence together so the assigned team can confirm next steps, timing, and any follow-up requirements.",
+                or "Review the product details, gather supporting photos, and confirm the outcome you need before starting.",
+                "Preparation: locate the product serial number, keep the installation or replacement area accessible, and have a clean cloth, container, and the manufacturer-approved parts ready. Record any leaks, unusual pressure, warning lights, or changes in water quality before proceeding.",
+                "Process: isolate the water supply when the task requires it, follow the product instructions in order, check every connection, and restore service slowly. Confirm that the system operates normally and keep the ticket reference together with photos of the completed work.",
+                "Safety and escalation: stop immediately if you find damaged electrical components, uncontrolled leaking, unsafe pressure, or a part that does not fit correctly. Do not force fittings or bypass safety controls. Contact AquaShield Customer Support with the serial number, photos, and a description of the step that failed so the team can arrange technical assistance.",
+                "Expected outcome: the customer can complete the standard preparation or maintenance safely, verify the result, and provide enough evidence for support to resolve exceptions without repeating the initial checks.",
             )
             actions = [
                 {"field": "locale", "value": "en-us"},
                 {"field": "body", "value": body},
             ]
-            if section_id:
+            if section_name:
+                actions.append({"field": "section_name", "value": section_name})
+            elif section_id:
                 actions.append({"field": "section_id", "value": section_id})
-            elif category_name:
-                actions.append({"field": "section_name", "value": category_name})
             rows.append(
                 {
                     "object_type": "articles",
@@ -4415,8 +5029,8 @@ def _build_deterministic_chunk_rows(
                     "dependency_notes": [
                         fallback_note,
                         *(
-                            [f"Depends on same-batch help center section: {category_name}."]
-                            if category_name and not section_id
+                            [f"Depends on same-batch help center section: {section_name}."]
+                            if section_name and not section_id
                             else []
                         ),
                     ],
@@ -6140,6 +6754,13 @@ def _extract_ticket_field_specs_from_prompt(prompt: str) -> list[dict[str, objec
         r"(?P<rest>.*)$",
         flags=re.IGNORECASE,
     )
+    title_first_pattern = re.compile(
+        r"(?:^[-*]\s*|^\d+\.\s*|^)\s*"
+        r"(?P<title>[a-z0-9][a-z0-9 &/_()'-]{1,120}?)\s*:\s*"
+        r"(?P<kind>drop[\s-]?down|single[\s-]?select|multi[\s-]?select|multiselect|text|textarea|number|integer|decimal|date|checkbox|regexp)"
+        r"(?:\s+field)?(?P<rest>.*)$",
+        flags=re.IGNORECASE,
+    )
     options_pattern = re.compile(
         r"(?:with\s+)?(?:options?|values?)\s*:?\s*(?P<values>.+)$",
         flags=re.IGNORECASE,
@@ -6150,6 +6771,10 @@ def _extract_ticket_field_specs_from_prompt(prompt: str) -> list[dict[str, objec
         if not candidate:
             continue
         match = field_pattern.search(candidate)
+        title_first = False
+        if not match:
+            match = title_first_pattern.search(candidate)
+            title_first = bool(match)
         if not match:
             continue
         raw_title = str(match.group("title") or "").strip().strip(" .,:;")
@@ -6166,6 +6791,19 @@ def _extract_ticket_field_specs_from_prompt(prompt: str) -> list[dict[str, objec
         if opt_match:
             raw_values = str(opt_match.group("values") or "").strip()
             options = [part.strip() for part in re.split(r"[,|;/]", raw_values) if part.strip()]
+        elif title_first and rest:
+            raw_values = re.sub(
+                r"^(?:with\s+)?(?:options?|values?)?\s*:?\s*",
+                "",
+                rest,
+                flags=re.IGNORECASE,
+            ).strip()
+            if raw_values:
+                options = [
+                    part.strip()
+                    for part in re.split(r"[,|;/]", raw_values)
+                    if part.strip()
+                ]
         specs.append(
             {
                 "title": raw_title,
@@ -6320,6 +6958,7 @@ def _extract_explicit_constraints(prompt: str) -> dict:
     explicit = {
         "title": None,
         "tag": None,
+        "tags": [],
         "status": None,
         "field_type": None,
         "field_options_requested": False,
@@ -6346,6 +6985,18 @@ def _extract_explicit_constraints(prompt: str) -> dict:
     )
     if tag_match:
         explicit["tag"] = tag_match.group(1).strip()
+    explicit_tags: list[str] = []
+    for match in re.finditer(
+        r"\b(?:add(?:s)?|set(?:s)?)\s+(?:the\s+)?tag(?:s)?"
+        r"\s*(?:to|as|=|:)?\s*[\"']?([a-z0-9_-]{2,})[\"']?",
+        text,
+    ):
+        tag = str(match.group(1) or "").strip().lower()
+        if tag and tag not in explicit_tags:
+            explicit_tags.append(tag)
+    if explicit["tag"] and explicit["tag"] not in explicit_tags:
+        explicit_tags.insert(0, explicit["tag"])
+    explicit["tags"] = explicit_tags
 
     status_match = re.search(
         r"\b(?:set|change|update)\s+status\s*(?:to|=|as)?\s*([a-z_]+)",
@@ -6375,15 +7026,27 @@ def _evaluate_generation_safety(
     reasons: list[str] = []
     focus_violations: list[str] = []
     explicit_constraint_violations: list[str] = []
-    blocked_record_ids: list[str] = []
+    blocked_record_ids: set[str] = set()
     fallback_detected = False
+    global_blocked = False
     confidence = float(plan.get("confidence", 0.0) or 0.0)
+    indexed_rows = [
+        (str(row.get("record_id") or f"REC-{idx:04d}"), row)
+        for idx, row in enumerate(generated_rows, start=1)
+    ]
 
-    for row in generated_rows:
+    def _record_ids_for_types(object_types: set[str]) -> set[str]:
+        return {
+            record_id
+            for record_id, row in indexed_rows
+            if _normalize_object_type(str(row.get("object_type", ""))) in object_types
+        }
+
+    for record_id, row in indexed_rows:
         notes = list(row.get("dependency_notes", []) or [])
         if any("fallback output used" in str(note).strip().lower() for note in notes):
             fallback_detected = True
-            break
+            blocked_record_ids.add(record_id)
 
     if fallback_detected:
         reasons.append("Generator fallback output detected. Regenerate before deployment.")
@@ -6392,6 +7055,7 @@ def _evaluate_generation_safety(
         reasons.append(
             f"Planner confidence {confidence:.2f} is below minimum deploy threshold {min_confidence:.2f}."
         )
+        global_blocked = True
 
     if focus_object_types:
         for row in generated_rows:
@@ -6403,7 +7067,13 @@ def _evaluate_generation_safety(
 
     constraints = _extract_explicit_constraints(prompt)
     requested_title = _normalize_title_for_constraint_match(constraints.get("title") or "")
-    requested_tag = str(constraints.get("tag") or "").strip().lower()
+    requested_tags = [
+        str(item).strip().lower()
+        for item in list(constraints.get("tags", []) or [])
+        if str(item).strip()
+    ]
+    if not requested_tags and constraints.get("tag"):
+        requested_tags = [str(constraints.get("tag")).strip().lower()]
     requested_status = str(constraints.get("status") or "").strip().lower()
     requested_field_type = str(constraints.get("field_type") or "").strip().lower()
     requested_field_options = bool(constraints.get("field_options_requested"))
@@ -6425,14 +7095,30 @@ def _evaluate_generation_safety(
             explicit_constraint_violations.append(
                 f"Requested title contains '{requested_title}', but generated title does not match."
             )
+            title_type_match = re.search(
+                r"\b(trigger|automation|macro|view|group|ticket\s*form|form|"
+                r"ticket\s*field|field|article|category|section|brand)\s+"
+                r"(?:called|named)\b",
+                prompt,
+                flags=re.IGNORECASE,
+            )
+            title_types = (
+                {_normalize_object_type(title_type_match.group(1))}
+                if title_type_match
+                else set(focus_object_types)
+            )
+            matching_ids = _record_ids_for_types(title_types) if title_types else set()
+            blocked_record_ids.update(matching_ids or {record_id for record_id, _ in indexed_rows})
 
-    if requested_tag:
+    for requested_tag in requested_tags:
         tag_match = False
         for row in generated_rows:
             for action in row.get("actions", []) or []:
                 field = str(action.get("field", "")).strip().lower()
                 value = str(action.get("value", "")).strip().lower()
-                if field in {"current_tags", "set_tags", "tags"} and requested_tag in value:
+                if field in {"current_tags", "set_tags", "tags"} and requested_tag in {
+                    token for token in re.split(r"[\s,;|]+", value) if token
+                }:
                     tag_match = True
                     break
             if tag_match:
@@ -6440,6 +7126,9 @@ def _evaluate_generation_safety(
         if not tag_match:
             explicit_constraint_violations.append(
                 f"Requested tag '{requested_tag}' was not found in generated actions."
+            )
+            blocked_record_ids.update(
+                _record_ids_for_types({"triggers", "macros", "automations"})
             )
 
     if requested_status:
@@ -6456,6 +7145,9 @@ def _evaluate_generation_safety(
         if not status_match:
             explicit_constraint_violations.append(
                 f"Requested status '{requested_status}' was not found in generated actions."
+            )
+            blocked_record_ids.update(
+                _record_ids_for_types({"triggers", "macros", "automations"})
             )
 
     if explicit_constraint_violations:
@@ -6477,6 +7169,7 @@ def _evaluate_generation_safety(
             explicit_constraint_violations.append(
                 "Prompt requested a dropdown/select field, but generated ticket field type is not dropdown-compatible."
             )
+            blocked_record_ids.update(_record_ids_for_types({"ticket_fields"}))
 
     if ticket_field_rows and requested_field_options:
         has_options = False
@@ -6491,6 +7184,7 @@ def _evaluate_generation_safety(
             explicit_constraint_violations.append(
                 "Prompt requested field options, but no valid custom_field_options were generated."
             )
+            blocked_record_ids.update(_record_ids_for_types({"ticket_fields"}))
 
     if any(
         "dropdown/select field" in violation or "field options" in violation
@@ -6499,11 +7193,8 @@ def _evaluate_generation_safety(
         reasons.append("Generated output does not satisfy explicit prompt constraints.")
 
     blocked = bool(reasons)
-    if blocked:
-        blocked_record_ids = [
-            f"REC-{idx:04d}"
-            for idx, _ in enumerate(generated_rows, start=1)
-        ]
+    if blocked and global_blocked:
+        blocked_record_ids = {record_id for record_id, _ in indexed_rows}
 
     return {
         "blocked": blocked,
@@ -6511,9 +7202,10 @@ def _evaluate_generation_safety(
         "confidence": confidence,
         "min_confidence": min_confidence,
         "fallback_detected": fallback_detected,
+        "global_blocked": global_blocked,
         "focus_violations": focus_violations,
         "explicit_constraint_violations": explicit_constraint_violations,
-        "blocked_record_ids": blocked_record_ids,
+        "blocked_record_ids": sorted(blocked_record_ids),
     }
 
 
@@ -6537,7 +7229,20 @@ def _apply_generation_safety_to_preview(records: list[dict], safety: dict) -> li
         return records
 
     reason_text = " | ".join(safety.get("reasons", []) or ["Generation safety gate blocked deployment."])
+    blocked_record_ids = {
+        str(record_id).strip()
+        for record_id in list(safety.get("blocked_record_ids", []) or [])
+        if str(record_id).strip()
+    }
+    if not blocked_record_ids and safety.get("blocked"):
+        blocked_record_ids = {
+            str(row.get("record_id", "")).strip()
+            for row in records
+            if str(row.get("record_id", "")).strip()
+        }
     for row in records:
+        if str(row.get("record_id", "")).strip() not in blocked_record_ids:
+            continue
         row["deployable"] = False
         row["validation_status"] = "failed"
         row["blocked_reason"] = reason_text

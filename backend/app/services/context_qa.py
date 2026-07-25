@@ -593,8 +593,9 @@ async def answer_context_question(
             "name": row["name"],
             "catalog_key": row["catalog_key"],
         }
-        for row in all_entries
+        for row in relevant_entries
     ]
+    scope["catalog_name_index_included"] = len(source_index)
     prompt_payload = {
         "task": "read_only_zendesk_question",
         "question_mode": question_mode,

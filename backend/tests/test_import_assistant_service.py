@@ -28,7 +28,9 @@ from app.services.import_assistant_service import (
     _draft_department_content_rows,
     _estimate_requested_record_count,
     _extract_article_category_names,
+    _extract_article_section_names,
     _extract_article_specs_from_prompt,
+    _extract_automation_specs_from_prompt,
     _extract_inline_support_team_names,
     _extract_macro_specs_from_prompt,
     _extract_object_type_targets,
@@ -100,6 +102,68 @@ Claims, Underwriting, and Client Retention.
      in the category Claims that explains emergency steps
    - An article called "ClearSky Cancellation Policy and Your Options"
      in the category Policy Management that explains notice and retention options
+"""
+
+AQUASHIELD_COMPACT_PROMPT = """Create a compact Zendesk demo configuration for AquaShield Home Services.
+
+Business context:
+AquaShield sells and installs residential water filtration systems in South Africa.
+
+AquaShield has one support team:
+AquaShield Customer Support
+
+Create exactly the following objects. Do not add additional departments or expand the requested quantities.
+
+1. Brand
+- AquaShield Home Services
+
+2. Help Center structure
+- Category: AquaShield Support
+- Section: Product Help and Installation
+
+3. Group
+- AquaShield Customer Support
+
+4. Ticket fields
+- Issue Type: dropdown with Installation, Filter Replacement, Water Quality, Warranty, Billing
+- Product Type: dropdown with Filter System, Water Softener
+- Product Serial Number: text field
+- Appointment Date: date field
+
+5. Ticket form
+- AquaShield Support Request
+- Include Subject, Description, Issue Type, Product Type, Product Serial Number, Appointment Date and Priority
+
+6. Views
+- New AquaShield Requests: new and open tickets assigned to AquaShield Customer Support
+- Urgent AquaShield Issues: high and urgent tickets assigned to AquaShield Customer Support
+- Include useful columns such as status, priority, requester, assignee and updated date
+
+7. Triggers
+- Route AquaShield support requests to AquaShield Customer Support
+- Mark Water Quality requests as high priority and add tag aquashield_water_quality
+- Add tag aquashield_warranty when Issue Type is Warranty
+
+8. Macros
+- Request Product Serial Number: ask the customer for the serial number and add tag awaiting_serial_number
+- Installation Preparation Instructions: provide installation preparation steps and add tag installation_preparation_sent
+
+9. Automation
+- When a ticket has remained pending for 48 hours, add tag pending_followup_required and notify the assigned support group
+
+10. Help Center articles
+- How to Replace Your AquaShield Filter
+- How to Prepare for an AquaShield Installation
+- Place both articles in Product Help and Installation
+- Each article must contain clear steps, safety notes and escalation guidance
+
+Requirements:
+- Use exact object names and name-based dependencies, not invented Zendesk IDs
+- Keep conditions and actions deploy-safe
+- Generate substantive macro text and article bodies
+- Produce a preview only
+- Do not deploy anything to Zendesk
+- Do not exceed 20 generated records
 """
 
 
@@ -919,6 +983,10 @@ def test_chunk_plan_math_and_cap_detection():
     assert capped["total_chunks"] == 17
     assert capped["exceeds_cap"] is True
 
+    small = _build_chunk_plan(settings=settings, estimated_count=4)
+    assert small["activated"] is False
+    assert small["chunk_targets"] == [4]
+
 
 def test_chunk_plan_uses_balanced_fast_profile_for_form_field_view_objects():
     settings = SimpleNamespace(
@@ -967,6 +1035,191 @@ def test_extract_object_type_targets_detects_multi_object_numeric_intent():
     assert targets["macros"] >= 5
     assert targets["views"] >= 3
     assert targets["ticket_forms"] >= 2
+
+
+def test_aquashield_numbered_manifest_preserves_exact_counts_and_specs():
+    estimate = _estimate_requested_record_count(AQUASHIELD_COMPACT_PROMPT)
+    targets = _extract_object_type_targets(
+        prompt=AQUASHIELD_COMPACT_PROMPT,
+        focus_object_types=[],
+        estimated_count=estimate["estimated_count"],
+        chunk_estimate=estimate,
+    )
+
+    assert targets == {
+        "groups": 1,
+        "brands": 1,
+        "ticket_fields": 4,
+        "ticket_forms": 1,
+        "views": 2,
+        "triggers": 3,
+        "macros": 2,
+        "automations": 1,
+        "articles": 2,
+        "categories": 1,
+        "sections": 1,
+    }
+    assert sum(targets.values()) == 19
+    assert _extract_article_category_names(AQUASHIELD_COMPACT_PROMPT) == [
+        "AquaShield Support"
+    ]
+    assert _extract_article_section_names(AQUASHIELD_COMPACT_PROMPT) == [
+        "Product Help and Installation"
+    ]
+
+    fields = _extract_ticket_field_specs_from_prompt(AQUASHIELD_COMPACT_PROMPT)
+    assert [(item["title"], item["field_type"]) for item in fields] == [
+        ("Issue Type", "tagger"),
+        ("Product Type", "tagger"),
+        ("Product Serial Number", "text"),
+        ("Appointment Date", "date"),
+    ]
+    assert fields[1]["options"] == ["Filter System", "Water Softener"]
+
+    forms = _extract_ticket_form_specs_from_prompt(AQUASHIELD_COMPACT_PROMPT)
+    assert forms == [
+        {
+            "title": "AquaShield Support Request",
+            "fields": [
+                "Subject",
+                "Description",
+                "Issue Type",
+                "Product Type",
+                "Product Serial Number",
+                "Appointment Date",
+                "Priority",
+            ],
+        }
+    ]
+    assert len(_extract_view_specs_from_prompt(AQUASHIELD_COMPACT_PROMPT)) == 2
+    assert len(_extract_trigger_specs_from_prompt(AQUASHIELD_COMPACT_PROMPT)) == 3
+    assert len(_extract_macro_specs_from_prompt(AQUASHIELD_COMPACT_PROMPT)) == 2
+    assert len(_extract_automation_specs_from_prompt(AQUASHIELD_COMPACT_PROMPT)) == 1
+    assert len(_extract_article_specs_from_prompt(AQUASHIELD_COMPACT_PROMPT)) == 2
+
+    for object_type, target_count in targets.items():
+        assert _should_use_explicit_template_first(
+            prompt=AQUASHIELD_COMPACT_PROMPT,
+            object_type=object_type,
+            target_count=target_count,
+        )
+
+
+def test_aquashield_templates_generate_complete_safe_preview_manifest():
+    targets = _extract_object_type_targets(
+        prompt=AQUASHIELD_COMPACT_PROMPT,
+        focus_object_types=[],
+        estimated_count=19,
+        chunk_estimate=None,
+    )
+    rows: list[dict] = []
+    for object_type in (
+        "brands",
+        "categories",
+        "sections",
+        "groups",
+        "ticket_fields",
+        "ticket_forms",
+        "views",
+        "triggers",
+        "macros",
+        "automations",
+        "articles",
+    ):
+        rows.extend(
+            _build_deterministic_chunk_rows(
+                object_type=object_type,
+                target_count=targets[object_type],
+                prompt=AQUASHIELD_COMPACT_PROMPT,
+                reference_catalog={},
+                existing_titles=[],
+                generated_rows=rows,
+                reason="Explicit prompt template-first generation.",
+                backlog_item={"_chunk_offset": 0},
+            )
+        )
+
+    assert len(rows) == 19
+    assert sum(row["object_type"] == "ticket_fields" for row in rows) == 4
+    assert sum(row["object_type"] == "views" for row in rows) == 2
+    assert sum(row["object_type"] == "triggers" for row in rows) == 3
+    assert sum(row["object_type"] == "macros" for row in rows) == 2
+    assert sum(row["object_type"] == "articles" for row in rows) == 2
+
+    section = next(row for row in rows if row["object_type"] == "sections")
+    assert {"field": "category_name", "value": "AquaShield Support"} in section["actions"]
+    for trigger in (row for row in rows if row["object_type"] == "triggers"):
+        action_fields = {item["field"] for item in trigger["actions"]}
+        assert {"group_id", "current_tags"} <= action_fields
+        assert trigger["conditions"]
+    for article in (row for row in rows if row["object_type"] == "articles"):
+        action_map = {item["field"]: item["value"] for item in article["actions"]}
+        assert action_map["section_name"] == "Product Help and Installation"
+        assert len(action_map["body"]) >= 350
+
+    safety = _evaluate_generation_safety(
+        prompt=AQUASHIELD_COMPACT_PROMPT,
+        plan={"confidence": 0.7},
+        generated_rows=rows,
+        focus_object_types=set(),
+        min_confidence=0.65,
+    )
+    assert safety["blocked"] is False
+    assert safety["explicit_constraint_violations"] == []
+
+
+def test_generation_safety_blocks_only_records_related_to_missing_tag():
+    generated_rows = [
+        {
+            "record_id": "REC-0001",
+            "object_type": "brands",
+            "title": "AquaShield Home Services",
+            "conditions": [],
+            "actions": [],
+            "dependency_notes": [],
+        },
+        {
+            "record_id": "REC-0002",
+            "object_type": "triggers",
+            "title": "Route AquaShield",
+            "conditions": [{"field": "status", "operator": "is", "value": "new"}],
+            "actions": [{"field": "group_id", "value": "AquaShield Customer Support"}],
+            "dependency_notes": [],
+        },
+    ]
+    safety = _evaluate_generation_safety(
+        prompt="Create the brand and trigger, and add tag required_tag to the trigger.",
+        plan={"confidence": 0.9},
+        generated_rows=generated_rows,
+        focus_object_types=set(),
+        min_confidence=0.65,
+    )
+
+    assert safety["blocked"] is True
+    assert safety["global_blocked"] is False
+    assert safety["blocked_record_ids"] == ["REC-0002"]
+
+    preview_rows = [
+        {
+            "record_id": "REC-0001",
+            "validation_status": "passed",
+            "deployable": True,
+            "import_decision": "pending_review",
+            "warnings": [],
+        },
+        {
+            "record_id": "REC-0002",
+            "validation_status": "warning",
+            "deployable": True,
+            "import_decision": "pending_review",
+            "warnings": [],
+        },
+    ]
+    patched = _apply_generation_safety_to_preview(preview_rows, safety)
+    assert patched[0]["validation_status"] == "passed"
+    assert patched[0]["deployable"] is True
+    assert patched[1]["validation_status"] == "failed"
+    assert patched[1]["import_decision"] == "blocked"
 
 
 def test_markdown_groups_section_preserves_named_groups_and_target_count():
